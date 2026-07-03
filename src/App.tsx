@@ -15,14 +15,16 @@ import { InventoryView } from './features/inventory/InventoryView'
 type Tab = 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'inventory'
 
 // Navegación declarativa con los roles que pueden ver cada sección.
+// Operativo = recepción; financiero/consulta = contaduría; root ve todo.
 // (El futuro módulo de empleados iría con roles: ['root', 'accountant'].)
-const ALL_ROLES: UserRole[] = ['root', 'accountant', 'reception']
+const OPERATIONS: UserRole[] = ['root', 'reception']
+const SHARED: UserRole[] = ['root', 'accountant', 'reception']
 const TABS: { id: Tab; label: string; roles: UserRole[] }[] = [
-  { id: 'board', label: 'Tablero', roles: ALL_ROLES },
-  { id: 'arrivals', label: 'Llegadas', roles: ALL_ROLES },
-  { id: 'inhouse', label: 'In-house', roles: ALL_ROLES },
-  { id: 'reservation', label: 'Nueva reserva', roles: ALL_ROLES },
-  { id: 'inventory', label: 'Inventario', roles: ALL_ROLES },
+  { id: 'board', label: 'Tablero', roles: SHARED },
+  { id: 'arrivals', label: 'Llegadas', roles: OPERATIONS },
+  { id: 'inhouse', label: 'In-house', roles: SHARED },
+  { id: 'reservation', label: 'Nueva reserva', roles: OPERATIONS },
+  { id: 'inventory', label: 'Inventario', roles: SHARED },
 ]
 
 function App() {
