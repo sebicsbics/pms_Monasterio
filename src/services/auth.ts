@@ -21,9 +21,16 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut()
 }
 
-// Cambia la contraseña del usuario logueado y baja el flag de "genérica".
-export async function changePassword(newPassword: string): Promise<void> {
-  const { error } = await supabase.auth.updateUser({ password: newPassword })
+// Primer ingreso: fija contraseña propia + correo real (dispara verificación)
+// y baja el flag de contraseña genérica.
+export async function completeFirstLogin(
+  newPassword: string,
+  email: string,
+): Promise<void> {
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+    email,
+  })
   if (error) throw new Error(error.message)
   const { error: flagError } = await supabase.rpc('clear_password_change_flag')
   if (flagError) throw new Error(flagError.message)
