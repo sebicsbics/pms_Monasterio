@@ -11,20 +11,29 @@ import { ArrivalsList } from './features/arrivals/ArrivalsList'
 import { InHouseList } from './features/in-house/InHouseList'
 import { NewReservation } from './features/reservations/NewReservation'
 import { InventoryView } from './features/inventory/InventoryView'
+import { EmployeesView } from './features/employees/EmployeesView'
 
-type Tab = 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'inventory'
+type Tab =
+  | 'board'
+  | 'arrivals'
+  | 'inhouse'
+  | 'reservation'
+  | 'inventory'
+  | 'employees'
 
 // Navegación declarativa con los roles que pueden ver cada sección.
 // Operativo = recepción; financiero/consulta = contaduría; root ve todo.
 // (El futuro módulo de empleados iría con roles: ['root', 'accountant'].)
 const OPERATIONS: UserRole[] = ['root', 'reception']
 const SHARED: UserRole[] = ['root', 'accountant', 'reception']
+const FINANCE: UserRole[] = ['root', 'accountant']
 const TABS: { id: Tab; label: string; roles: UserRole[] }[] = [
   { id: 'board', label: 'Tablero', roles: SHARED },
   { id: 'arrivals', label: 'Llegadas', roles: OPERATIONS },
   { id: 'inhouse', label: 'In-house', roles: SHARED },
   { id: 'reservation', label: 'Nueva reserva', roles: OPERATIONS },
   { id: 'inventory', label: 'Inventario', roles: SHARED },
+  { id: 'employees', label: 'Empleados', roles: FINANCE },
 ]
 
 function App() {
@@ -119,6 +128,7 @@ function App() {
       {activeTab === 'inhouse' && <InHouseList />}
       {activeTab === 'reservation' && <NewReservation />}
       {activeTab === 'inventory' && <InventoryView />}
+      {activeTab === 'employees' && <EmployeesView />}
     </div>
   )
 }
