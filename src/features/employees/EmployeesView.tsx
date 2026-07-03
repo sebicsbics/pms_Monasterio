@@ -100,12 +100,15 @@ export function EmployeesView() {
             onChange={(e) => setSalary(e.target.value)}
             className="rounded border border-slate-300 p-2"
           />
-          <input
-            type="date"
-            value={hireDate}
-            onChange={(e) => setHireDate(e.target.value)}
-            className="rounded border border-slate-300 p-2"
-          />
+          <label className="text-xs text-slate-500">
+            Fecha de contratación
+            <input
+              type="date"
+              value={hireDate}
+              onChange={(e) => setHireDate(e.target.value)}
+              className="mt-1 w-full rounded border border-slate-300 p-2 text-sm text-slate-800"
+            />
+          </label>
         </div>
         <button
           type="button"
@@ -124,7 +127,7 @@ export function EmployeesView() {
             <tr>
               <th className="p-3">Empleado</th>
               <th className="p-3">Cargo</th>
-              <th className="p-3">Ingreso</th>
+              <th className="p-3">Fecha de contratación</th>
               <th className="p-3 text-right">Sueldo (Bs)</th>
               <th className="p-3">Estado</th>
             </tr>
