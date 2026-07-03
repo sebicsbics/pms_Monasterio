@@ -12,6 +12,7 @@ import { InHouseList } from './features/in-house/InHouseList'
 import { NewReservation } from './features/reservations/NewReservation'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
+import { TasksView } from './features/tasks/TasksView'
 
 type Tab =
   | 'board'
@@ -20,6 +21,7 @@ type Tab =
   | 'reservation'
   | 'inventory'
   | 'employees'
+  | 'tasks'
 
 // Navegación declarativa con los roles que pueden ver cada sección.
 // Operativo = recepción; financiero/consulta = contaduría; root ve todo.
@@ -33,6 +35,7 @@ const TABS: { id: Tab; label: string; roles: UserRole[] }[] = [
   { id: 'inhouse', label: 'In-house', roles: SHARED },
   { id: 'reservation', label: 'Nueva reserva', roles: OPERATIONS },
   { id: 'inventory', label: 'Inventario', roles: SHARED },
+  { id: 'tasks', label: 'Tareas', roles: OPERATIONS },
   { id: 'employees', label: 'Empleados', roles: FINANCE },
 ]
 
@@ -129,6 +132,7 @@ function App() {
       {activeTab === 'reservation' && <NewReservation />}
       {activeTab === 'inventory' && <InventoryView />}
       {activeTab === 'employees' && <EmployeesView />}
+      {activeTab === 'tasks' && <TasksView />}
     </div>
   )
 }
