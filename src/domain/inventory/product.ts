@@ -11,6 +11,12 @@ export interface Product {
   unit: string
   currentStock: number
   minStock: number
+  salePriceBs: number // precio de venta al huésped (0 = no vendible)
+}
+
+// ¿Es vendible al huésped (minibar)? Tiene precio de venta y stock.
+export function isSellable(p: Product): boolean {
+  return p.salePriceBs > 0
 }
 
 export interface LowStockProduct {

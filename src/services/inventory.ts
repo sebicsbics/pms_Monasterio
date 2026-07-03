@@ -21,13 +21,16 @@ interface ProductRow {
   unit: string
   current_stock: number
   min_stock: number
+  sale_price_bs: number
   product_categories: { name: string } | null
 }
 
 export async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, category_id, unit, current_stock, min_stock, product_categories ( name )')
+    .select(
+      'id, name, category_id, unit, current_stock, min_stock, sale_price_bs, product_categories ( name )',
+    )
     .order('name')
   if (error) throw new Error(error.message)
 
@@ -39,6 +42,7 @@ export async function fetchProducts(): Promise<Product[]> {
     unit: r.unit,
     currentStock: Number(r.current_stock),
     minStock: Number(r.min_stock),
+    salePriceBs: Number(r.sale_price_bs),
   }))
 }
 
@@ -47,12 +51,14 @@ export async function createProduct(input: {
   categoryId: string
   unit: string
   minStock: number
+  salePrice: number
 }): Promise<void> {
   const { error } = await supabase.from('products').insert({
     name: input.name,
     category_id: input.categoryId,
     unit: input.unit,
     min_stock: input.minStock,
+    sale_price_bs: input.salePrice,
   })
   if (error) throw new Error(error.message)
 }

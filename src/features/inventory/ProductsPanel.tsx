@@ -17,6 +17,7 @@ export function ProductsPanel() {
   const [categoryId, setCategoryId] = useState('')
   const [unit, setUnit] = useState('unidad')
   const [minStock, setMinStock] = useState(0)
+  const [salePrice, setSalePrice] = useState(0)
   const [busy, setBusy] = useState(false)
 
   const reload = useCallback(() => {
@@ -43,9 +44,10 @@ export function ProductsPanel() {
     setBusy(true)
     setError(null)
     try {
-      await createProduct({ name: name.trim(), categoryId, unit, minStock })
+      await createProduct({ name: name.trim(), categoryId, unit, minStock, salePrice })
       setName('')
       setMinStock(0)
+      setSalePrice(0)
       await reload()
     } catch (e) {
       setError((e as Error).message)
@@ -63,12 +65,12 @@ export function ProductsPanel() {
       {/* Alta de producto */}
       <div className="mb-6 rounded border border-slate-200 p-4">
         <h3 className="mb-3 font-semibold text-slate-700">Nuevo producto</h3>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
           <input
             placeholder="Nombre"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="rounded border border-slate-300 p-2 sm:col-span-2"
+            className="col-span-2 rounded border border-slate-300 p-2"
           />
           <select
             value={categoryId}
@@ -95,7 +97,20 @@ export function ProductsPanel() {
             onChange={(e) => setMinStock(Math.max(0, Number(e.target.value)))}
             className="rounded border border-slate-300 p-2"
           />
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="Precio venta"
+            value={salePrice}
+            onChange={(e) => setSalePrice(Math.max(0, Number(e.target.value)))}
+            className="rounded border border-slate-300 p-2"
+          />
         </div>
+        <p className="mt-1 text-xs text-slate-400">
+          El precio de venta (&gt; 0) habilita el producto para cargarlo al
+          minibar de un huésped.
+        </p>
         <button
           type="button"
           disabled={busy}
@@ -116,6 +131,7 @@ export function ProductsPanel() {
               <th className="p-3">Unidad</th>
               <th className="p-3 text-right">Stock</th>
               <th className="p-3 text-right">Mínimo</th>
+              <th className="p-3 text-right">Venta (Bs)</th>
             </tr>
           </thead>
           <tbody>
@@ -131,11 +147,14 @@ export function ProductsPanel() {
                 <td className="p-3">{p.unit}</td>
                 <td className="p-3 text-right">{p.currentStock}</td>
                 <td className="p-3 text-right text-slate-400">{p.minStock}</td>
+                <td className="p-3 text-right">
+                  {p.salePriceBs > 0 ? p.salePriceBs.toFixed(2) : '—'}
+                </td>
               </tr>
             ))}
             {products.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-slate-400">
+                <td colSpan={6} className="p-4 text-center text-slate-400">
                   Sin productos aún.
                 </td>
               </tr>

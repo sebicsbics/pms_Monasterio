@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import type { Room } from '../../domain/rooms/room'
 import type { Folio } from '../../domain/folios/folio'
+import type { Product } from '../../domain/inventory/product'
+import { isSellable } from '../../domain/inventory/product'
 import { walkInCheckIn, checkOutRoom, setRoomStatus } from '../../services/checkin'
-import { fetchFolio, addFolioCharge } from '../../services/folio'
+import {
+  fetchFolio,
+  addFolioCharge,
+  addFolioProductCharge,
+} from '../../services/folio'
+import { fetchProducts } from '../../services/inventory'
 import { COUNTRIES } from '../../shared/data/countries'
 
 interface Props {
@@ -33,6 +40,11 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
   const [chargeDesc, setChargeDesc] = useState('')
   const [chargeAmount, setChargeAmount] = useState('')
 
+  // Minibar: productos vendibles del inventario
+  const [products, setProducts] = useState<Product[]>([])
+  const [productId, setProductId] = useState('')
+  const [productQty, setProductQty] = useState('1')
+
   const isOccupied = room.operationalStatus === 'occupied'
 
   useEffect(() => {
@@ -40,8 +52,32 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
       fetchFolio(room.id)
         .then(setFolio)
         .catch((e: Error) => setError(e.message))
+      fetchProducts()
+        .then((all) => setProducts(all.filter(isSellable)))
+        .catch((e: Error) => setError(e.message))
     }
   }, [room.id, isOccupied])
+
+  async function handleAddProduct() {
+    const qty = Number(productQty)
+    if (!productId || !(qty > 0)) {
+      setError('Elegí un producto y una cantidad válida')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      await addFolioProductCharge(room.id, productId, qty)
+      setProductId('')
+      setProductQty('1')
+      await reloadFolio()
+      setProducts((await fetchProducts()).filter(isSellable))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function reloadFolio() {
     setFolio(await fetchFolio(room.id))
@@ -292,7 +328,42 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
 
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-slate-600">
-                Agregar consumo
+                Minibar (descuenta stock)
+              </h4>
+              <div className="flex gap-2">
+                <select
+                  value={productId}
+                  onChange={(e) => setProductId(e.target.value)}
+                  className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                >
+                  <option value="">Producto…</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {p.salePriceBs} Bs (stock {p.currentStock})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  value={productQty}
+                  onChange={(e) => setProductQty(e.target.value)}
+                  className="w-1/4 rounded border border-slate-300 p-2 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={handleAddProduct}
+                  className="w-1/4 rounded bg-slate-700 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  Cargar
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-slate-600">
+                Otro consumo (servicios)
               </h4>
               <input
                 placeholder="Descripción (Minibar, Spa…)"

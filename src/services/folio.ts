@@ -49,7 +49,7 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
   }
 }
 
-// Agrega un consumo al folio de la habitación ocupada.
+// Agrega un consumo LIBRE al folio (servicios sin inventario: spa, lavandería).
 export async function addFolioCharge(
   roomId: string,
   description: string,
@@ -59,6 +59,20 @@ export async function addFolioCharge(
     p_room_id: roomId,
     p_description: description,
     p_amount: amount,
+  })
+  if (error) throw new Error(error.message)
+}
+
+// Carga un PRODUCTO del inventario (minibar): descuenta stock y cobra venta.
+export async function addFolioProductCharge(
+  roomId: string,
+  productId: string,
+  quantity: number,
+): Promise<void> {
+  const { error } = await supabase.rpc('add_folio_product_charge', {
+    p_room_id: roomId,
+    p_product_id: productId,
+    p_quantity: quantity,
   })
   if (error) throw new Error(error.message)
 }
