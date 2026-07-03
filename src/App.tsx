@@ -3,8 +3,9 @@ import { RoomBoard } from './features/room-board/RoomBoard'
 import { InHouseList } from './features/in-house/InHouseList'
 import { NewReservation } from './features/reservations/NewReservation'
 import { ArrivalsList } from './features/arrivals/ArrivalsList'
+import { InventoryView } from './features/inventory/InventoryView'
 
-type Tab = 'board' | 'arrivals' | 'inhouse' | 'reservation'
+type Tab = 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'inventory'
 
 function App() {
   const [tab, setTab] = useState<Tab>('board')
@@ -56,12 +57,24 @@ function App() {
         >
           Nueva reserva
         </button>
+        <button
+          type="button"
+          onClick={() => setTab('inventory')}
+          className={`rounded px-3 py-1.5 text-sm font-medium ${
+            tab === 'inventory'
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          Inventario
+        </button>
       </nav>
 
       {tab === 'board' && <RoomBoard />}
       {tab === 'arrivals' && <ArrivalsList />}
       {tab === 'inhouse' && <InHouseList />}
       {tab === 'reservation' && <NewReservation />}
+      {tab === 'inventory' && <InventoryView />}
     </div>
   )
 }
