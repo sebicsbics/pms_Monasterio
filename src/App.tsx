@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { RoomBoard } from './features/room-board/RoomBoard'
 import { InHouseList } from './features/in-house/InHouseList'
 import { NewReservation } from './features/reservations/NewReservation'
+import { ArrivalsList } from './features/arrivals/ArrivalsList'
 
-type Tab = 'board' | 'inhouse' | 'reservation'
+type Tab = 'board' | 'arrivals' | 'inhouse' | 'reservation'
 
 function App() {
   const [tab, setTab] = useState<Tab>('board')
@@ -21,6 +22,17 @@ function App() {
           }`}
         >
           Tablero
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('arrivals')}
+          className={`rounded px-3 py-1.5 text-sm font-medium ${
+            tab === 'arrivals'
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          Llegadas
         </button>
         <button
           type="button"
@@ -47,6 +59,7 @@ function App() {
       </nav>
 
       {tab === 'board' && <RoomBoard />}
+      {tab === 'arrivals' && <ArrivalsList />}
       {tab === 'inhouse' && <InHouseList />}
       {tab === 'reservation' && <NewReservation />}
     </div>
