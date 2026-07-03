@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { signIn } from '../../services/auth'
 
 export function Login() {
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -12,7 +12,7 @@ export function Login() {
     setBusy(true)
     setError(null)
     try {
-      await signIn(email.trim(), password)
+      await signIn(username.trim(), password)
       // onAuthStateChange en App detecta la sesión y entra.
     } catch (err) {
       setError((err as Error).message)
@@ -38,12 +38,13 @@ export function Login() {
         )}
 
         <label className="mb-3 block text-sm">
-          <span className="text-slate-600">Correo</span>
+          <span className="text-slate-600">Usuario</span>
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             className="mt-1 w-full rounded border border-slate-300 p-2"
+            autoComplete="username"
             required
           />
         </label>

@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './services/supabase'
-import { getProfile } from './services/auth'
-import { signOut } from './services/auth'
+import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
 import { ROLE_LABEL } from './domain/auth/profile'
 import { Login } from './features/auth/Login'
+import { ChangePassword } from './features/auth/ChangePassword'
 import { RoomBoard } from './features/room-board/RoomBoard'
 import { ArrivalsList } from './features/arrivals/ArrivalsList'
 import { InHouseList } from './features/in-house/InHouseList'
@@ -42,7 +42,7 @@ function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  useEffect(() => {
+  const reloadProfile = useCallback(() => {
     if (session?.user) {
       getProfile(session.user.id)
         .then(setProfile)
@@ -52,11 +52,21 @@ function App() {
     }
   }, [session])
 
+  useEffect(() => {
+    reloadProfile()
+  }, [reloadProfile])
+
   if (authLoading) {
     return <p className="p-8 text-slate-500">Cargando…</p>
   }
   if (!session) {
     return <Login />
+  }
+  if (!profile) {
+    return <p className="p-8 text-slate-500">Cargando perfil…</p>
+  }
+  if (profile.mustChangePassword) {
+    return <ChangePassword onDone={reloadProfile} />
   }
 
   const role = profile?.role
