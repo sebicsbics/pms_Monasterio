@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import type { Room } from '../../domain/rooms/room'
 import type { Folio } from '../../domain/folios/folio'
 import type { Product } from '../../domain/inventory/product'
@@ -10,6 +11,8 @@ import {
   addFolioProductCharge,
 } from '../../services/folio'
 import { fetchProducts } from '../../services/inventory'
+import { fetchAssignableStaff, createTask } from '../../services/tasks'
+import type { AssignableStaff } from '../../domain/tasks/task'
 import { COUNTRIES } from '../../shared/data/countries'
 
 interface Props {
@@ -39,13 +42,19 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
   const [folio, setFolio] = useState<Folio | null>(null)
   const [chargeDesc, setChargeDesc] = useState('')
   const [chargeAmount, setChargeAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('efectivo')
 
   // Minibar: productos vendibles del inventario
   const [products, setProducts] = useState<Product[]>([])
   const [productId, setProductId] = useState('')
   const [productQty, setProductQty] = useState('1')
 
+  // Asignación de mucama (solo si la habitación está por limpiar)
+  const [staff, setStaff] = useState<AssignableStaff[]>([])
+  const [staffId, setStaffId] = useState('')
+
   const isOccupied = room.operationalStatus === 'occupied'
+  const isDirty = room.operationalStatus === 'dirty'
 
   useEffect(() => {
     if (isOccupied) {
@@ -57,6 +66,29 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
         .catch((e: Error) => setError(e.message))
     }
   }, [room.id, isOccupied])
+
+  useEffect(() => {
+    if (isDirty) {
+      fetchAssignableStaff()
+        .then(setStaff)
+        .catch((e: Error) => setError(e.message))
+    }
+  }, [isDirty])
+
+  function handleAssignCleaning() {
+    if (!staffId) {
+      setError('Elegí a quién asignar la limpieza')
+      return
+    }
+    run(() =>
+      createTask({
+        taskType: 'cleaning',
+        roomId: room.id,
+        assignedTo: staffId,
+        notes: `Limpieza habitación ${room.roomNumber}`,
+      }),
+    )
+  }
 
   async function handleAddProduct() {
     const qty = Number(productQty)
@@ -143,8 +175,8 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const total = await checkOutRoom(room.id)
-      setMessage(`Check-out realizado. Total a cobrar: ${total.toFixed(2)} Bs`)
+      const total = await checkOutRoom(room.id, paymentMethod)
+      setMessage(`Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`)
       onDone()
     } catch (e) {
       setError((e as Error).message)
@@ -163,9 +195,10 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
           <button
             type="button"
             onClick={onClose}
+            aria-label="Cerrar"
             className="text-slate-400 hover:text-slate-700"
           >
-            ✕
+            <X size={20} />
           </button>
         </div>
 
@@ -283,7 +316,7 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
               type="button"
               disabled={busy}
               onClick={handleCheckIn}
-              className="w-full rounded bg-blue-600 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
               {busy ? 'Procesando…' : 'Confirmar check-in'}
             </button>
@@ -392,6 +425,27 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
               </div>
             </div>
 
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                Forma de pago
+              </span>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full rounded border border-slate-300 p-2"
+              >
+                <option value="efectivo">Efectivo</option>
+                <option value="qr">QR</option>
+                <option value="transferencia">Transferencia bancaria</option>
+                <option value="tarjeta">Tarjeta</option>
+              </select>
+            </label>
+            {paymentMethod === 'efectivo' && (
+              <p className="text-xs text-slate-400">
+                El efectivo se registra en la caja (debe estar abierta).
+              </p>
+            )}
+
             <button
               type="button"
               disabled={busy}
@@ -403,16 +457,42 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
           </div>
         )}
 
-        {/* POR LIMPIAR → marcar limpia */}
-        {room.operationalStatus === 'dirty' && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => run(() => setRoomStatus(room.id, 'available'))}
-            className="w-full rounded bg-green-600 py-2 font-medium text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            Marcar como limpia
-          </button>
+        {/* POR LIMPIAR → asignar mucama + marcar limpia */}
+        {isDirty && (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <h3 className="font-semibold text-slate-700">Asignar limpieza</h3>
+              <select
+                value={staffId}
+                onChange={(e) => setStaffId(e.target.value)}
+                className="w-full rounded border border-slate-300 p-2 text-sm"
+              >
+                <option value="">Elegí una mucama…</option>
+                {staff.map((s) => (
+                  <option key={s.personId} value={s.personId}>
+                    {s.fullName} — {s.jobTitle}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleAssignCleaning}
+                className="w-full rounded bg-slate-700 py-2 font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {busy ? 'Procesando…' : 'Asignar mucama'}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => run(() => setRoomStatus(room.id, 'available'))}
+              className="w-full rounded bg-green-600 py-2 font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              Marcar como limpia
+            </button>
+          </div>
         )}
 
         {/* MANTENIMIENTO → volver a disponible */}

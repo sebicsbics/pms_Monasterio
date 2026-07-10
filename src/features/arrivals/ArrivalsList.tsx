@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import type { Arrival } from '../../domain/stays/arrival'
 import { fetchArrivals, checkInFromReservation } from '../../services/arrivals'
 import { COUNTRIES } from '../../shared/data/countries'
@@ -51,9 +52,10 @@ function CheckInModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Cerrar"
             className="text-slate-400 hover:text-slate-700"
           >
-            ✕
+            <X size={20} />
           </button>
         </div>
 
@@ -118,7 +120,7 @@ function CheckInModal({
             type="button"
             disabled={busy}
             onClick={handleCheckIn}
-            className="w-full rounded bg-blue-600 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
             {busy ? 'Procesando…' : 'Confirmar check-in'}
           </button>
@@ -191,7 +193,7 @@ export function ArrivalsList() {
                     <button
                       type="button"
                       onClick={() => setSelected(a)}
-                      className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
+                      className="rounded bg-brand-700 px-3 py-1 text-xs font-medium text-white hover:bg-brand-800"
                     >
                       Check-in
                     </button>

@@ -1,0 +1,19 @@
+# Configuración de build para AWS Amplify.
+# Nota: el rewrite SPA (200 /* -> /index.html) se configura en la consola de
+# Amplify (Rewrites and redirects), no en este archivo.
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*

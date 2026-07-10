@@ -34,9 +34,13 @@ export async function walkInCheckIn(data: WalkInData): Promise<void> {
 }
 
 // Check-out: devuelve el total a cobrar (Bs).
-export async function checkOutRoom(roomId: string): Promise<number> {
+export async function checkOutRoom(
+  roomId: string,
+  paymentMethod: string,
+): Promise<number> {
   const { data, error } = await supabase.rpc('check_out_room', {
     p_room_id: roomId,
+    p_payment_method: paymentMethod,
   })
   if (error) throw new Error(error.message)
   return Number(data)

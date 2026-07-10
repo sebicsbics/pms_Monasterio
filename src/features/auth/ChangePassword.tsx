@@ -102,7 +102,7 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded bg-blue-600 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
         >
           {busy ? 'Guardando…' : 'Guardar y continuar'}
         </button>

@@ -1,0 +1,20 @@
+REPORTE DE CALIDAD - stg_estadias
+========================================
+estadías totales: 7,782
+ingreso total (Bs): 6,539,829
+origen del total: {'reported': 6424, 'missing': 135, 'recomputed': 1223}
+
+flags de calidad (fila puede tener varios):
+   3,725 (47.9%)  payment_missing
+   3,566 (45.8%)  multi_guest
+   1,223 (15.7%)  total_recomputed
+     826 (10.6%)  country_missing
+     462 ( 5.9%)  courtesy_or_zero
+     135 ( 1.7%)  total_missing
+      69 ( 0.9%)  nights_unknown
+      60 ( 0.8%)  nights_from_reported
+      21 ( 0.3%)  date_out_of_range
+      13 ( 0.2%)  checkout_unrecoverable
+      11 ( 0.1%)  room_invalid
+      10 ( 0.1%)  checkout_year_fixed
+       7 ( 0.1%)  stay_too_long

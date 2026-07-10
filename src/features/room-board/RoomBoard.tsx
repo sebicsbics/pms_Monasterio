@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { PageHeader } from '../../components/ui'
 import { fetchRooms } from '../../services/rooms'
 import type { Room, RoomOperationalStatus } from '../../domain/rooms/room'
 import { isDualRoom } from '../../domain/rooms/room'
@@ -114,12 +115,10 @@ export function RoomBoard() {
 
   return (
     <div className="mx-auto max-w-6xl p-6">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">
-          Tablero de Habitaciones · Hotel Monasterio
-        </h1>
-        <p className="text-sm text-slate-500">{rooms.length} habitaciones</p>
-      </header>
+      <PageHeader
+        title="Tablero de habitaciones"
+        subtitle={`${rooms.length} habitaciones · Hotel Monasterio`}
+      />
 
       <Legend />
 

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Fotos originales de fondo (101MB) — solo se versionan las optimizadas en public/login-bg/
+assets/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

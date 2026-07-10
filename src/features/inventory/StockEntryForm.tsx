@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import type { Product } from '../../domain/inventory/product'
 import { fetchProducts, registerStockEntry } from '../../services/inventory'
 
@@ -167,9 +168,10 @@ export function StockEntryForm({ onSaved }: { onSaved: () => void }) {
             <button
               type="button"
               onClick={() => removeLine(i)}
+              aria-label="Quitar renglón"
               className="px-2 text-slate-400 hover:text-red-600"
             >
-              ✕
+              <X size={16} />
             </button>
           </div>
         ))}

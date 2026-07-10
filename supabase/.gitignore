@@ -1,0 +1,4 @@
+# Supabase CLI — estado local, no versionar
+.temp
+.branches
+.env

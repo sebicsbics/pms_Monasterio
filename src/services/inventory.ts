@@ -14,6 +14,18 @@ export async function fetchCategories(): Promise<ProductCategory[]> {
   return data as ProductCategory[]
 }
 
+// Crea un tipo de producto nuevo (name es único). Lo puede hacer cualquier
+// empleado con acceso a inventario. Devuelve la categoría creada para seleccionarla.
+export async function createCategory(name: string): Promise<ProductCategory> {
+  const { data, error } = await supabase
+    .from('product_categories')
+    .insert({ name })
+    .select('id, name')
+    .single()
+  if (error) throw new Error(error.message)
+  return data as ProductCategory
+}
+
 interface ProductRow {
   id: string
   name: string

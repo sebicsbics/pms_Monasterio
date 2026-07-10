@@ -153,7 +153,7 @@ export function NewReservation() {
               type="button"
               disabled={busy}
               onClick={handleSearch}
-              className="w-full rounded bg-blue-600 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
               Buscar
             </button>

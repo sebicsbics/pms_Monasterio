@@ -9,6 +9,7 @@ import {
   updateTaskStatus,
 } from '../../services/tasks'
 import { fetchRooms } from '../../services/rooms'
+import { PageHeader } from '../../components/ui'
 
 const TASK_TYPES: TaskType[] = ['cleaning', 'minibar', 'maintenance', 'other']
 const STATUSES: TaskStatus[] = ['pending', 'in_progress', 'done']
@@ -78,7 +79,7 @@ export function TasksView() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <h1 className="mb-4 text-2xl font-bold text-slate-800">Tareas</h1>
+      <PageHeader title="Tareas" />
 
       {error && (
         <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
@@ -134,7 +135,7 @@ export function TasksView() {
           type="button"
           disabled={busy}
           onClick={handleCreate}
-          className="mt-3 rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          className="mt-3 rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
         >
           Asignar
         </button>

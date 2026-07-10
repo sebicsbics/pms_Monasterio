@@ -10,15 +10,34 @@ export async function signIn(username: string, password: string): Promise<void> 
   if (rpcError) throw new Error(rpcError.message)
   if (!email) throw new Error('Usuario o contraseña incorrectos')
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: email as string,
     password,
   })
   if (error) throw new Error('Usuario o contraseña incorrectos')
+
+  // Marcador de ingreso (best-effort: no bloquea el login si falla).
+  if (data.user) {
+    await recordAccess(data.user.id, 'login')
+  }
 }
 
 export async function signOut(): Promise<void> {
+  // Registrar la salida ANTES de cerrar sesión (mientras aún hay auth.uid()).
+  const { data } = await supabase.auth.getUser()
+  if (data.user) {
+    await recordAccess(data.user.id, 'logout')
+  }
   await supabase.auth.signOut()
+}
+
+// Inserta un evento de acceso sin romper el flujo si la RLS o la red fallan.
+async function recordAccess(userId: string, type: 'login' | 'logout'): Promise<void> {
+  try {
+    await supabase.from('login_events').insert({ user_id: userId, event_type: type })
+  } catch {
+    // El registro de asistencia es secundario; nunca debe impedir entrar/salir.
+  }
 }
 
 // Primer ingreso: fija contraseña propia + correo real (dispara verificación)

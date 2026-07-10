@@ -1,1 +1,58 @@
 @import "tailwindcss";
+
+/* Sistema de diseño — estilo "Data-Dense Dashboard" (skill ui-ux-pro-max).
+   Tokens semánticos: se usan como bg-brand-600, text-accent-600, etc. */
+@theme {
+  --font-sans: 'Fira Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, monospace;
+
+  /* Marca (azul profesional) */
+  --color-brand-50: #eff5ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+
+  /* Acento (ámbar, para destacar / CTA secundario) */
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+  --color-accent-700: #b45309;
+}
+
+html {
+  font-family: var(--font-sans);
+}
+
+/* Números tabulares en datos: evita saltos de layout en tablas/importes. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* Foco visible y consistente para navegación por teclado (a11y). */
+*:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Fundido del fondo rotativo del login (estilo Windows Spotlight). */
+@keyframes bgfade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.bg-fade {
+  animation: bgfade 1.4s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

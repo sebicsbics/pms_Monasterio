@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ProductsPanel } from './ProductsPanel'
 import { StockEntryForm } from './StockEntryForm'
 import { LowStockPanel } from './LowStockPanel'
+import { PageHeader } from '../../components/ui'
 
 type Sub = 'products' | 'entry' | 'low'
 
@@ -18,7 +19,7 @@ export function InventoryView() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <h1 className="mb-4 text-2xl font-bold text-slate-800">Inventario</h1>
+      <PageHeader title="Inventario" />
 
       <div className="mb-6 flex gap-2 border-b border-slate-200">
         {tabs.map((t) => (
@@ -26,9 +27,9 @@ export function InventoryView() {
             key={t.id}
             type="button"
             onClick={() => setSub(t.id)}
-            className={`px-3 py-2 text-sm font-medium ${
+            className={`-mb-px px-3 py-2 text-sm font-medium ${
               sub === t.id
-                ? 'border-b-2 border-slate-800 text-slate-800'
+                ? 'border-b-2 border-brand-600 text-brand-700'
                 : 'text-slate-500 hover:text-slate-700'
             }`}
           >
