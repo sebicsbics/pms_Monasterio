@@ -2,9 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchLoginEvents, type LoginEvent } from '../../services/attendance'
 import { ROLE_LABEL } from '../../domain/auth/profile'
 import { Badge, Card, PageHeader } from '../../components/ui'
+import { formatDate } from '../../lib/date'
 
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric' })
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
 
@@ -88,7 +87,7 @@ export function AccessLogView() {
                       {e.eventType === 'login' ? 'Ingreso' : 'Salida'}
                     </Badge>
                   </td>
-                  <td className="p-3 text-slate-600">{fmtDate(e.occurredAt)}</td>
+                  <td className="p-3 text-slate-600">{formatDate(e.occurredAt)}</td>
                   <td className="p-3 font-mono text-slate-700">{fmtTime(e.occurredAt)}</td>
                 </tr>
               ))}

@@ -9,11 +9,10 @@ import {
 } from '../../services/attendance'
 import { ROLE_LABEL, type UserRole } from '../../domain/auth/profile'
 import { Card, PageHeader } from '../../components/ui'
+import { formatDate } from '../../lib/date'
 
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit' })
 
 // Duración de una sesión (usa 'now' si sigue abierta) en milisegundos.
 function durationMs(e: TimeEntry, now: number): number {
@@ -187,7 +186,7 @@ export function FichajeView({
                     <tr key={e.id} className="border-t border-slate-100">
                       <td className="p-3 font-medium text-slate-800">{e.userName}</td>
                       <td className="p-3 text-slate-600">{e.role ? ROLE_LABEL[e.role] : '—'}</td>
-                      <td className="p-3 text-slate-600">{fmtDate(e.clockIn)}</td>
+                      <td className="p-3 text-slate-600">{formatDate(e.clockIn)}</td>
                       <td className="p-3 font-mono text-slate-700">{fmtTime(e.clockIn)}</td>
                       <td className="p-3 font-mono text-slate-700">
                         {e.clockOut ? (

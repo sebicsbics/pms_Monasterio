@@ -19,6 +19,7 @@ import {
   type PaymentMethod,
 } from '../../domain/events/event'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
+import { formatDate } from '../../lib/date'
 
 const fmtBs = (n: number) =>
   `${n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`
@@ -298,7 +299,7 @@ export function EventsView() {
                         <div key={p.id} className="flex justify-between text-slate-600">
                           <span>
                             {p.isDeposit ? 'Adelanto' : 'Pago'} · {PAYMENT_METHOD_LABEL[p.method]} ·{' '}
-                            {new Date(p.paidAt).toLocaleDateString('es-BO')}
+                            {formatDate(p.paidAt)}
                           </span>
                           <span className="tabular font-medium">{fmtBs(p.amountBs)}</span>
                         </div>
