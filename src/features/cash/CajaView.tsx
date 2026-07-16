@@ -15,6 +15,8 @@ import {
   receiptUrl,
   voidMovement,
 } from '../../services/cash'
+import { fetchPaymentMethods } from '../../services/payments'
+import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import {
   categoryLabel,
   EXPENSE_CATEGORIES,
@@ -50,6 +52,8 @@ export function CajaView({ role }: { role?: UserRole | null }) {
   const [amount, setAmount] = useState('')
   const [concept, setConcept] = useState('')
   const [receipt, setReceipt] = useState<File | null>(null)
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [paymentMethod, setPaymentMethod] = useState('')
   // Cierre
   const [closing, setClosing] = useState(false)
   const [counted, setCounted] = useState('')
@@ -67,6 +71,15 @@ export function CajaView({ role }: { role?: UserRole | null }) {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [reload])
+
+  useEffect(() => {
+    fetchPaymentMethods()
+      .then((methods) => {
+        setPaymentMethods(methods)
+        setPaymentMethod((current) => current || (methods[0]?.code ?? ''))
+      })
+      .catch((e: Error) => setError(e.message))
+  }, [])
 
   async function run(action: () => Promise<void>) {
     setBusy(true)
@@ -98,7 +111,14 @@ export function CajaView({ role }: { role?: UserRole | null }) {
       return
     }
     run(async () => {
-      await addCashMovement({ kind, category, amount: amt, concept: concept.trim(), receipt })
+      await addCashMovement({
+        kind,
+        category,
+        amount: amt,
+        concept: concept.trim(),
+        receipt,
+        paymentMethod: paymentMethod || null,
+      })
       setAmount('')
       setConcept('')
       setReceipt(null)
@@ -262,6 +282,14 @@ export function CajaView({ role }: { role?: UserRole | null }) {
                 <input value={concept} onChange={(e) => setConcept(e.target.value)}
                   className={INPUT} placeholder="Detalle del movimiento" />
               </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Forma de pago</span>
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={INPUT}>
+                  {paymentMethods.map((m) => (
+                    <option key={m.code} value={m.code}>{m.label}</option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
@@ -294,6 +322,7 @@ export function CajaView({ role }: { role?: UserRole | null }) {
                   </p>
                   <p className="text-xs text-slate-400">
                     {fmtDateTime(m.createdAt)}
+                    {m.paymentMethod && ` · ${paymentMethods.find((p) => p.code === m.paymentMethod)?.label ?? m.paymentMethod}`}
                     {m.voided && ` · anulado: ${m.voidReason ?? ''}`}
                   </p>
                 </div>

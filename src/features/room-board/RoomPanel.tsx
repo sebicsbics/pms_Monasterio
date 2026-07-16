@@ -13,6 +13,8 @@ import {
 import { fetchProducts } from '../../services/inventory'
 import { fetchAssignableStaff, createTask } from '../../services/tasks'
 import type { AssignableStaff } from '../../domain/tasks/task'
+import { fetchPaymentMethods } from '../../services/payments'
+import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { COUNTRIES } from '../../shared/data/countries'
 
 interface Props {
@@ -43,6 +45,7 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
   const [chargeDesc, setChargeDesc] = useState('')
   const [chargeAmount, setChargeAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('efectivo')
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
 
   // Minibar: productos vendibles del inventario
   const [products, setProducts] = useState<Product[]>([])
@@ -74,6 +77,14 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
         .catch((e: Error) => setError(e.message))
     }
   }, [isDirty])
+
+  useEffect(() => {
+    if (isOccupied) {
+      fetchPaymentMethods()
+        .then(setPaymentMethods)
+        .catch((e: Error) => setError(e.message))
+    }
+  }, [isOccupied])
 
   function handleAssignCleaning() {
     if (!staffId) {
@@ -434,10 +445,9 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
                 onChange={(e) => setPaymentMethod(e.target.value)}
                 className="w-full rounded border border-slate-300 p-2"
               >
-                <option value="efectivo">Efectivo</option>
-                <option value="qr">QR</option>
-                <option value="transferencia">Transferencia bancaria</option>
-                <option value="tarjeta">Tarjeta</option>
+                {paymentMethods.map((m) => (
+                  <option key={m.code} value={m.code}>{m.label}</option>
+                ))}
               </select>
             </label>
             {paymentMethod === 'efectivo' && (
