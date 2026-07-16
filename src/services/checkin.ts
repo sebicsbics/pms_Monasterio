@@ -66,6 +66,30 @@ export async function checkOutRoom(
   return Number(data)
 }
 
+// Tarifa editable en check-in / carga de reserva. La justificación es
+// OBLIGATORIA: se valida acá (fail-fast, antes de golpear la RPC) y de
+// nuevo en la RPC (que es la que realmente hace cumplir la regla — ver
+// override_reservation_rate en 20260716030000_rate_overrides.sql).
+export async function overrideReservationRate(
+  reservationId: string,
+  newRateBs: number,
+  reason: string,
+): Promise<void> {
+  const trimmedReason = reason.trim()
+  if (!trimmedReason) {
+    throw new Error('La justificación es obligatoria')
+  }
+  if (!(newRateBs > 0)) {
+    throw new Error('La tarifa debe ser un monto positivo')
+  }
+  const { error } = await supabase.rpc('override_reservation_rate', {
+    p_reservation_id: reservationId,
+    p_new_rate: newRateBs,
+    p_reason: trimmedReason,
+  })
+  if (error) throw new Error(error.message)
+}
+
 // Cambio simple de estado operativo (limpiar / mantenimiento).
 export async function setRoomStatus(
   roomId: string,

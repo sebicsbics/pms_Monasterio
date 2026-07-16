@@ -4,7 +4,12 @@ import type { Room } from '../../domain/rooms/room'
 import type { Folio } from '../../domain/folios/folio'
 import type { Product } from '../../domain/inventory/product'
 import { isSellable } from '../../domain/inventory/product'
-import { walkInCheckIn, checkOutRoom, setRoomStatus } from '../../services/checkin'
+import {
+  walkInCheckIn,
+  checkOutRoom,
+  setRoomStatus,
+  overrideReservationRate,
+} from '../../services/checkin'
 import {
   fetchFolio,
   addFolioCharge,
@@ -16,14 +21,16 @@ import type { AssignableStaff } from '../../domain/tasks/task'
 import { fetchPaymentMethods } from '../../services/payments'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { COUNTRIES } from '../../shared/data/countries'
+import type { UserRole } from '../../domain/auth/profile'
 
 interface Props {
   room: Room
+  role?: UserRole | null
   onClose: () => void
   onDone: () => void // recargar el tablero tras una acción
 }
 
-export function RoomPanel({ room, onClose, onDone }: Props) {
+export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -48,6 +55,12 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [paymentReference, setPaymentReference] = useState('')
+
+  // Edición de tarifa (root/reception), con justificación obligatoria
+  const [rateEditOpen, setRateEditOpen] = useState(false)
+  const [newRate, setNewRate] = useState('')
+  const [rateReason, setRateReason] = useState('')
+  const canEditRate = role === 'root' || role === 'reception'
 
   // Minibar: productos vendibles del inventario
   const [products, setProducts] = useState<Product[]>([])
@@ -140,6 +153,26 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
       await addFolioCharge(room.id, chargeDesc.trim(), amount)
       setChargeDesc('')
       setChargeAmount('')
+      await reloadFolio()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleOverrideRate() {
+    if (!folio) return
+    const rate = Number(newRate)
+    setBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      await overrideReservationRate(folio.reservationId, rate, rateReason)
+      setMessage('Tarifa actualizada.')
+      setNewRate('')
+      setRateReason('')
+      setRateEditOpen(false)
       await reloadFolio()
     } catch (e) {
       setError((e as Error).message)
@@ -374,6 +407,69 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
                 </div>
               ) : (
                 <p className="text-sm text-slate-400">Cargando folio…</p>
+              )}
+
+              {canEditRate && folio && (
+                <div className="mt-2">
+                  {!rateEditOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setRateEditOpen(true)}
+                      className="text-xs font-medium text-brand-700 hover:underline"
+                    >
+                      Editar tarifa
+                    </button>
+                  ) : (
+                    <div className="mt-2 space-y-2 rounded border border-slate-200 p-3">
+                      <label className="block text-sm">
+                        <span className="mb-1 block text-xs font-medium text-slate-500">
+                          Nueva tarifa (Bs)
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={newRate}
+                          onChange={(e) => setNewRate(e.target.value)}
+                          className="w-full rounded border border-slate-300 p-2 text-sm"
+                        />
+                      </label>
+                      <label className="block text-sm">
+                        <span className="mb-1 block text-xs font-medium text-slate-500">
+                          Justificación (obligatoria)
+                        </span>
+                        <textarea
+                          value={rateReason}
+                          onChange={(e) => setRateReason(e.target.value)}
+                          placeholder="Ej. Última cuádruple disponible, se vende a precio de matrimonial"
+                          className="w-full rounded border border-slate-300 p-2 text-sm"
+                          rows={2}
+                        />
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={busy || !newRate.trim() || !rateReason.trim()}
+                          onClick={handleOverrideRate}
+                          className="w-1/2 rounded bg-brand-700 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                        >
+                          Guardar tarifa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRateEditOpen(false)
+                            setNewRate('')
+                            setRateReason('')
+                          }}
+                          className="w-1/2 rounded border border-slate-300 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

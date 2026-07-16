@@ -4,6 +4,7 @@ import { fetchRooms } from '../../services/rooms'
 import type { Room, RoomOperationalStatus } from '../../domain/rooms/room'
 import { isDualRoom } from '../../domain/rooms/room'
 import { RoomPanel } from './RoomPanel'
+import type { UserRole } from '../../domain/auth/profile'
 
 // Estilos y etiqueta por estado operativo. Un solo lugar de verdad.
 const STATUS_STYLES: Record<
@@ -86,7 +87,7 @@ function groupByFloorAndZone(rooms: Room[]) {
   return byFloor
 }
 
-export function RoomBoard() {
+export function RoomBoard({ role }: { role?: UserRole | null }) {
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -147,6 +148,7 @@ export function RoomBoard() {
       {selectedRoom && (
         <RoomPanel
           room={selectedRoom}
+          role={role}
           onClose={() => setSelectedId(null)}
           onDone={() => {
             void reload()

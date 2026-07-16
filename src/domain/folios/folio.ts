@@ -7,6 +7,7 @@ export interface FolioCharge {
 
 // El folio de una estadía: cargo de habitación + consumos.
 export interface Folio {
+  reservationId: string
   roomType: string
   roomChargeBs: number // total por la(s) noche(s)
   charges: FolioCharge[]

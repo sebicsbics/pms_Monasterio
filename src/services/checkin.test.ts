@@ -19,7 +19,7 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { checkOutRoom } from './checkin'
+import { checkOutRoom, overrideReservationRate } from './checkin'
 
 describe('checkOutRoom', () => {
   it('sends payment_reference (no receipt) in the check_out_room RPC payload', async () => {
@@ -62,5 +62,41 @@ describe('checkOutRoom', () => {
     await expect(
       checkOutRoom('room-3', 'efectivo', { receipt: null, paymentReference: null }),
     ).rejects.toThrow('Caja no abierta')
+  })
+})
+
+describe('overrideReservationRate', () => {
+  it('rejects a missing justification before calling the RPC', async () => {
+    rpcMock.mockClear()
+    await expect(
+      overrideReservationRate('res-1', 150, '   '),
+    ).rejects.toThrow('La justificación es obligatoria')
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-positive rate before calling the RPC', async () => {
+    rpcMock.mockClear()
+    await expect(
+      overrideReservationRate('res-1', 0, 'Descuento autorizado'),
+    ).rejects.toThrow('La tarifa debe ser un monto positivo')
+    expect(rpcMock).not.toHaveBeenCalled()
+  })
+
+  it('sends the trimmed reason and new rate in the RPC payload', async () => {
+    rpcMock.mockClear()
+    await overrideReservationRate('res-2', 150, '  Última habitación disponible  ')
+    expect(rpcMock).toHaveBeenCalledWith('override_reservation_rate', {
+      p_reservation_id: 'res-2',
+      p_new_rate: 150,
+      p_reason: 'Última habitación disponible',
+    })
+  })
+
+  it('surfaces the RPC error message unchanged', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'No autorizado para cambiar la tarifa' } })
+    await expect(
+      overrideReservationRate('res-3', 150, 'Motivo válido'),
+    ).rejects.toThrow('No autorizado para cambiar la tarifa')
   })
 })

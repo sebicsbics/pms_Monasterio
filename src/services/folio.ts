@@ -8,6 +8,7 @@ interface ChargeRow {
 }
 interface FolioRow {
   reservations: {
+    id: string
     total_amount_bs: number
     room_types: { name: string }
   }
@@ -20,7 +21,7 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
     .from('folios')
     .select(
       `
-      reservations!inner ( total_amount_bs, room_types ( name ) ),
+      reservations!inner ( id, total_amount_bs, room_types ( name ) ),
       folio_charges ( id, description, amount_bs )
     `,
     )
@@ -41,6 +42,7 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
   const extrasTotalBs = charges.reduce((sum, c) => sum + c.amountBs, 0)
 
   return {
+    reservationId: row.reservations.id,
     roomType: row.reservations.room_types.name,
     roomChargeBs,
     charges,
