@@ -46,6 +46,8 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
   const [chargeAmount, setChargeAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('efectivo')
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
+  const [paymentReference, setPaymentReference] = useState('')
 
   // Minibar: productos vendibles del inventario
   const [products, setProducts] = useState<Product[]>([])
@@ -186,8 +188,13 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const total = await checkOutRoom(room.id, paymentMethod)
+      const total = await checkOutRoom(room.id, paymentMethod, {
+        receipt: receiptFile,
+        paymentReference: paymentReference.trim() || null,
+      })
       setMessage(`Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`)
+      setReceiptFile(null)
+      setPaymentReference('')
       onDone()
     } catch (e) {
       setError((e as Error).message)
@@ -455,6 +462,29 @@ export function RoomPanel({ room, onClose, onDone }: Props) {
                 El efectivo se registra en la caja (debe estar abierta).
               </p>
             )}
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                Comprobante (imagen QR, opcional)
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                className="w-full rounded border border-slate-300 p-2 text-sm"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-slate-500">
+                Código de referencia (tarjeta, opcional)
+              </span>
+              <input
+                placeholder="Ej. AB12345"
+                value={paymentReference}
+                onChange={(e) => setPaymentReference(e.target.value)}
+                className="w-full rounded border border-slate-300 p-2 text-sm"
+              />
+            </label>
 
             <button
               type="button"
