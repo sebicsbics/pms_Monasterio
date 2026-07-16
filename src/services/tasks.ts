@@ -40,10 +40,9 @@ export async function fetchTasks(): Promise<Task[]> {
 
 // Personal asignable (mucamas, etc.) — vista segura sin sueldos.
 export async function fetchAssignableStaff(): Promise<AssignableStaff[]> {
-  const { data, error } = await supabase
-    .from('assignable_staff')
-    .select('person_id, full_name, job_title')
-    .order('full_name')
+  // assignable_staff pasó de vista SECURITY DEFINER a función (mismo resultado,
+  // sin el advisory del linter). La función ya devuelve ordenado por nombre.
+  const { data, error } = await supabase.rpc('assignable_staff')
   if (error) throw new Error(error.message)
   return (data as Record<string, unknown>[]).map((r) => ({
     personId: r.person_id as string,
