@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDate } from './date'
+import { formatDate, formatDateTime } from './date'
 
 describe('formatDate', () => {
   it('formats a date-only ISO string (yyyy-mm-dd) as dd/mm/yyyy', () => {
@@ -35,5 +35,33 @@ describe('formatDate', () => {
     const formatted = formatDate(iso)
     expect(iso).toBe('2026-12-31')
     expect(formatted).toBe('31/12/2026')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('formats a full ISO timestamp as dd/mm/yyyy HH:mm in local time', () => {
+    const iso = '2026-07-16T14:30:00'
+    expect(formatDateTime(iso)).toBe('16/07/2026 14:30')
+  })
+
+  it('pads single-digit hour and minute with a leading zero', () => {
+    const iso = '2026-01-05T04:05:00'
+    expect(formatDateTime(iso)).toBe('05/01/2026 04:05')
+  })
+
+  it('returns an empty string for null', () => {
+    expect(formatDateTime(null)).toBe('')
+  })
+
+  it('returns an empty string for undefined', () => {
+    expect(formatDateTime(undefined)).toBe('')
+  })
+
+  it('returns an empty string for an empty string', () => {
+    expect(formatDateTime('')).toBe('')
+  })
+
+  it('returns an empty string for an invalid date string', () => {
+    expect(formatDateTime('not-a-date')).toBe('')
   })
 })

@@ -10,6 +10,7 @@ import {
 } from '../../services/tasks'
 import { fetchRooms } from '../../services/rooms'
 import { PageHeader } from '../../components/ui'
+import { formatDateTime } from '../../lib/date'
 
 const TASK_TYPES: TaskType[] = ['cleaning', 'minibar', 'maintenance', 'other']
 const STATUSES: TaskStatus[] = ['pending', 'in_progress', 'done']
@@ -85,9 +86,11 @@ export function TasksView() {
         <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
       )}
 
-      {/* Asignar tarea */}
+      {/* Registrar tarea — canal de comunicación entre turnos: la asignación
+          de habitación/personal es opcional, lo que importa es dejar
+          registrado el pedido con su hora exacta. */}
       <div className="mb-6 rounded border border-slate-200 p-4">
-        <h3 className="mb-3 font-semibold text-slate-700">Asignar tarea</h3>
+        <h3 className="mb-3 font-semibold text-slate-700">Registrar tarea</h3>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
           <select
             value={taskType}
@@ -100,6 +103,12 @@ export function TasksView() {
               </option>
             ))}
           </select>
+          <input
+            placeholder="Notas"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="rounded border border-slate-300 p-2"
+          />
           <select
             value={roomId}
             onChange={(e) => setRoomId(e.target.value)}
@@ -117,19 +126,13 @@ export function TasksView() {
             onChange={(e) => setAssignedTo(e.target.value)}
             className="rounded border border-slate-300 p-2"
           >
-            <option value="">Asignar a…</option>
+            <option value="">Asignar a… (opcional)</option>
             {staff.map((s) => (
               <option key={s.personId} value={s.personId}>
                 {s.fullName} ({s.jobTitle})
               </option>
             ))}
           </select>
-          <input
-            placeholder="Notas"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="rounded border border-slate-300 p-2"
-          />
         </div>
         <button
           type="button"
@@ -137,29 +140,35 @@ export function TasksView() {
           onClick={handleCreate}
           className="mt-3 rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
         >
-          Asignar
+          Registrar
         </button>
       </div>
 
-      {/* Lista */}
+      {/* Lista — el pedido (fecha/hora de solicitud) es el dato principal
+          del canal de comunicación entre turnos; habitación/asignado son
+          secundarios y pueden no existir. */}
       <div className="overflow-x-auto rounded border border-slate-200">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-100 text-slate-600">
             <tr>
+              <th className="p-3">Solicitado</th>
               <th className="p-3">Tipo</th>
+              <th className="p-3">Notas</th>
               <th className="p-3">Habitación</th>
               <th className="p-3">Asignada a</th>
-              <th className="p-3">Notas</th>
               <th className="p-3">Estado</th>
             </tr>
           </thead>
           <tbody>
             {tasks.map((t) => (
               <tr key={t.id} className="border-t border-slate-100">
-                <td className="p-3 font-medium">{TASK_TYPE_LABEL[t.taskType]}</td>
-                <td className="p-3">{t.roomNumber ? `Hab. ${t.roomNumber}` : '—'}</td>
-                <td className="p-3">{staffName(t.assignedTo)}</td>
+                <td className="p-3 font-medium whitespace-nowrap">
+                  {formatDateTime(t.createdAt)}
+                </td>
+                <td className="p-3">{TASK_TYPE_LABEL[t.taskType]}</td>
                 <td className="p-3 text-slate-500">{t.notes ?? '—'}</td>
+                <td className="p-3">{t.roomNumber ? `Hab. ${t.roomNumber}` : 'Sin habitación'}</td>
+                <td className="p-3">{staffName(t.assignedTo)}</td>
                 <td className="p-3">
                   <select
                     value={t.status}
@@ -177,8 +186,8 @@ export function TasksView() {
             ))}
             {tasks.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-slate-400">
-                  Sin tareas asignadas.
+                <td colSpan={6} className="p-4 text-center text-slate-400">
+                  Sin tareas registradas.
                 </td>
               </tr>
             )}
