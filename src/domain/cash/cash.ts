@@ -41,6 +41,7 @@ export interface CashMovement {
   amountBs: number
   concept: string | null
   receiptPath: string | null
+  paymentMethod: string | null
   createdAt: string
   voided: boolean
   voidReason: string | null

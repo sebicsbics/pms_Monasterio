@@ -25,6 +25,7 @@ function mapMovement(r: Record<string, unknown>): CashMovement {
     amountBs: Number(r.amount_bs),
     concept: (r.concept as string | null) ?? null,
     receiptPath: (r.receipt_path as string | null) ?? null,
+    paymentMethod: (r.payment_method as string | null) ?? null,
     createdAt: r.created_at as string,
     voided: Boolean(r.voided),
     voidReason: (r.void_reason as string | null) ?? null,
@@ -81,6 +82,7 @@ export async function addCashMovement(input: {
   amount: number
   concept: string
   receipt: File | null
+  paymentMethod?: string | null
 }): Promise<void> {
   let receiptPath: string | null = null
   if (input.receipt) {
@@ -98,6 +100,7 @@ export async function addCashMovement(input: {
     p_amount: input.amount,
     p_concept: input.concept || null,
     p_receipt_path: receiptPath,
+    p_payment_method: input.paymentMethod ?? null,
   })
   if (error) throw new Error(error.message)
 }
