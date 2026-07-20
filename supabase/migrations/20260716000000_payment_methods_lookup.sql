@@ -21,10 +21,17 @@ alter table public.cash_movements
   add column if not exists payment_method text references public.payment_methods(code);
 
 -- ---------- reservations.payment_method pasa a estar validado por FK,
--- no por CHECK inline. Los valores existentes vienen del mismo ETL que
--- pobló payment_methods (EFECTIVO/TARJETA/etc, mayúscula) -> ya satisfacen
--- la FK. Se agrega NOT VALID y se valida aparte para no bloquear la tabla
--- completa. ----------
+-- no por CHECK inline. OJO: el flujo de check-out (check_out_room, desde
+-- 20260709010000) venía escribiendo los códigos en MINÚSCULAS
+-- (efectivo/qr/transferencia/tarjeta), mientras el catálogo del ETL usa
+-- MAYÚSCULAS. Antes de validar el FK normalizamos los datos operativos
+-- existentes a mayúscula (mapeo 1:1 y sin pérdida). Si quedara algún valor
+-- fuera del catálogo, validate constraint falla ruidosamente en el push. ----------
+update public.reservations
+  set payment_method = upper(payment_method)
+  where payment_method is not null
+    and payment_method <> upper(payment_method);
+
 alter table public.reservations
   add constraint reservations_payment_method_fkey
   foreign key (payment_method) references public.payment_methods(code)
