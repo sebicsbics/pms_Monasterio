@@ -1,32 +1,19 @@
 -- =====================================================================
--- Tabla de referencia `payment_methods`: fuente única de la vocabulario de
--- formas de pago (antes duplicado como CHECK inline en check_out_room y
--- como lista literal repetida en cash_movements/RoomPanel). Ver diseño:
--- se prefiere tabla a ENUM/DOMAIN porque la lista es de negocio y puede
--- crecer sin requerir una migración de tipo.
+-- ADOPCIÓN de `public.payment_methods` — la tabla YA EXISTE, creada en
+-- 20260703130000_seed_channels_and_payments.sql a partir del ETL del
+-- histórico (etl/output/stg_estadias.csv). Forma real:
+--   payment_methods (code varchar(20) PK, label varchar(60), is_active bool)
+-- con 10 códigos canónicos EN MAYÚSCULA: EFECTIVO, TARJETA, DEPOSITO,
+-- TRANSFERENCIA, QR, CTAS_POR_COBRAR, MIXTO, CORTESIA, INTERCAMBIO, OTRO.
+-- Ya tiene RLS (`dev_all_payments`, permisiva).
+--
+-- Este archivo originalmente intentaba RECREAR la tabla con otro shape
+-- (columnas `active`/`sort_order`, 4 valores en minúscula) — eso rompió
+-- `supabase db push` porque insertaba `sort_order` sobre la tabla real
+-- que no tiene esa columna. Corregido: NO se toca `payment_methods`, solo
+-- se agregan los usos aditivos que sí son nuevos (FK desde cash_movements
+-- y reservations, y las funciones que validan contra el catálogo real).
 -- =====================================================================
-
-create table if not exists public.payment_methods (
-  code       text primary key,
-  label      text not null,
-  active     boolean not null default true,
-  sort_order int not null default 0
-);
-
-insert into public.payment_methods (code, label, sort_order) values
-  ('efectivo', 'Efectivo', 1),
-  ('qr', 'QR', 2),
-  ('transferencia', 'Transferencia', 3),
-  ('tarjeta', 'Tarjeta', 4)
-on conflict (code) do nothing;
-
-alter table public.payment_methods enable row level security;
-
-drop policy if exists "payment_methods_read" on public.payment_methods;
-create policy "payment_methods_read" on public.payment_methods
-  for select using (public.current_user_role() in ('root', 'reception', 'accountant'));
--- (Sin políticas de insert/update/delete: la lista es de referencia, se
--- gestiona directo en la base si el hotel agrega una forma de pago nueva.)
 
 -- ---------- cash_movements gana payment_method (nullable: hay movimientos
 -- que no son "pagos", ej. reposición de caja chica, gasto varios) ----------
@@ -34,9 +21,10 @@ alter table public.cash_movements
   add column if not exists payment_method text references public.payment_methods(code);
 
 -- ---------- reservations.payment_method pasa a estar validado por FK,
--- no por CHECK inline. Los valores existentes ('efectivo'/'qr'/etc.) ya
--- satisfacen la FK -> se agrega NOT VALID y se valida aparte para no
--- bloquear la tabla completa. ----------
+-- no por CHECK inline. Los valores existentes vienen del mismo ETL que
+-- pobló payment_methods (EFECTIVO/TARJETA/etc, mayúscula) -> ya satisfacen
+-- la FK. Se agrega NOT VALID y se valida aparte para no bloquear la tabla
+-- completa. ----------
 alter table public.reservations
   add constraint reservations_payment_method_fkey
   foreign key (payment_method) references public.payment_methods(code)
@@ -44,10 +32,11 @@ alter table public.reservations
 alter table public.reservations validate constraint reservations_payment_method_fkey;
 
 -- ---------- check_out_room: reemplaza el CHECK inline por una validación
--- contra la tabla de referencia ----------
+-- contra la tabla de referencia real (columna is_active, códigos en
+-- mayúscula) ----------
 create or replace function public.check_out_room(
   p_room_id uuid,
-  p_payment_method text default 'efectivo'
+  p_payment_method text default 'EFECTIVO'
 )
 returns numeric
 language plpgsql
@@ -60,7 +49,7 @@ declare
   v_status         varchar(15);
 begin
   if not exists (
-    select 1 from public.payment_methods where code = p_payment_method and active
+    select 1 from public.payment_methods where code = p_payment_method and is_active
   ) then
     raise exception 'Forma de pago inválida: %', p_payment_method;
   end if;
@@ -94,7 +83,7 @@ begin
     where id = v_reservation_id;
 
   -- Efectivo -> alimenta la caja (requiere caja abierta; si no, revierte todo).
-  if p_payment_method = 'efectivo' and v_total > 0 then
+  if p_payment_method = 'EFECTIVO' and v_total > 0 then
     perform public.add_cash_movement(
       'income', 'cobro_habitacion', v_total,
       'Check-out habitación', null, p_payment_method
@@ -132,7 +121,7 @@ begin
     raise exception 'Tipo inválido';
   end if;
   if p_payment_method is not null
-     and not exists (select 1 from public.payment_methods where code = p_payment_method and active) then
+     and not exists (select 1 from public.payment_methods where code = p_payment_method and is_active) then
     raise exception 'Forma de pago inválida: %', p_payment_method;
   end if;
   insert into public.cash_movements

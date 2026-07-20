@@ -51,7 +51,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [folio, setFolio] = useState<Folio | null>(null)
   const [chargeDesc, setChargeDesc] = useState('')
   const [chargeAmount, setChargeAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('efectivo')
+  const [paymentMethod, setPaymentMethod] = useState('EFECTIVO')
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [paymentReference, setPaymentReference] = useState('')
@@ -553,7 +553,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 ))}
               </select>
             </label>
-            {paymentMethod === 'efectivo' && (
+            {paymentMethod === 'EFECTIVO' && (
               <p className="text-xs text-slate-400">
                 El efectivo se registra en la caja (debe estar abierta).
               </p>

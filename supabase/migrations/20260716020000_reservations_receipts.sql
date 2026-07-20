@@ -21,7 +21,7 @@ drop function if exists public.check_out_room(uuid, text);
 
 create or replace function public.check_out_room(
   p_room_id uuid,
-  p_payment_method text default 'efectivo',
+  p_payment_method text default 'EFECTIVO',
   p_receipt_path text default null,
   p_payment_reference text default null
 )
@@ -36,7 +36,7 @@ declare
   v_status         varchar(15);
 begin
   if not exists (
-    select 1 from public.payment_methods where code = p_payment_method and active
+    select 1 from public.payment_methods where code = p_payment_method and is_active
   ) then
     raise exception 'Forma de pago inválida: %', p_payment_method;
   end if;
@@ -73,7 +73,7 @@ begin
     where id = v_reservation_id;
 
   -- Efectivo -> alimenta la caja (requiere caja abierta; si no, revierte todo).
-  if p_payment_method = 'efectivo' and v_total > 0 then
+  if p_payment_method = 'EFECTIVO' and v_total > 0 then
     perform public.add_cash_movement(
       'income', 'cobro_habitacion', v_total,
       'Check-out habitación', null, p_payment_method

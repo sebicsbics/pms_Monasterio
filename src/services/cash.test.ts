@@ -19,7 +19,7 @@ describe('addCashMovement', () => {
       amount: 100,
       concept: 'test',
       receipt: null,
-      paymentMethod: 'qr',
+      paymentMethod: 'QR',
     })
     expect(rpcMock).toHaveBeenCalledWith('add_cash_movement', {
       p_kind: 'income',
@@ -27,7 +27,7 @@ describe('addCashMovement', () => {
       p_amount: 100,
       p_concept: 'test',
       p_receipt_path: null,
-      p_payment_method: 'qr',
+      p_payment_method: 'QR',
     })
   })
 
