@@ -2,16 +2,20 @@ import { useCallback, useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import type { Arrival } from '../../domain/stays/arrival'
 import { fetchArrivals, checkInFromReservation } from '../../services/arrivals'
+import { overrideReservationRate } from '../../services/checkin'
 import { COUNTRIES } from '../../shared/data/countries'
+import type { UserRole } from '../../domain/auth/profile'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
 function CheckInModal({
   arrival,
+  role,
   onClose,
   onDone,
 }: {
   arrival: Arrival
+  role?: UserRole | null
   onClose: () => void
   onDone: () => void
 }) {
@@ -22,6 +26,31 @@ function CheckInModal({
   const [wantsOffers, setWantsOffers] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Edición de tarifa al cargar la reserva (root/reception), con
+  // justificación obligatoria — misma UX que RoomPanel.tsx.
+  const [rateEditOpen, setRateEditOpen] = useState(false)
+  const [newRate, setNewRate] = useState('')
+  const [rateReason, setRateReason] = useState('')
+  const [rateSaved, setRateSaved] = useState(false)
+  const canEditRate = role === 'root' || role === 'reception'
+
+  async function handleOverrideRate() {
+    setBusy(true)
+    setError(null)
+    const rate = Number(newRate)
+    try {
+      await overrideReservationRate(arrival.reservationId, rate, rateReason)
+      setRateSaved(true)
+      setNewRate('')
+      setRateReason('')
+      setRateEditOpen(false)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function handleCheckIn() {
     setBusy(true)
@@ -69,6 +98,74 @@ function CheckInModal({
           <p className="mb-3 rounded bg-red-50 p-2 text-sm text-red-700">
             {error}
           </p>
+        )}
+
+        {canEditRate && (
+          <div className="mb-4">
+            {rateSaved && (
+              <p className="mb-2 rounded bg-green-50 p-2 text-xs text-green-700">
+                Tarifa actualizada.
+              </p>
+            )}
+            {!rateEditOpen ? (
+              <button
+                type="button"
+                onClick={() => setRateEditOpen(true)}
+                className="text-xs font-medium text-brand-700 hover:underline"
+              >
+                Editar tarifa
+              </button>
+            ) : (
+              <div className="mt-2 space-y-2 rounded border border-slate-200 p-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                    Nueva tarifa (Bs)
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={newRate}
+                    onChange={(e) => setNewRate(e.target.value)}
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                    Justificación (obligatoria)
+                  </span>
+                  <textarea
+                    value={rateReason}
+                    onChange={(e) => setRateReason(e.target.value)}
+                    placeholder="Ej. Última cuádruple disponible, se vende a precio de matrimonial"
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                    rows={2}
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || !newRate.trim() || !rateReason.trim()}
+                    onClick={handleOverrideRate}
+                    className="w-1/2 rounded bg-brand-700 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                  >
+                    Guardar tarifa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRateEditOpen(false)
+                      setNewRate('')
+                      setRateReason('')
+                    }}
+                    className="w-1/2 rounded border border-slate-300 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="space-y-3">
@@ -130,7 +227,7 @@ function CheckInModal({
   )
 }
 
-export function ArrivalsList() {
+export function ArrivalsList({ role }: { role?: UserRole | null }) {
   const [arrivals, setArrivals] = useState<Arrival[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -208,6 +305,7 @@ export function ArrivalsList() {
       {selected && (
         <CheckInModal
           arrival={selected}
+          role={role}
           onClose={() => setSelected(null)}
           onDone={() => {
             void reload()

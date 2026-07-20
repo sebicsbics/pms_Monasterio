@@ -218,7 +218,7 @@ function App() {
       {/* Contenido */}
       <main className="lg:pl-60">
         {activeTab === 'board' && <RoomBoard role={role} />}
-        {activeTab === 'arrivals' && <ArrivalsList />}
+        {activeTab === 'arrivals' && <ArrivalsList role={role} />}
         {activeTab === 'inhouse' && <InHouseList />}
         {activeTab === 'reservation' && <NewReservation />}
         {activeTab === 'inventory' && <InventoryView />}
