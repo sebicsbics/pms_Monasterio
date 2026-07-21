@@ -62,7 +62,7 @@ export function EventsView() {
   // Pago (del evento expandido)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
-  const [payMethod, setPayMethod] = useState<PaymentMethod>('efectivo')
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('EFECTIVO')
   const [payDeposit, setPayDeposit] = useState(false)
 
   const reload = useCallback(async () => {
@@ -324,7 +324,7 @@ export function EventsView() {
                     </label>
                     <Button size="sm" loading={busy} onClick={() => handlePay(ev)}>Registrar pago</Button>
                   </div>
-                  {payMethod === 'efectivo' && (
+                  {payMethod === 'EFECTIVO' && (
                     <p className="mt-1 text-xs text-slate-400">El efectivo entra a la caja (debe estar abierta).</p>
                   )}
                 </div>

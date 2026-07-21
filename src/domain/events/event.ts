@@ -1,5 +1,9 @@
 export type EventStatus = 'scheduled' | 'done' | 'cancelled'
-export type PaymentMethod = 'efectivo' | 'qr' | 'transferencia' | 'tarjeta'
+// Subconjunto operativo del catálogo canónico `payment_methods` (10 códigos
+// en MAYÚSCULA, ver supabase/migrations/20260703130000_seed_channels_and_payments.sql).
+// Eventos solo ofrece estos 4 en el selector; debe coincidir 1:1 con los
+// códigos reales del catálogo, no inventar una vocabulario propio.
+export type PaymentMethod = 'EFECTIVO' | 'QR' | 'TRANSFERENCIA' | 'TARJETA'
 
 export const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
   scheduled: 'Programado',
@@ -8,10 +12,10 @@ export const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
 }
 
 export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
-  efectivo: 'Efectivo',
-  qr: 'QR',
-  transferencia: 'Transferencia',
-  tarjeta: 'Tarjeta',
+  EFECTIVO: 'Efectivo',
+  QR: 'QR',
+  TRANSFERENCIA: 'Transferencia',
+  TARJETA: 'Tarjeta',
 }
 
 export interface EventType {
