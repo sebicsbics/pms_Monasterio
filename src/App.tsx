@@ -38,6 +38,7 @@ import { FichajeView } from './features/attendance/FichajeView'
 import { MyProfileView } from './features/profile/MyProfileView'
 import { CajaView } from './features/cash/CajaView'
 import { EventsView } from './features/events/EventsView'
+import { HousekeepingBoardView } from './features/housekeeping/HousekeepingBoardView'
 
 // Analítica carga Recharts (pesado): se trae solo al abrir el tab (lazy).
 const Dashboard = lazy(() =>
@@ -46,12 +47,15 @@ const Dashboard = lazy(() =>
 
 type Tab =
   | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'inventory'
-  | 'employees' | 'tasks' | 'maintenance' | 'fichaje' | 'profile'
+  | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
   | 'access' | 'dashboard' | 'caja' | 'events'
 
 const OPERATIONS: UserRole[] = ['root', 'reception']
 const SHARED: UserRole[] = ['root', 'accountant', 'reception']
 const FINANCE: UserRole[] = ['root', 'accountant']
+// Mismo par de roles que la tabla `tasks` (que este módulo replica) — NO
+// 'reception_admin': ese rol no existe en UserRole ni en ninguna migración.
+const HOUSEKEEPING: UserRole[] = ['root', 'reception']
 
 type Group = 'Operación' | 'Personal' | 'Gestión'
 const GROUP_ORDER: Group[] = ['Operación', 'Personal', 'Gestión']
@@ -68,6 +72,7 @@ const TABS: {
   { id: 'caja', label: 'Caja chica', roles: SHARED, icon: Wallet, group: 'Operación' },
   { id: 'events', label: 'Eventos', roles: SHARED, icon: PartyPopper, group: 'Operación' },
   { id: 'tasks', label: 'Tareas', roles: OPERATIONS, icon: ListChecks, group: 'Operación' },
+  { id: 'housekeeping', label: 'Housekeeping', roles: HOUSEKEEPING, icon: BedDouble, group: 'Operación' },
   { id: 'maintenance', label: 'Mantenimiento', roles: SHARED, icon: Wrench, group: 'Operación' },
   { id: 'fichaje', label: 'Fichaje', roles: SHARED, icon: Clock, group: 'Personal' },
   { id: 'profile', label: 'Mi perfil', roles: SHARED, icon: User, group: 'Personal' },
@@ -224,6 +229,7 @@ function App() {
         {activeTab === 'inventory' && <InventoryView />}
         {activeTab === 'employees' && <EmployeesView role={role} />}
         {activeTab === 'tasks' && <TasksView />}
+        {activeTab === 'housekeeping' && <HousekeepingBoardView />}
         {activeTab === 'maintenance' && <MaintenanceView role={role} />}
         {activeTab === 'fichaje' && <FichajeView userId={session.user.id} role={role} />}
         {activeTab === 'profile' && <MyProfileView userId={session.user.id} />}
