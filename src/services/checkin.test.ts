@@ -19,7 +19,7 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { checkOutRoom, overrideReservationRate } from './checkin'
+import { checkOutRoom, overrideReservationRate, walkInCheckIn } from './checkin'
 
 describe('checkOutRoom', () => {
   it('sends payment_reference (no receipt) in the check_out_room RPC payload', async () => {
@@ -62,6 +62,54 @@ describe('checkOutRoom', () => {
     await expect(
       checkOutRoom('room-3', 'EFECTIVO', { receipt: null, paymentReference: null }),
     ).rejects.toThrow('Caja no abierta')
+  })
+})
+
+describe('walkInCheckIn', () => {
+  const baseData = {
+    roomId: 'room-1',
+    roomTypeId: 'type-1',
+    firstName: 'Ana',
+    lastName: 'Pérez',
+    document: '12345',
+    email: '',
+    birthDate: '',
+    countryCode: 'BOL',
+    city: 'La Paz',
+    wantsOffers: false,
+    nights: 2,
+  }
+
+  it('sends null p_rate_bs and p_rate_reason when no custom rate is given', async () => {
+    rpcMock.mockClear()
+    await walkInCheckIn(baseData)
+    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in', expect.objectContaining({
+      p_room_id: 'room-1',
+      p_room_type_id: 'type-1',
+      p_rate_bs: null,
+      p_rate_reason: null,
+    }))
+  })
+
+  it('sends the custom rate and reason when the receptionist overrides the price', async () => {
+    rpcMock.mockClear()
+    await walkInCheckIn({
+      ...baseData,
+      rateBs: 90,
+      rateReason: 'Última habitación disponible, se vende con descuento',
+    })
+    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in', expect.objectContaining({
+      p_rate_bs: 90,
+      p_rate_reason: 'Última habitación disponible, se vende con descuento',
+    }))
+  })
+
+  it('surfaces the RPC error message unchanged', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'La justificación es obligatoria para cambiar la tarifa' } })
+    await expect(
+      walkInCheckIn({ ...baseData, rateBs: 90, rateReason: '' }),
+    ).rejects.toThrow('La justificación es obligatoria para cambiar la tarifa')
   })
 })
 

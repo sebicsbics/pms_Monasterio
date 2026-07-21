@@ -13,6 +13,12 @@ export interface WalkInData {
   city: string
   wantsOffers: boolean
   nights: number
+  // Tarifa editable al momento del check-in (root/reception). Si difiere
+  // de la tarifa del tipo de habitación, la justificación es OBLIGATORIA
+  // — se valida en la RPC (walk_in_check_in en
+  // 20260717000000_walkin_editable_rate.sql), no solo acá.
+  rateBs?: number | null
+  rateReason?: string | null
 }
 
 // Check-in de walk-in: llama a la función atómica de PostgreSQL.
@@ -29,6 +35,8 @@ export async function walkInCheckIn(data: WalkInData): Promise<void> {
     p_city: data.city,
     p_wants_offers: data.wantsOffers,
     p_nights: data.nights,
+    p_rate_bs: data.rateBs ?? null,
+    p_rate_reason: data.rateReason ?? null,
   })
   if (error) throw new Error(error.message)
 }
