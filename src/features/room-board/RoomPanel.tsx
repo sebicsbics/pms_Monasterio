@@ -47,6 +47,16 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [nights, setNights] = useState(1)
   const [typeId, setTypeId] = useState(room.defaultType?.id ?? '')
 
+  // Tarifa editable al check-in (root/reception), con justificación
+  // obligatoria cuando difiere de la tarifa del tipo elegido — misma
+  // regla que "Editar tarifa" post-check-in (ver más abajo).
+  const selectedType = room.typeOptions.find((t) => t.id === typeId) ?? room.defaultType
+  const defaultRateBs = selectedType?.basePriceBs ?? 0
+  const [checkInRate, setCheckInRate] = useState(String(defaultRateBs))
+  const [checkInRateReason, setCheckInRateReason] = useState('')
+  const canEditCheckInRate = role === 'root' || role === 'reception'
+  const checkInRateDiffers = Number(checkInRate) !== defaultRateBs
+
   // Folio (solo si la habitación está ocupada)
   const [folio, setFolio] = useState<Folio | null>(null)
   const [chargeDesc, setChargeDesc] = useState('')
@@ -84,6 +94,12 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         .catch((e: Error) => setError(e.message))
     }
   }, [room.id, isOccupied])
+
+  useEffect(() => {
+    setCheckInRate(String(defaultRateBs))
+    setCheckInRateReason('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeId, room.id])
 
   useEffect(() => {
     if (isDirty) {
@@ -200,6 +216,11 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       setError('Nombre y apellido son obligatorios')
       return
     }
+    const rate = Number(checkInRate)
+    if (canEditCheckInRate && checkInRateDiffers && !checkInRateReason.trim()) {
+      setError('La justificación es obligatoria para cambiar la tarifa')
+      return
+    }
     run(() =>
       walkInCheckIn({
         roomId: room.id,
@@ -213,6 +234,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         city: city.trim(),
         wantsOffers,
         nights,
+        rateBs: canEditCheckInRate && checkInRateDiffers ? rate : null,
+        rateReason: canEditCheckInRate && checkInRateDiffers ? checkInRateReason.trim() : null,
       }),
     )
   }
@@ -363,9 +386,44 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               />
             </label>
 
+            {canEditCheckInRate && (
+              <div className="space-y-2 rounded border border-slate-200 p-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                    Tarifa por noche (Bs)
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={checkInRate}
+                    onChange={(e) => setCheckInRate(e.target.value)}
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                </label>
+                {checkInRateDiffers && (
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Justificación (obligatoria)
+                    </span>
+                    <textarea
+                      value={checkInRateReason}
+                      onChange={(e) => setCheckInRateReason(e.target.value)}
+                      placeholder="Ej. Última cuádruple disponible, se vende a precio de matrimonial"
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                      rows={2}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+
             <button
               type="button"
-              disabled={busy}
+              disabled={
+                busy ||
+                (canEditCheckInRate && checkInRateDiffers && !checkInRateReason.trim())
+              }
               onClick={handleCheckIn}
               className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
             >
