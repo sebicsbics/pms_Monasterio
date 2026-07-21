@@ -1,14 +1,17 @@
 import { useState } from 'react'
-import type { AvailableRoom } from '../../domain/reservations/availability'
+import type { AvailableRoom, ReservationMethod } from '../../domain/reservations/availability'
+import { RESERVATION_METHODS } from '../../domain/reservations/availability'
 import { searchAvailableRooms, createReservation } from '../../services/reservations'
 
-const METHODS = [
-  { value: 'phone', label: 'Llamada' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'email', label: 'Correo' },
-  { value: 'web', label: 'Página web' },
-  { value: 'walk-in', label: 'Presencial' },
-]
+const METHOD_LABELS: Record<ReservationMethod, string> = {
+  phone: 'Llamada',
+  whatsapp: 'WhatsApp',
+  email: 'Correo',
+  web: 'Página web',
+  'walk-in': 'Presencial',
+}
+
+const METHODS = RESERVATION_METHODS.map((value) => ({ value, label: METHOD_LABELS[value] }))
 
 export function NewReservation() {
   // Paso 1: búsqueda
