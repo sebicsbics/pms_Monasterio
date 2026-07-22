@@ -24,7 +24,7 @@ import { supabase } from './services/supabase'
 import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
 import { ROLE_LABEL } from './domain/auth/profile'
-import { DISCOUNT_APPROVAL, FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
+import { ANTICIPOS_ADMIN, DISCOUNT_APPROVAL, FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
 import { Login } from './features/auth/Login'
 import { ChangePassword } from './features/auth/ChangePassword'
 import { RoomBoard } from './features/room-board/RoomBoard'
@@ -42,6 +42,8 @@ import { CajaView } from './features/cash/CajaView'
 import { EventsView } from './features/events/EventsView'
 import { HousekeepingBoardView } from './features/housekeeping/HousekeepingBoardView'
 import { DiscountApprovalQueueView } from './features/reception/DiscountApprovalQueueView'
+import { RecordAnticipoView } from './features/anticipos/RecordAnticipoView'
+import { AnticipoAdminView } from './features/anticipos/AnticipoAdminView'
 
 // Analítica carga Recharts (pesado): se trae solo al abrir el tab (lazy).
 const Dashboard = lazy(() =>
@@ -51,7 +53,7 @@ const Dashboard = lazy(() =>
 type Tab =
   | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'inventory'
   | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
-  | 'access' | 'dashboard' | 'caja' | 'events' | 'discounts'
+  | 'access' | 'dashboard' | 'caja' | 'events' | 'discounts' | 'anticipos' | 'anticipos-admin'
 
 
 type Group = 'Operación' | 'Personal' | 'Gestión'
@@ -77,6 +79,8 @@ const TABS: {
   { id: 'access', label: 'Accesos', roles: FINANCE, icon: KeyRound, group: 'Gestión' },
   { id: 'dashboard', label: 'Analítica', roles: FINANCE, icon: BarChart3, group: 'Gestión' },
   { id: 'discounts', label: 'Descuentos', roles: DISCOUNT_APPROVAL, icon: Percent, group: 'Gestión' },
+  { id: 'anticipos', label: 'Anticipos', roles: OPERATIONS, icon: Wallet, group: 'Operación' },
+  { id: 'anticipos-admin', label: 'Reembolsos anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
 ]
 
 function App() {
@@ -235,6 +239,8 @@ function App() {
         {activeTab === 'events' && <EventsView />}
         {activeTab === 'access' && <AccessLogView />}
         {activeTab === 'discounts' && <DiscountApprovalQueueView role={role} />}
+        {activeTab === 'anticipos' && <RecordAnticipoView />}
+        {activeTab === 'anticipos-admin' && <AnticipoAdminView role={role} />}
         {activeTab === 'dashboard' && (
           <Suspense fallback={<p className="p-8 text-slate-500">Cargando analíticas…</p>}>
             <Dashboard />
