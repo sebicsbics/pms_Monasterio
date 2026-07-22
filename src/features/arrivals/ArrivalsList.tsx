@@ -34,18 +34,21 @@ function CheckInModal({
   const [newRate, setNewRate] = useState('')
   const [rateReason, setRateReason] = useState('')
   const [rateSaved, setRateSaved] = useState(false)
+  const [pendingBanner, setPendingBanner] = useState<string | null>(null)
   const canEditRate = canEditRateGate(role)
 
   async function handleOverrideRate() {
     setBusy(true)
     setError(null)
+    setPendingBanner(null)
     const rate = Number(newRate)
     try {
-      await overrideReservationRate(arrival.reservationId, rate, rateReason)
+      const pending = await overrideReservationRate(arrival.reservationId, rate, rateReason)
       setRateSaved(true)
       setNewRate('')
       setRateReason('')
       setRateEditOpen(false)
+      setPendingBanner(pending)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -103,9 +106,14 @@ function CheckInModal({
 
         {canEditRate && (
           <div className="mb-4">
-            {rateSaved && (
+            {rateSaved && !pendingBanner && (
               <p className="mb-2 rounded bg-green-50 p-2 text-xs text-green-700">
                 Tarifa actualizada.
+              </p>
+            )}
+            {pendingBanner && (
+              <p className="mb-2 rounded bg-amber-50 p-2 text-xs text-amber-800">
+                {pendingBanner}
               </p>
             )}
             {!rateEditOpen ? (

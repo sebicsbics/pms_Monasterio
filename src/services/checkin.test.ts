@@ -7,6 +7,10 @@ const rpcMock = vi.fn(async (..._args: unknown[]) => ({
 const uploadMock = vi.fn(async (..._args: unknown[]) => ({
   error: null as { message: string } | null,
 }))
+// rate_discount_requests siempre "sin pendiente" por defecto — los tests
+// de este archivo no ejercitan el flujo de aprobación, solo verifican el
+// payload enviado a cada RPC (ver rateDiscountRequestsService.test.ts).
+const maybeSingleMock = vi.fn(async () => ({ data: null, error: null }))
 
 vi.mock('./supabase', () => ({
   supabase: {
@@ -16,6 +20,19 @@ vi.mock('./supabase', () => ({
         upload: (...args: unknown[]) => uploadMock(...args),
       }),
     },
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: () => ({
+                maybeSingle: () => maybeSingleMock(),
+              }),
+            }),
+          }),
+        }),
+      }),
+    }),
   },
 }))
 

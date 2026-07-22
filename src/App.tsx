@@ -13,6 +13,7 @@ import {
   Menu,
   Package,
   PartyPopper,
+  Percent,
   User,
   Users,
   Wallet,
@@ -23,7 +24,7 @@ import { supabase } from './services/supabase'
 import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
 import { ROLE_LABEL } from './domain/auth/profile'
-import { FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
+import { DISCOUNT_APPROVAL, FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
 import { Login } from './features/auth/Login'
 import { ChangePassword } from './features/auth/ChangePassword'
 import { RoomBoard } from './features/room-board/RoomBoard'
@@ -40,6 +41,7 @@ import { MyProfileView } from './features/profile/MyProfileView'
 import { CajaView } from './features/cash/CajaView'
 import { EventsView } from './features/events/EventsView'
 import { HousekeepingBoardView } from './features/housekeeping/HousekeepingBoardView'
+import { DiscountApprovalQueueView } from './features/reception/DiscountApprovalQueueView'
 
 // Analítica carga Recharts (pesado): se trae solo al abrir el tab (lazy).
 const Dashboard = lazy(() =>
@@ -49,7 +51,7 @@ const Dashboard = lazy(() =>
 type Tab =
   | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'inventory'
   | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
-  | 'access' | 'dashboard' | 'caja' | 'events'
+  | 'access' | 'dashboard' | 'caja' | 'events' | 'discounts'
 
 
 type Group = 'Operación' | 'Personal' | 'Gestión'
@@ -74,6 +76,7 @@ const TABS: {
   { id: 'employees', label: 'Empleados', roles: FINANCE, icon: Users, group: 'Gestión' },
   { id: 'access', label: 'Accesos', roles: FINANCE, icon: KeyRound, group: 'Gestión' },
   { id: 'dashboard', label: 'Analítica', roles: FINANCE, icon: BarChart3, group: 'Gestión' },
+  { id: 'discounts', label: 'Descuentos', roles: DISCOUNT_APPROVAL, icon: Percent, group: 'Gestión' },
 ]
 
 function App() {
@@ -231,6 +234,7 @@ function App() {
         {activeTab === 'caja' && <CajaView role={role} />}
         {activeTab === 'events' && <EventsView />}
         {activeTab === 'access' && <AccessLogView />}
+        {activeTab === 'discounts' && <DiscountApprovalQueueView role={role} />}
         {activeTab === 'dashboard' && (
           <Suspense fallback={<p className="p-8 text-slate-500">Cargando analíticas…</p>}>
             <Dashboard />

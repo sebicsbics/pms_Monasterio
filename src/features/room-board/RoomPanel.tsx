@@ -185,8 +185,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     setError(null)
     setMessage(null)
     try {
-      await overrideReservationRate(folio.reservationId, rate, rateReason)
-      setMessage('Tarifa actualizada.')
+      const pending = await overrideReservationRate(folio.reservationId, rate, rateReason)
+      setMessage(pending ?? 'Tarifa actualizada.')
       setNewRate('')
       setRateReason('')
       setRateEditOpen(false)
@@ -198,12 +198,13 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     }
   }
 
-  async function run(action: () => Promise<void>) {
+  async function run(action: () => Promise<void | string | null>) {
     setBusy(true)
     setError(null)
     setMessage(null)
     try {
-      await action()
+      const result = await action()
+      if (typeof result === 'string') setMessage(result)
       onDone()
     } catch (e) {
       setError((e as Error).message)

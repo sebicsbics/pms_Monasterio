@@ -1,5 +1,16 @@
 import { supabase } from './supabase'
 import type { RoomOperationalStatus } from '../domain/rooms/room'
+import { fetchPendingForReservation } from './rateDiscountRequestsService'
+
+// Mensaje uniforme para el banner "descuento pendiente de aprobación",
+// reusado en los 3 puntos de entrada de tarifa (create_reservation,
+// walk_in_check_in, override_reservation_rate).
+export function pendingDiscountMessage(pct: number): string {
+  return (
+    `Descuento pendiente de aprobación (${pct}%). ` +
+    'Se facturó a precio de lista hasta que reception_admin lo apruebe.'
+  )
+}
 
 export interface WalkInData {
   roomId: string
@@ -21,9 +32,13 @@ export interface WalkInData {
   rateReason?: string | null
 }
 
-// Check-in de walk-in: llama a la función atómica de PostgreSQL.
-export async function walkInCheckIn(data: WalkInData): Promise<void> {
-  const { error } = await supabase.rpc('walk_in_check_in', {
+// Check-in de walk-in: llama a la función atómica de PostgreSQL. Devuelve
+// un aviso de "descuento pendiente" (o null) si la tarifa pedida superó
+// el 20% y quien hizo el check-in no es reception_admin — el check-in
+// igual se completa, facturado a precio de lista mientras tanto (ver
+// 20260722020000_discount_approval_workflow.sql).
+export async function walkInCheckIn(data: WalkInData): Promise<string | null> {
+  const { data: reservationId, error } = await supabase.rpc('walk_in_check_in', {
     p_room_id: data.roomId,
     p_room_type_id: data.roomTypeId,
     p_first_name: data.firstName,
@@ -39,6 +54,9 @@ export async function walkInCheckIn(data: WalkInData): Promise<void> {
     p_rate_reason: data.rateReason ?? null,
   })
   if (error) throw new Error(error.message)
+  if (!data.rateBs) return null
+  const pending = await fetchPendingForReservation(reservationId as string)
+  return pending ? pendingDiscountMessage(pending.computedDiscountPct) : null
 }
 
 export interface CheckOutReceipt {
@@ -78,11 +96,12 @@ export async function checkOutRoom(
 // OBLIGATORIA: se valida acá (fail-fast, antes de golpear la RPC) y de
 // nuevo en la RPC (que es la que realmente hace cumplir la regla — ver
 // override_reservation_rate en 20260716030000_rate_overrides.sql).
+// Devuelve un aviso de "descuento pendiente" (o null) — ver walkInCheckIn.
 export async function overrideReservationRate(
   reservationId: string,
   newRateBs: number,
   reason: string,
-): Promise<void> {
+): Promise<string | null> {
   const trimmedReason = reason.trim()
   if (!trimmedReason) {
     throw new Error('La justificación es obligatoria')
@@ -96,6 +115,8 @@ export async function overrideReservationRate(
     p_reason: trimmedReason,
   })
   if (error) throw new Error(error.message)
+  const pending = await fetchPendingForReservation(reservationId)
+  return pending ? pendingDiscountMessage(pending.computedDiscountPct) : null
 }
 
 // Cambio simple de estado operativo (limpiar / mantenimiento).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HOUSEKEEPING, OPERATIONS, SHARED } from './roleGroups'
+import { DISCOUNT_APPROVAL, HOUSEKEEPING, OPERATIONS, SHARED } from './roleGroups'
 
 describe('role group parity — reception_admin must mirror reception (REQ-4)', () => {
   it('OPERATIONS includes reception_admin whenever it includes reception', () => {
@@ -15,5 +15,17 @@ describe('role group parity — reception_admin must mirror reception (REQ-4)', 
   it('HOUSEKEEPING includes reception_admin whenever it includes reception', () => {
     expect(HOUSEKEEPING).toContain('reception')
     expect(HOUSEKEEPING).toContain('reception_admin')
+  })
+})
+
+describe('DISCOUNT_APPROVAL — reception_admin-only, NOT plain reception', () => {
+  it('includes root and reception_admin', () => {
+    expect(DISCOUNT_APPROVAL).toContain('root')
+    expect(DISCOUNT_APPROVAL).toContain('reception_admin')
+  })
+
+  it('excludes reception and accountant (queue visibility, not table read access)', () => {
+    expect(DISCOUNT_APPROVAL).not.toContain('reception')
+    expect(DISCOUNT_APPROVAL).not.toContain('accountant')
   })
 })

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AvailableRoom, ReservationMethod } from '../../domain/reservations/availability'
 import { RESERVATION_METHODS } from '../../domain/reservations/availability'
 import { searchAvailableRooms, createReservation } from '../../services/reservations'
+import { fetchPendingForReservation } from '../../services/rateDiscountRequestsService'
 
 const METHOD_LABELS: Record<ReservationMethod, string> = {
   phone: 'Llamada',
@@ -30,10 +31,13 @@ export function NewReservation() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [method, setMethod] = useState('phone')
+  const [rateBs, setRateBs] = useState('')
+  const [rateReason, setRateReason] = useState('')
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [pendingBanner, setPendingBanner] = useState<string | null>(null)
 
   async function handleSearch() {
     setError(null)
@@ -75,8 +79,9 @@ export function NewReservation() {
     }
     setBusy(true)
     setError(null)
+    setPendingBanner(null)
     try {
-      await createReservation({
+      const reservationId = await createReservation({
         roomId: selected.roomId,
         roomTypeId: typeId,
         firstName: firstName.trim(),
@@ -87,16 +92,30 @@ export function NewReservation() {
         checkOut,
         numGuests: pax,
         method,
+        rateBs: rateBs.trim() ? Number(rateBs) : null,
+        reason: rateReason.trim() || null,
       })
       setSuccess(
         `Reserva creada para la habitación ${selected.roomNumber} (${checkIn} → ${checkOut}).`,
       )
+      // Chequeo liviano: si el descuento pedido superó el 20% y quien
+      // creó no es reception_admin, queda una solicitud pendiente y la
+      // reserva se facturó a precio de lista mientras tanto.
+      const pending = await fetchPendingForReservation(reservationId)
+      if (pending) {
+        setPendingBanner(
+          `Descuento pendiente de aprobación (${pending.computedDiscountPct}%). ` +
+            'La reserva se facturó a precio de lista hasta que reception_admin lo apruebe.',
+        )
+      }
       setResults(null)
       setSelected(null)
       setFirstName('')
       setLastName('')
       setPhone('')
       setEmail('')
+      setRateBs('')
+      setRateReason('')
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -114,6 +133,11 @@ export function NewReservation() {
       {success && (
         <p className="mb-4 rounded bg-green-50 p-2 text-sm text-green-700">
           {success}
+        </p>
+      )}
+      {pendingBanner && (
+        <p className="mb-4 rounded bg-amber-50 p-2 text-sm text-amber-800">
+          {pendingBanner}
         </p>
       )}
 
@@ -251,6 +275,30 @@ export function NewReservation() {
               Contacto (al menos uno). El resto del perfil se completa en el
               check-in.
             </p>
+            <div className="flex gap-2">
+              <label className="w-1/2 text-sm">
+                <span className="text-slate-600">Tarifa (Bs/noche, opcional)</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Precio de lista"
+                  value={rateBs}
+                  onChange={(e) => setRateBs(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 p-2"
+                />
+              </label>
+              <label className="w-1/2 text-sm">
+                <span className="text-slate-600">
+                  Justificación (obligatoria si cambia la tarifa)
+                </span>
+                <input
+                  placeholder="Motivo del descuento"
+                  value={rateReason}
+                  onChange={(e) => setRateReason(e.target.value)}
+                  className="mt-1 w-full rounded border border-slate-300 p-2"
+                />
+              </label>
+            </div>
             <div className="flex gap-2">
               <input
                 placeholder="Celular"
