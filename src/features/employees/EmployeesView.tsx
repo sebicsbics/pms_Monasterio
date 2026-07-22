@@ -197,6 +197,7 @@ export function EmployeesView({ role }: { role?: UserRole | null }) {
               >
                 <option value="">Mantener actual</option>
                 <option value="reception">reception</option>
+                <option value="reception_admin">reception_admin</option>
                 <option value="accountant">accountant</option>
                 <option value="root">root</option>
               </select>
