@@ -1,4 +1,4 @@
-export type UserRole = 'root' | 'accountant' | 'reception'
+export type UserRole = 'root' | 'accountant' | 'reception' | 'reception_admin'
 
 export interface Profile {
   id: string
@@ -13,4 +13,5 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   root: 'Administrador',
   accountant: 'Contaduría',
   reception: 'Recepción',
+  reception_admin: 'Recepción (Admin)',
 }
