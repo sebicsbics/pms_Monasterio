@@ -22,6 +22,7 @@ import { fetchPaymentMethods } from '../../services/payments'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { COUNTRIES } from '../../shared/data/countries'
 import type { UserRole } from '../../domain/auth/profile'
+import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 
 interface Props {
   room: Room
@@ -54,7 +55,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const defaultRateBs = selectedType?.basePriceBs ?? 0
   const [checkInRate, setCheckInRate] = useState(String(defaultRateBs))
   const [checkInRateReason, setCheckInRateReason] = useState('')
-  const canEditCheckInRate = role === 'root' || role === 'reception'
+  const canEditCheckInRate = canEditRateGate(role)
   const checkInRateDiffers = Number(checkInRate) !== defaultRateBs
 
   // Folio (solo si la habitación está ocupada)
@@ -70,7 +71,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [rateEditOpen, setRateEditOpen] = useState(false)
   const [newRate, setNewRate] = useState('')
   const [rateReason, setRateReason] = useState('')
-  const canEditRate = role === 'root' || role === 'reception'
+  const canEditRate = canEditRateGate(role)
 
   // Minibar: productos vendibles del inventario
   const [products, setProducts] = useState<Product[]>([])

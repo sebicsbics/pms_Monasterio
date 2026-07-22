@@ -5,6 +5,7 @@ import { fetchArrivals, checkInFromReservation } from '../../services/arrivals'
 import { overrideReservationRate } from '../../services/checkin'
 import { COUNTRIES } from '../../shared/data/countries'
 import type { UserRole } from '../../domain/auth/profile'
+import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -33,7 +34,7 @@ function CheckInModal({
   const [newRate, setNewRate] = useState('')
   const [rateReason, setRateReason] = useState('')
   const [rateSaved, setRateSaved] = useState(false)
-  const canEditRate = role === 'root' || role === 'reception'
+  const canEditRate = canEditRateGate(role)
 
   async function handleOverrideRate() {
     setBusy(true)
