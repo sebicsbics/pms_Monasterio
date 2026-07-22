@@ -16,6 +16,7 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
   transporte: 'Transporte',
   servicios: 'Servicios (luz, agua, etc.)',
   sueldos: 'Adelanto de sueldo',
+  reembolso_anticipo: 'Reembolso anticipo',
   otro_egreso: 'Otro egreso',
 }
 
