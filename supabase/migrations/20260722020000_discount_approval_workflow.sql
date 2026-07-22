@@ -148,6 +148,15 @@ begin
 end;
 $$;
 
+-- SEGURIDAD: apply_rate_change es un helper INTERNO SECURITY DEFINER, sin guard
+-- de rol propio (asume que solo lo invocan los RPCs de entrada ya guardados).
+-- Esta base tiene ALTER DEFAULT PRIVILEGES que OTORGA execute a anon/authenticated
+-- por defecto (verificado en pg_default_acl), así que hay que revocarlo por rol
+-- nombrado — un `revoke from public` no quita los grants nombrados. Sin esto,
+-- cualquier authenticated (o anon) podría aplicar cambios de tarifa <=20% a
+-- reservas arbitrarias salteando los guards de los entry points.
+revoke execute on function public.apply_rate_change(uuid, uuid, numeric, int, numeric, text) from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------
 -- 4) create_reservation: se agregan p_rate_bs/p_reason opcionales
 --    (mismo patrón que walk_in_check_in). Dropear el overload de 10
