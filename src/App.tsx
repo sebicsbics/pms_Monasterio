@@ -23,6 +23,7 @@ import { supabase } from './services/supabase'
 import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
 import { ROLE_LABEL } from './domain/auth/profile'
+import { FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
 import { Login } from './features/auth/Login'
 import { ChangePassword } from './features/auth/ChangePassword'
 import { RoomBoard } from './features/room-board/RoomBoard'
@@ -50,12 +51,6 @@ type Tab =
   | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
   | 'access' | 'dashboard' | 'caja' | 'events'
 
-const OPERATIONS: UserRole[] = ['root', 'reception']
-const SHARED: UserRole[] = ['root', 'accountant', 'reception']
-const FINANCE: UserRole[] = ['root', 'accountant']
-// Mismo par de roles que la tabla `tasks` (que este módulo replica) — NO
-// 'reception_admin': ese rol no existe en UserRole ni en ninguna migración.
-const HOUSEKEEPING: UserRole[] = ['root', 'reception']
 
 type Group = 'Operación' | 'Personal' | 'Gestión'
 const GROUP_ORDER: Group[] = ['Operación', 'Personal', 'Gestión']
