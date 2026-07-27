@@ -17,13 +17,16 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 export interface Task {
   id: string
   taskType: TaskType
-  roomId: string | null
-  roomNumber: string | null
-  assignedTo: string | null // person_id del empleado
   status: TaskStatus
   notes: string | null
+  assignedToName: string | null // texto libre: a quién se le pasa la tarea
   createdAt: string
+  createdBy: string | null // profile id de quien abrió el ticket
+  createdByName: string | null // nombre resuelto server-side (list_tasks)
 }
+
+// Orden de las columnas del tablero Kanban.
+export const TASK_STATUS_ORDER: TaskStatus[] = ['pending', 'in_progress', 'done']
 
 export interface AssignableStaff {
   personId: string

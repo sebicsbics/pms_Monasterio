@@ -140,11 +140,11 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       setError('Elegí a quién asignar la limpieza')
       return
     }
+    const assignee = staff.find((s) => s.personId === staffId)?.fullName ?? ''
     run(() =>
       createTask({
         taskType: 'cleaning',
-        roomId: room.id,
-        assignedTo: staffId,
+        assignedToName: assignee,
         notes: `Limpieza habitación ${room.roomNumber}`,
       }),
     )

@@ -1,35 +1,29 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Task, TaskType, TaskStatus, AssignableStaff } from '../../domain/tasks/task'
-import { TASK_TYPE_LABEL, TASK_STATUS_LABEL } from '../../domain/tasks/task'
-import type { Room } from '../../domain/rooms/room'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import type { Task, TaskType, TaskStatus } from '../../domain/tasks/task'
 import {
-  fetchTasks,
-  fetchAssignableStaff,
-  createTask,
-  updateTaskStatus,
-} from '../../services/tasks'
-import { fetchRooms } from '../../services/rooms'
+  TASK_TYPE_LABEL,
+  TASK_STATUS_LABEL,
+  TASK_STATUS_ORDER,
+} from '../../domain/tasks/task'
+import { fetchTasks, createTask, updateTaskStatus } from '../../services/tasks'
 import { PageHeader } from '../../components/ui'
 import { formatDateTime } from '../../lib/date'
 
 const TASK_TYPES: TaskType[] = ['cleaning', 'minibar', 'maintenance', 'other']
-const STATUSES: TaskStatus[] = ['pending', 'in_progress', 'done']
 
-const STATUS_STYLE: Record<TaskStatus, string> = {
-  pending: 'bg-amber-100 text-amber-800',
-  in_progress: 'bg-blue-100 text-blue-800',
-  done: 'bg-green-100 text-green-800',
+const COLUMN_STYLE: Record<TaskStatus, string> = {
+  pending: 'border-amber-200 bg-amber-50',
+  in_progress: 'border-blue-200 bg-blue-50',
+  done: 'border-green-200 bg-green-50',
 }
 
 export function TasksView() {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [staff, setStaff] = useState<AssignableStaff[]>([])
-  const [rooms, setRooms] = useState<Room[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const [taskType, setTaskType] = useState<TaskType>('cleaning')
-  const [roomId, setRoomId] = useState('')
-  const [assignedTo, setAssignedTo] = useState('')
+  const [assignedToName, setAssignedToName] = useState('')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -41,26 +35,15 @@ export function TasksView() {
 
   useEffect(() => {
     void reload()
-    fetchAssignableStaff().then(setStaff).catch((e: Error) => setError(e.message))
-    fetchRooms().then(setRooms).catch((e: Error) => setError(e.message))
   }, [reload])
-
-  const staffName = (id: string | null) =>
-    id ? (staff.find((s) => s.personId === id)?.fullName ?? '—') : 'Sin asignar'
 
   async function handleCreate() {
     setBusy(true)
     setError(null)
     try {
-      await createTask({
-        taskType,
-        roomId: roomId || null,
-        assignedTo: assignedTo || null,
-        notes,
-      })
+      await createTask({ taskType, assignedToName, notes })
       setNotes('')
-      setRoomId('')
-      setAssignedTo('')
+      setAssignedToName('')
       await reload()
     } catch (e) {
       setError((e as Error).message)
@@ -69,9 +52,13 @@ export function TasksView() {
     }
   }
 
-  async function changeStatus(id: string, status: TaskStatus) {
+  // Mueve una tarea a la columna anterior/siguiente del tablero.
+  async function moveTask(task: Task, direction: -1 | 1) {
+    const currentIndex = TASK_STATUS_ORDER.indexOf(task.status)
+    const next = TASK_STATUS_ORDER[currentIndex + direction]
+    if (!next) return
     try {
-      await updateTaskStatus(id, status)
+      await updateTaskStatus(task.id, next)
       await reload()
     } catch (e) {
       setError((e as Error).message)
@@ -79,19 +66,21 @@ export function TasksView() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <PageHeader title="Tareas" />
+    <div className="mx-auto max-w-6xl p-6">
+      <PageHeader
+        title="Tareas"
+        subtitle="Tablero de handoff entre turnos — mové el trabajo entre columnas con ‹ ›"
+      />
 
       {error && (
         <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
       )}
 
-      {/* Registrar tarea — canal de comunicación entre turnos: la asignación
-          de habitación/personal es opcional, lo que importa es dejar
-          registrado el pedido con su hora exacta. */}
+      {/* Registrar tarea — lo que importa es dejar el pedido con su hora y
+          quién lo abrió; la asignación es texto libre (cualquier persona). */}
       <div className="mb-6 rounded border border-slate-200 p-4">
         <h3 className="mb-3 font-semibold text-slate-700">Registrar tarea</h3>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <select
             value={taskType}
             onChange={(e) => setTaskType(e.target.value as TaskType)}
@@ -109,30 +98,12 @@ export function TasksView() {
             onChange={(e) => setNotes(e.target.value)}
             className="rounded border border-slate-300 p-2"
           />
-          <select
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
+          <input
+            placeholder="Asignar a… (nombre, opcional)"
+            value={assignedToName}
+            onChange={(e) => setAssignedToName(e.target.value)}
             className="rounded border border-slate-300 p-2"
-          >
-            <option value="">Habitación (opcional)…</option>
-            {rooms.map((r) => (
-              <option key={r.id} value={r.id}>
-                Hab. {r.roomNumber}
-              </option>
-            ))}
-          </select>
-          <select
-            value={assignedTo}
-            onChange={(e) => setAssignedTo(e.target.value)}
-            className="rounded border border-slate-300 p-2"
-          >
-            <option value="">Asignar a… (opcional)</option>
-            {staff.map((s) => (
-              <option key={s.personId} value={s.personId}>
-                {s.fullName} ({s.jobTitle})
-              </option>
-            ))}
-          </select>
+          />
         </div>
         <button
           type="button"
@@ -144,55 +115,84 @@ export function TasksView() {
         </button>
       </div>
 
-      {/* Lista — el pedido (fecha/hora de solicitud) es el dato principal
-          del canal de comunicación entre turnos; habitación/asignado son
-          secundarios y pueden no existir. */}
-      <div className="overflow-x-auto rounded border border-slate-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-100 text-slate-600">
-            <tr>
-              <th className="p-3">Solicitado</th>
-              <th className="p-3">Tipo</th>
-              <th className="p-3">Notas</th>
-              <th className="p-3">Habitación</th>
-              <th className="p-3">Asignada a</th>
-              <th className="p-3">Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((t) => (
-              <tr key={t.id} className="border-t border-slate-100">
-                <td className="p-3 font-medium whitespace-nowrap">
-                  {formatDateTime(t.createdAt)}
-                </td>
-                <td className="p-3">{TASK_TYPE_LABEL[t.taskType]}</td>
-                <td className="p-3 text-slate-500">{t.notes ?? '—'}</td>
-                <td className="p-3">{t.roomNumber ? `Hab. ${t.roomNumber}` : 'Sin habitación'}</td>
-                <td className="p-3">{staffName(t.assignedTo)}</td>
-                <td className="p-3">
-                  <select
-                    value={t.status}
-                    onChange={(e) => changeStatus(t.id, e.target.value as TaskStatus)}
-                    className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[t.status]}`}
-                  >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {TASK_STATUS_LABEL[s]}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
-            {tasks.length === 0 && (
-              <tr>
-                <td colSpan={6} className="p-4 text-center text-slate-400">
-                  Sin tareas registradas.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      {/* Tablero Kanban: una columna por estado. */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {TASK_STATUS_ORDER.map((status) => {
+          const columnTasks = tasks.filter((t) => t.status === status)
+          return (
+            <div
+              key={status}
+              className={`rounded border ${COLUMN_STYLE[status]} p-3`}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="font-semibold text-slate-700">
+                  {TASK_STATUS_LABEL[status]}
+                </h4>
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500">
+                  {columnTasks.length}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {columnTasks.map((t) => {
+                  const index = TASK_STATUS_ORDER.indexOf(t.status)
+                  return (
+                    <div
+                      key={t.id}
+                      className="rounded border border-slate-200 bg-white p-3 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                          {TASK_TYPE_LABEL[t.taskType]}
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => moveTask(t, -1)}
+                            aria-label="Mover a la columna anterior"
+                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === TASK_STATUS_ORDER.length - 1}
+                            onClick={() => moveTask(t, 1)}
+                            aria-label="Mover a la columna siguiente"
+                            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {t.notes && (
+                        <p className="mt-2 text-sm text-slate-700">{t.notes}</p>
+                      )}
+
+                      {t.assignedToName && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Asignada a: <span className="font-medium">{t.assignedToName}</span>
+                        </p>
+                      )}
+
+                      <p className="mt-2 border-t border-slate-100 pt-2 text-xs text-slate-400">
+                        Abrió {t.createdByName ?? '—'} · {formatDateTime(t.createdAt)}
+                      </p>
+                    </div>
+                  )
+                })}
+
+                {columnTasks.length === 0 && (
+                  <p className="py-4 text-center text-xs text-slate-400">
+                    Sin tareas.
+                  </p>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

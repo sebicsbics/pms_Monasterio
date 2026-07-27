@@ -9,32 +9,29 @@ import type {
 interface TaskRow {
   id: string
   task_type: TaskType
-  room_id: string | null
-  assigned_to: string | null
   status: TaskStatus
   notes: string | null
+  assigned_to_name: string | null
   created_at: string
-  rooms: { room_number: string } | null
+  created_by: string | null
+  created_by_name: string | null
 }
 
+// Trae las tareas vía RPC list_tasks: resuelve el nombre del creador
+// server-side (profiles no es legible entre usuarios desde el cliente).
 export async function fetchTasks(): Promise<Task[]> {
-  const { data, error } = await supabase
-    .from('tasks')
-    .select(
-      'id, task_type, room_id, assigned_to, status, notes, created_at, rooms ( room_number )',
-    )
-    .order('created_at', { ascending: false })
+  const { data, error } = await supabase.rpc('list_tasks')
   if (error) throw new Error(error.message)
 
-  return (data as unknown as TaskRow[]).map((r) => ({
+  return (data as TaskRow[]).map((r) => ({
     id: r.id,
     taskType: r.task_type,
-    roomId: r.room_id,
-    roomNumber: r.rooms?.room_number ?? null,
-    assignedTo: r.assigned_to,
     status: r.status,
     notes: r.notes,
+    assignedToName: r.assigned_to_name,
     createdAt: r.created_at,
+    createdBy: r.created_by,
+    createdByName: r.created_by_name,
   }))
 }
 
@@ -53,14 +50,13 @@ export async function fetchAssignableStaff(): Promise<AssignableStaff[]> {
 
 export async function createTask(input: {
   taskType: TaskType
-  roomId: string | null
-  assignedTo: string | null
+  assignedToName: string
   notes: string
 }): Promise<void> {
+  // created_by lo completa la DB con auth.uid() (default de la columna).
   const { error } = await supabase.from('tasks').insert({
     task_type: input.taskType,
-    room_id: input.roomId,
-    assigned_to: input.assignedTo,
+    assigned_to_name: input.assignedToName.trim() || null,
     notes: input.notes || null,
   })
   if (error) throw new Error(error.message)
