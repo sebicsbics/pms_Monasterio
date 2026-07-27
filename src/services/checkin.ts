@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { RoomOperationalStatus } from '../domain/rooms/room'
 import { fetchPendingForReservation } from './rateDiscountRequestsService'
+import { companionsToPayload, type CompanionGuest } from './arrivals'
 
 // Mensaje uniforme para el banner "descuento pendiente de aprobación",
 // reusado en los 3 puntos de entrada de tarifa (create_reservation,
@@ -30,15 +31,18 @@ export interface WalkInData {
   // 20260717000000_walkin_editable_rate.sql), no solo acá.
   rateBs?: number | null
   rateReason?: string | null
+  // Acompañantes: perfil completo de los demás huéspedes de la habitación.
+  companions?: CompanionGuest[]
 }
 
-// Check-in de walk-in: llama a la función atómica de PostgreSQL. Devuelve
-// un aviso de "descuento pendiente" (o null) si la tarifa pedida superó
-// el 20% y quien hizo el check-in no es reception_admin — el check-in
-// igual se completa, facturado a precio de lista mientras tanto (ver
+// Check-in de walk-in: llama a la función atómica de PostgreSQL, que
+// registra al titular y a los acompañantes. Devuelve un aviso de
+// "descuento pendiente" (o null) si la tarifa pedida superó el 20% y quien
+// hizo el check-in no es reception_admin — el check-in igual se completa,
+// facturado a precio de lista mientras tanto (ver
 // 20260722020000_discount_approval_workflow.sql).
 export async function walkInCheckIn(data: WalkInData): Promise<string | null> {
-  const { data: reservationId, error } = await supabase.rpc('walk_in_check_in', {
+  const { data: reservationId, error } = await supabase.rpc('walk_in_check_in_with_guests', {
     p_room_id: data.roomId,
     p_room_type_id: data.roomTypeId,
     p_first_name: data.firstName,
@@ -52,6 +56,7 @@ export async function walkInCheckIn(data: WalkInData): Promise<string | null> {
     p_nights: data.nights,
     p_rate_bs: data.rateBs ?? null,
     p_rate_reason: data.rateReason ?? null,
+    p_companions: companionsToPayload(data.companions ?? []),
   })
   if (error) throw new Error(error.message)
   if (!data.rateBs) return null

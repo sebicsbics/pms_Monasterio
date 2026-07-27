@@ -100,11 +100,12 @@ describe('walkInCheckIn', () => {
   it('sends null p_rate_bs and p_rate_reason when no custom rate is given', async () => {
     rpcMock.mockClear()
     await walkInCheckIn(baseData)
-    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in', expect.objectContaining({
+    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in_with_guests', expect.objectContaining({
       p_room_id: 'room-1',
       p_room_type_id: 'type-1',
       p_rate_bs: null,
       p_rate_reason: null,
+      p_companions: [],
     }))
   })
 
@@ -115,10 +116,25 @@ describe('walkInCheckIn', () => {
       rateBs: 90,
       rateReason: 'Última habitación disponible, se vende con descuento',
     })
-    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in', expect.objectContaining({
+    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in_with_guests', expect.objectContaining({
       p_rate_bs: 90,
       p_rate_reason: 'Última habitación disponible, se vende con descuento',
     }))
+  })
+
+  it('maps and sends companions with the walk-in payload', async () => {
+    rpcMock.mockClear()
+    await walkInCheckIn({
+      ...baseData,
+      companions: [
+        { firstName: 'Luis', lastName: 'Gómez', document: 'Z1', birthDate: '', countryCode: 'bol', city: 'Oruro' },
+        { firstName: '', lastName: '', document: '', birthDate: '', countryCode: '', city: '' },
+      ],
+    })
+    const payload = rpcMock.mock.calls[0][1] as { p_companions: unknown[] }
+    expect(payload.p_companions).toEqual([
+      { first_name: 'Luis', last_name: 'Gómez', document: 'Z1', birth_date: '', country_code: 'BOL', city: 'Oruro' },
+    ])
   })
 
   it('surfaces the RPC error message unchanged', async () => {

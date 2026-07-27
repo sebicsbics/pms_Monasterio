@@ -61,17 +61,20 @@ export interface CompanionGuest {
   city: string
 }
 
-// Convierte un acompañante al shape jsonb que espera la RPC. Solo se
-// mandan los que tengan al menos nombre y apellido.
-function toCompanionPayload(g: CompanionGuest) {
-  return {
-    first_name: g.firstName.trim(),
-    last_name: g.lastName.trim(),
-    document: g.document.trim(),
-    birth_date: g.birthDate || '',
-    country_code: g.countryCode.trim().toUpperCase(),
-    city: g.city.trim(),
-  }
+// Convierte los acompañantes al shape jsonb que esperan las RPC de
+// check-in (Llegadas y walk-in). Solo se mandan los que tengan al menos
+// nombre y apellido.
+export function companionsToPayload(companions: CompanionGuest[]) {
+  return companions
+    .filter((g) => g.firstName.trim() !== '' && g.lastName.trim() !== '')
+    .map((g) => ({
+      first_name: g.firstName.trim(),
+      last_name: g.lastName.trim(),
+      document: g.document.trim(),
+      birth_date: g.birthDate || '',
+      country_code: g.countryCode.trim().toUpperCase(),
+      city: g.city.trim(),
+    }))
 }
 
 // Check-in desde una reserva: completa el perfil del titular, registra a
@@ -81,9 +84,6 @@ export async function checkInFromReservation(
   profile: CheckInProfile,
   companions: CompanionGuest[] = [],
 ): Promise<void> {
-  const validCompanions = companions.filter(
-    (g) => g.firstName.trim() !== '' && g.lastName.trim() !== '',
-  )
   const { error } = await supabase.rpc('check_in_reservation_with_guests', {
     p_reservation_id: reservationId,
     p_document: profile.document,
@@ -91,7 +91,7 @@ export async function checkInFromReservation(
     p_country_code: profile.countryCode,
     p_city: profile.city,
     p_wants_offers: profile.wantsOffers,
-    p_companions: validCompanions.map(toCompanionPayload),
+    p_companions: companionsToPayload(companions),
   })
   if (error) throw new Error(error.message)
 }

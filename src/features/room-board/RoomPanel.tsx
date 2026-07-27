@@ -23,6 +23,7 @@ import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { COUNTRIES } from '../../shared/data/countries'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
+import type { CompanionGuest } from '../../services/arrivals'
 
 interface Props {
   room: Room
@@ -47,6 +48,22 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [wantsOffers, setWantsOffers] = useState(false)
   const [nights, setNights] = useState(1)
   const [typeId, setTypeId] = useState(room.defaultType?.id ?? '')
+
+  // Acompañantes (perfil completo de los demás huéspedes de la habitación).
+  // El walk-in no fija la cantidad de antemano: se agregan a mano, con tope
+  // = max_occupancy del tipo elegido menos el titular.
+  const emptyCompanion = (): CompanionGuest => ({
+    firstName: '',
+    lastName: '',
+    document: '',
+    birthDate: '',
+    countryCode: '',
+    city: '',
+  })
+  const [companions, setCompanions] = useState<CompanionGuest[]>([])
+  function updateCompanion(index: number, patch: Partial<CompanionGuest>) {
+    setCompanions((prev) => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)))
+  }
 
   // Tarifa editable al check-in (root/reception), con justificación
   // obligatoria cuando difiere de la tarifa del tipo elegido — misma
@@ -238,6 +255,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         nights,
         rateBs: canEditCheckInRate && checkInRateDiffers ? rate : null,
         rateReason: canEditCheckInRate && checkInRateDiffers ? checkInRateReason.trim() : null,
+        companions,
       }),
     )
   }
@@ -419,6 +437,86 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 )}
               </div>
             )}
+
+            <div className="space-y-3 border-t border-slate-200 pt-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-600">
+                  Acompañantes {companions.length > 0 && `(${companions.length})`}
+                </span>
+                {companions.length < (selectedType?.maxOccupancy ?? 1) - 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setCompanions((prev) => [...prev, emptyCompanion()])}
+                    className="text-xs font-medium text-brand-700 hover:underline"
+                  >
+                    + Agregar huésped
+                  </button>
+                )}
+              </div>
+              {companions.map((g, i) => (
+                <div key={i} className="space-y-2 rounded border border-slate-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-slate-500">Huésped {i + 2}</p>
+                    <button
+                      type="button"
+                      onClick={() => setCompanions((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-xs text-slate-400 hover:text-red-600"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      placeholder="Nombre"
+                      value={g.firstName}
+                      onChange={(e) => updateCompanion(i, { firstName: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    />
+                    <input
+                      placeholder="Apellido"
+                      value={g.lastName}
+                      onChange={(e) => updateCompanion(i, { lastName: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </div>
+                  <input
+                    placeholder="Documento / Pasaporte"
+                    value={g.document}
+                    onChange={(e) => updateCompanion(i, { document: e.target.value })}
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <select
+                      value={g.countryCode}
+                      onChange={(e) => updateCompanion(i, { countryCode: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    >
+                      <option value="">País…</option>
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      placeholder="Ciudad"
+                      value={g.city}
+                      onChange={(e) => updateCompanion(i, { city: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </div>
+                  <label className="block text-xs text-slate-500">
+                    Fecha de nacimiento
+                    <input
+                      type="date"
+                      value={g.birthDate}
+                      onChange={(e) => updateCompanion(i, { birthDate: e.target.value })}
+                      className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
 
             <button
               type="button"
