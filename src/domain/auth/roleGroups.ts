@@ -15,9 +15,8 @@ export const HOUSEKEEPING: UserRole[] = ['root', 'reception', 'reception_admin']
 // con approve_rate_discount_request/reject_rate_discount_request, que
 // también son root/reception_admin-only).
 export const DISCOUNT_APPROVAL: UserRole[] = ['root', 'reception_admin']
-// Anticipos (adelantos de huésped, change: anticipos-management): reembolso
-// y modificación son SOLO root/reception_admin (mismo patrón que
-// refund_anticipo/modify_anticipo, que son reception_admin-only vía guard
-// inline en la RPC). Registrar un anticipo usa OPERATIONS (reception
-// también puede registrar), NO este grupo.
+// Anticipos (adelantos de huésped, change: anticipos-management): la
+// corrección/modificación es SOLO root/reception_admin (modify_anticipo es
+// reception_admin-only vía guard inline en la RPC). Registrar un anticipo
+// usa OPERATIONS (reception también puede registrar), NO este grupo.
 export const ANTICIPOS_ADMIN: UserRole[] = ['root', 'reception_admin']

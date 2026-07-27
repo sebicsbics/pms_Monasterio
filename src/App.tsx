@@ -80,7 +80,7 @@ const TABS: {
   { id: 'dashboard', label: 'Analítica', roles: FINANCE, icon: BarChart3, group: 'Gestión' },
   { id: 'discounts', label: 'Descuentos', roles: DISCOUNT_APPROVAL, icon: Percent, group: 'Gestión' },
   { id: 'anticipos', label: 'Anticipos', roles: OPERATIONS, icon: Wallet, group: 'Operación' },
-  { id: 'anticipos-admin', label: 'Reembolsos anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
+  { id: 'anticipos-admin', label: 'Corregir anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
 ]
 
 function App() {

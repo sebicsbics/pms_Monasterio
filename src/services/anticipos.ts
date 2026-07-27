@@ -6,7 +6,6 @@ function mapAnticipo(r: Record<string, unknown>): Anticipo {
     id: r.id as string,
     reservationId: r.reservation_id as string,
     amountBs: Number(r.amount_bs),
-    refundedAmountBs: Number(r.refunded_amount_bs),
     paymentMethod: r.payment_method as string,
     status: r.status as Anticipo['status'],
     cashMovementId: (r.cash_movement_id as string | null) ?? null,
@@ -37,20 +36,6 @@ export async function recordAnticipo(input: {
     p_amount_bs: input.amountBs,
     p_payment_method: input.paymentMethod,
     p_notes: input.notes,
-  })
-  if (error) throw new Error(error.message)
-  return mapAnticipo(data as Record<string, unknown>)
-}
-
-export async function refundAnticipo(
-  anticipoId: string,
-  refundBs: number,
-  reason: string,
-): Promise<Anticipo> {
-  const { data, error } = await supabase.rpc('refund_anticipo', {
-    p_anticipo_id: anticipoId,
-    p_refund_bs: refundBs,
-    p_reason: reason,
   })
   if (error) throw new Error(error.message)
   return mapAnticipo(data as Record<string, unknown>)

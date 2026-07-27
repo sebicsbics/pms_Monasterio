@@ -79,3 +79,46 @@ export async function createReservation(data: ReservationInput): Promise<string>
   if (error) throw new Error(error.message)
   return reservationId as string
 }
+
+// Cancela una reserva confirmada. El anticipo (si lo hay) se pierde: no
+// hay reembolso (regla de negocio). La justificación es obligatoria — se
+// valida acá (fail-fast) y de nuevo en la RPC cancel_reservation.
+export async function cancelReservation(
+  reservationId: string,
+  reason: string,
+): Promise<void> {
+  const trimmed = reason.trim()
+  if (!trimmed) {
+    throw new Error('La justificación es obligatoria')
+  }
+  const { error } = await supabase.rpc('cancel_reservation', {
+    p_reservation_id: reservationId,
+    p_reason: trimmed,
+  })
+  if (error) throw new Error(error.message)
+}
+
+// Reprograma (mueve las fechas de) una reserva confirmada. La RPC
+// re-chequea disponibilidad de la misma habitación y recalcula el total
+// conservando la tarifa por noche. La justificación es obligatoria.
+export async function rescheduleReservation(
+  reservationId: string,
+  checkIn: string,
+  checkOut: string,
+  reason: string,
+): Promise<void> {
+  const trimmed = reason.trim()
+  if (!trimmed) {
+    throw new Error('La justificación es obligatoria')
+  }
+  if (checkOut <= checkIn) {
+    throw new Error('La fecha de salida debe ser posterior a la de entrada')
+  }
+  const { error } = await supabase.rpc('reschedule_reservation', {
+    p_reservation_id: reservationId,
+    p_check_in: checkIn,
+    p_check_out: checkOut,
+    p_reason: trimmed,
+  })
+  if (error) throw new Error(error.message)
+}

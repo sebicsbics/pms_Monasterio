@@ -149,7 +149,7 @@ export function RecordAnticipoView() {
                     {fmtBs(a.amountBs)} · {a.paymentMethod}
                   </p>
                   <p className="text-xs text-slate-500">
-                    Reembolsado {fmtBs(a.refundedAmountBs)} · Estado: {a.status}
+                    Estado: {a.status}
                   </p>
                 </div>
               </div>

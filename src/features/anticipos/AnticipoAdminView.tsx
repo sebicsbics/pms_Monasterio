@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { UserRole } from '../../domain/auth/profile'
 import { ANTICIPOS_ADMIN } from '../../domain/auth/roleGroups'
-import { canRefund, remainingBalance, userFacingAnticipoError, type Anticipo } from '../../domain/anticipos/anticipos'
+import { userFacingAnticipoError, type Anticipo } from '../../domain/anticipos/anticipos'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { fetchPaymentMethods } from '../../services/payments'
-import { fetchAnticipos, modifyAnticipo, refundAnticipo } from '../../services/anticipos'
+import { fetchAnticipos, modifyAnticipo } from '../../services/anticipos'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
 
 const INPUT = 'w-full rounded-lg border border-slate-300 p-2'
@@ -13,13 +13,11 @@ function fmtBs(n: number) {
   return `Bs ${n.toFixed(2)}`
 }
 
-// Vista de reception_admin para reembolsar o modificar anticipos. El
-// original de un anticipo NUNCA se edita en su lugar: modify_anticipo
-// escribe una fila de corrección y solo se permite mientras status=
-// 'active' (se congela permanentemente en cuanto existe cualquier
-// reembolso). Reembolsos parciales permitidos, nunca por encima del saldo
-// disponible (canRefund/remainingBalance — mismo guard que refund_anticipo
-// en SQL).
+// Vista de reception_admin para corregir anticipos. El hotel NO reembolsa
+// (si el huésped no viene, se cancela/reprograma la reserva y el anticipo
+// se pierde). El original de un anticipo NUNCA se edita en su lugar:
+// modify_anticipo escribe una fila de corrección y solo se permite mientras
+// status='active' (queda bloqueado si la reserva se canceló → 'forfeited').
 export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
   const [reservationId, setReservationId] = useState('')
   const [anticipos, setAnticipos] = useState<Anticipo[]>([])
@@ -27,9 +25,6 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
-
-  const [refundAmount, setRefundAmount] = useState('')
-  const [refundReason, setRefundReason] = useState('')
 
   const [modifyAmount, setModifyAmount] = useState('')
   const [modifyMethod, setModifyMethod] = useState('')
@@ -61,32 +56,6 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
         <p className="text-sm text-slate-500">No autorizado para ver esta sección.</p>
       </div>
     )
-  }
-
-  async function handleRefund(a: Anticipo) {
-    setError(null)
-    setMessage(null)
-    const amountNum = Number(refundAmount)
-    if (!canRefund(a, amountNum)) {
-      setError(`El reembolso debe ser mayor a 0 y no exceder el saldo disponible (${fmtBs(remainingBalance(a))})`)
-      return
-    }
-    if (!refundReason.trim()) {
-      setError('La justificación es obligatoria')
-      return
-    }
-    setBusyId(a.id)
-    try {
-      await refundAnticipo(a.id, amountNum, refundReason.trim())
-      setRefundAmount('')
-      setRefundReason('')
-      setMessage('Reembolso registrado.')
-      await reload(reservationId.trim())
-    } catch (e) {
-      setError(userFacingAnticipoError((e as Error).message))
-    } finally {
-      setBusyId(null)
-    }
   }
 
   async function handleModify(a: Anticipo) {
@@ -122,7 +91,7 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <PageHeader
-        title="Reembolsar / modificar anticipos"
+        title="Corregir anticipos"
         subtitle="Solo reception_admin — el original nunca se pierde, cada corrección queda auditada"
       />
       {error && (
@@ -152,34 +121,8 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
                   <p className="text-sm font-semibold text-slate-800">
                     {fmtBs(a.amountBs)} · {a.paymentMethod}
                   </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Reembolsado {fmtBs(a.refundedAmountBs)} · Saldo {fmtBs(remainingBalance(a))}
-                  </p>
                 </div>
                 <Badge tone={a.status === 'active' ? 'success' : 'warning'}>{a.status}</Badge>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-end gap-2">
-                <input
-                  type="number" min={0} step="0.01" placeholder="Monto a reembolsar"
-                  className="w-40 rounded-lg border border-slate-300 p-2 text-sm"
-                  value={refundAmount}
-                  onChange={(e) => setRefundAmount(e.target.value)}
-                />
-                <input
-                  placeholder="Motivo del reembolso"
-                  className="flex-1 rounded-lg border border-slate-300 p-2 text-sm"
-                  value={refundReason}
-                  onChange={(e) => setRefundReason(e.target.value)}
-                />
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={busyId === a.id || a.status === 'refunded'}
-                  onClick={() => handleRefund(a)}
-                >
-                  Reembolsar
-                </Button>
               </div>
 
               {a.status === 'active' ? (
@@ -216,7 +159,7 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
                 </div>
               ) : (
                 <p className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-400">
-                  Congelado: no se puede modificar un anticipo con reembolsos.
+                  Anticipo perdido (reserva cancelada): no se puede modificar.
                 </p>
               )}
             </Card>

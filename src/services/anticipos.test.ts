@@ -8,7 +8,7 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { modifyAnticipo, recordAnticipo, refundAnticipo } from './anticipos'
+import { modifyAnticipo, recordAnticipo } from './anticipos'
 
 describe('recordAnticipo', () => {
   it('sends the record_anticipo RPC payload with the given reservation/amount/method', async () => {
@@ -18,7 +18,6 @@ describe('recordAnticipo', () => {
         id: 'a1',
         reservation_id: 'r1',
         amount_bs: 100,
-        refunded_amount_bs: 0,
         payment_method: 'QR',
         status: 'active',
         cash_movement_id: 'm1',
@@ -53,44 +52,6 @@ describe('recordAnticipo', () => {
   })
 })
 
-describe('refundAnticipo', () => {
-  it('sends the refund_anticipo RPC payload with id/amount/reason', async () => {
-    rpcMock.mockClear()
-    rpcMock.mockResolvedValueOnce({
-      data: {
-        id: 'a1',
-        reservation_id: 'r1',
-        amount_bs: 100,
-        refunded_amount_bs: 40,
-        payment_method: 'QR',
-        status: 'partially_refunded',
-        cash_movement_id: 'm1',
-        received_by: 'u1',
-        received_at: '2026-01-01T00:00:00Z',
-        notes: null,
-      },
-      error: null,
-    })
-    const result = await refundAnticipo('a1', 40, 'no-show penalty')
-    expect(rpcMock).toHaveBeenCalledWith('refund_anticipo', {
-      p_anticipo_id: 'a1',
-      p_refund_bs: 40,
-      p_reason: 'no-show penalty',
-    })
-    expect(result.status).toBe('partially_refunded')
-    expect(result.refundedAmountBs).toBe(40)
-  })
-
-  it('surfaces the over-refund rejection message unchanged', async () => {
-    rpcMock.mockClear()
-    rpcMock.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'El reembolso (41) excede el saldo disponible (40)' },
-    })
-    await expect(refundAnticipo('a1', 41, 'x')).rejects.toThrow('excede el saldo disponible')
-  })
-})
-
 describe('modifyAnticipo', () => {
   it('sends the modify_anticipo RPC payload with id/amount/method/reason', async () => {
     rpcMock.mockClear()
@@ -99,7 +60,6 @@ describe('modifyAnticipo', () => {
         id: 'a1',
         reservation_id: 'r1',
         amount_bs: 120,
-        refunded_amount_bs: 0,
         payment_method: 'TARJETA',
         status: 'active',
         cash_movement_id: 'm1',
@@ -119,12 +79,12 @@ describe('modifyAnticipo', () => {
     expect(result.paymentMethod).toBe('TARJETA')
   })
 
-  it('surfaces the frozen-after-refund rejection unchanged', async () => {
+  it('surfaces the forfeited-anticipo rejection unchanged', async () => {
     rpcMock.mockClear()
     rpcMock.mockResolvedValueOnce({
       data: null,
-      error: { message: 'No se puede modificar un anticipo ya reembolsado (total o parcialmente)' },
+      error: { message: 'No se puede modificar un anticipo perdido (reserva cancelada)' },
     })
-    await expect(modifyAnticipo('a1', 90, 'QR', 'x')).rejects.toThrow('ya reembolsado')
+    await expect(modifyAnticipo('a1', 90, 'QR', 'x')).rejects.toThrow('anticipo perdido')
   })
 })
