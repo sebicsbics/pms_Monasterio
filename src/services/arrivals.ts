@@ -49,6 +49,11 @@ export interface CheckInProfile {
   countryCode: string
   city: string
   wantsOffers: boolean
+  // Perfil de viaje (registro turístico).
+  originCity: string
+  travelPurpose: string
+  occupation: string
+  transportMeans: string
 }
 
 // Perfil completo de un acompañante (huésped no titular de la habitación).
@@ -59,6 +64,10 @@ export interface CompanionGuest {
   birthDate: string
   countryCode: string
   city: string
+  originCity: string
+  travelPurpose: string
+  occupation: string
+  transportMeans: string
 }
 
 // Convierte los acompañantes al shape jsonb que esperan las RPC de
@@ -74,6 +83,10 @@ export function companionsToPayload(companions: CompanionGuest[]) {
       birth_date: g.birthDate || '',
       country_code: g.countryCode.trim().toUpperCase(),
       city: g.city.trim(),
+      origin_city: g.originCity.trim(),
+      travel_purpose: g.travelPurpose.trim(),
+      occupation: g.occupation.trim(),
+      transport_means: g.transportMeans.trim(),
     }))
 }
 
@@ -91,6 +104,10 @@ export async function checkInFromReservation(
     p_country_code: profile.countryCode,
     p_city: profile.city,
     p_wants_offers: profile.wantsOffers,
+    p_origin_city: profile.originCity,
+    p_travel_purpose: profile.travelPurpose,
+    p_occupation: profile.occupation,
+    p_transport_means: profile.transportMeans,
     p_companions: companionsToPayload(companions),
   })
   if (error) throw new Error(error.message)

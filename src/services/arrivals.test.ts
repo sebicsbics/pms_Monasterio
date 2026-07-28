@@ -71,9 +71,13 @@ describe('checkInFromReservation', () => {
     countryCode: 'BOL',
     city: 'La Paz',
     wantsOffers: false,
+    originCity: 'Cochabamba',
+    travelPurpose: 'Turismo',
+    occupation: 'Ingeniero',
+    transportMeans: 'Auto',
   }
 
-  it('sends an empty companions array when none are given', async () => {
+  it('sends an empty companions array and the traveler profile when none are given', async () => {
     rpcMock.mockClear()
     await checkInFromReservation('res-1', profile)
     expect(rpcMock).toHaveBeenCalledWith('check_in_reservation_with_guests', {
@@ -83,6 +87,10 @@ describe('checkInFromReservation', () => {
       p_country_code: 'BOL',
       p_city: 'La Paz',
       p_wants_offers: false,
+      p_origin_city: 'Cochabamba',
+      p_travel_purpose: 'Turismo',
+      p_occupation: 'Ingeniero',
+      p_transport_means: 'Auto',
       p_companions: [],
     })
   })
@@ -90,8 +98,8 @@ describe('checkInFromReservation', () => {
   it('maps and sends only companions that have first and last name', async () => {
     rpcMock.mockClear()
     await checkInFromReservation('res-2', profile, [
-      { firstName: 'Ana', lastName: 'Pérez', document: 'X9', birthDate: '1990-01-01', countryCode: 'bol', city: 'Tarija' },
-      { firstName: '', lastName: '', document: '', birthDate: '', countryCode: '', city: '' },
+      { firstName: 'Ana', lastName: 'Pérez', document: 'X9', birthDate: '1990-01-01', countryCode: 'bol', city: 'Tarija', originCity: 'Sucre', travelPurpose: 'Trabajo', occupation: 'Médica', transportMeans: 'Bus' },
+      { firstName: '', lastName: '', document: '', birthDate: '', countryCode: '', city: '', originCity: '', travelPurpose: '', occupation: '', transportMeans: '' },
     ])
     const payload = rpcMock.mock.calls[0][1] as { p_companions: unknown[] }
     expect(payload.p_companions).toEqual([
@@ -102,6 +110,10 @@ describe('checkInFromReservation', () => {
         birth_date: '1990-01-01',
         country_code: 'BOL',
         city: 'Tarija',
+        origin_city: 'Sucre',
+        travel_purpose: 'Trabajo',
+        occupation: 'Médica',
+        transport_means: 'Bus',
       },
     ])
   })

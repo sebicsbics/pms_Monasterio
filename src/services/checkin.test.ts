@@ -127,13 +127,13 @@ describe('walkInCheckIn', () => {
     await walkInCheckIn({
       ...baseData,
       companions: [
-        { firstName: 'Luis', lastName: 'Gómez', document: 'Z1', birthDate: '', countryCode: 'bol', city: 'Oruro' },
-        { firstName: '', lastName: '', document: '', birthDate: '', countryCode: '', city: '' },
+        { firstName: 'Luis', lastName: 'Gómez', document: 'Z1', birthDate: '', countryCode: 'bol', city: 'Oruro', originCity: 'Potosí', travelPurpose: 'Negocios', occupation: 'Comerciante', transportMeans: 'Avión' },
+        { firstName: '', lastName: '', document: '', birthDate: '', countryCode: '', city: '', originCity: '', travelPurpose: '', occupation: '', transportMeans: '' },
       ],
     })
     const payload = rpcMock.mock.calls[0][1] as { p_companions: unknown[] }
     expect(payload.p_companions).toEqual([
-      { first_name: 'Luis', last_name: 'Gómez', document: 'Z1', birth_date: '', country_code: 'BOL', city: 'Oruro' },
+      { first_name: 'Luis', last_name: 'Gómez', document: 'Z1', birth_date: '', country_code: 'BOL', city: 'Oruro', origin_city: 'Potosí', travel_purpose: 'Negocios', occupation: 'Comerciante', transport_means: 'Avión' },
     ])
   })
 

@@ -21,6 +21,7 @@ import type { AssignableStaff } from '../../domain/tasks/task'
 import { fetchPaymentMethods } from '../../services/payments'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { COUNTRIES } from '../../shared/data/countries'
+import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 import type { CompanionGuest } from '../../services/arrivals'
@@ -46,6 +47,10 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [countryCode, setCountryCode] = useState('')
   const [city, setCity] = useState('')
   const [wantsOffers, setWantsOffers] = useState(false)
+  const [originCity, setOriginCity] = useState('')
+  const [travelPurpose, setTravelPurpose] = useState('')
+  const [occupation, setOccupation] = useState('')
+  const [transportMeans, setTransportMeans] = useState('')
   const [nights, setNights] = useState(1)
   const [typeId, setTypeId] = useState(room.defaultType?.id ?? '')
 
@@ -59,6 +64,10 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     birthDate: '',
     countryCode: '',
     city: '',
+    originCity: '',
+    travelPurpose: '',
+    occupation: '',
+    transportMeans: '',
   })
   const [companions, setCompanions] = useState<CompanionGuest[]>([])
   function updateCompanion(index: number, patch: Partial<CompanionGuest>) {
@@ -255,6 +264,10 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         nights,
         rateBs: canEditCheckInRate && checkInRateDiffers ? rate : null,
         rateReason: canEditCheckInRate && checkInRateDiffers ? checkInRateReason.trim() : null,
+        originCity: originCity.trim(),
+        travelPurpose: travelPurpose.trim(),
+        occupation: occupation.trim(),
+        transportMeans: transportMeans.trim(),
         companions,
       }),
     )
@@ -387,6 +400,38 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 className="mt-1 w-full rounded border border-slate-300 p-2"
               />
             </label>
+            <input
+              placeholder="Ciudad de procedencia"
+              value={originCity}
+              onChange={(e) => setOriginCity(e.target.value)}
+              className="w-full rounded border border-slate-300 p-2"
+            />
+            <select
+              value={travelPurpose}
+              onChange={(e) => setTravelPurpose(e.target.value)}
+              className="w-full rounded border border-slate-300 p-2 text-slate-700"
+            >
+              <option value="">Motivo de viaje…</option>
+              {TRAVEL_PURPOSES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <input
+                placeholder="Profesión / Ocupación"
+                value={occupation}
+                onChange={(e) => setOccupation(e.target.value)}
+                className="w-1/2 rounded border border-slate-300 p-2"
+              />
+              <input
+                placeholder="Medio de transporte"
+                value={transportMeans}
+                onChange={(e) => setTransportMeans(e.target.value)}
+                className="w-1/2 rounded border border-slate-300 p-2"
+              />
+            </div>
             <label className="flex items-center gap-2 text-sm text-slate-600">
               <input
                 type="checkbox"
@@ -514,6 +559,38 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                       className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
                     />
                   </label>
+                  <input
+                    placeholder="Ciudad de procedencia"
+                    value={g.originCity}
+                    onChange={(e) => updateCompanion(i, { originCity: e.target.value })}
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                  <select
+                    value={g.travelPurpose}
+                    onChange={(e) => updateCompanion(i, { travelPurpose: e.target.value })}
+                    className="w-full rounded border border-slate-300 p-2 text-sm text-slate-700"
+                  >
+                    <option value="">Motivo de viaje…</option>
+                    {TRAVEL_PURPOSES.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <input
+                      placeholder="Profesión"
+                      value={g.occupation}
+                      onChange={(e) => updateCompanion(i, { occupation: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    />
+                    <input
+                      placeholder="Transporte"
+                      value={g.transportMeans}
+                      onChange={(e) => updateCompanion(i, { transportMeans: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </div>
                 </div>
               ))}
             </div>

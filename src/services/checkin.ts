@@ -31,6 +31,11 @@ export interface WalkInData {
   // 20260717000000_walkin_editable_rate.sql), no solo acá.
   rateBs?: number | null
   rateReason?: string | null
+  // Perfil de viaje del titular (registro turístico).
+  originCity?: string
+  travelPurpose?: string
+  occupation?: string
+  transportMeans?: string
   // Acompañantes: perfil completo de los demás huéspedes de la habitación.
   companions?: CompanionGuest[]
 }
@@ -56,6 +61,10 @@ export async function walkInCheckIn(data: WalkInData): Promise<string | null> {
     p_nights: data.nights,
     p_rate_bs: data.rateBs ?? null,
     p_rate_reason: data.rateReason ?? null,
+    p_origin_city: data.originCity ?? '',
+    p_travel_purpose: data.travelPurpose ?? '',
+    p_occupation: data.occupation ?? '',
+    p_transport_means: data.transportMeans ?? '',
     p_companions: companionsToPayload(data.companions ?? []),
   })
   if (error) throw new Error(error.message)

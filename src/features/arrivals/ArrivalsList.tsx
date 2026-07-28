@@ -9,6 +9,7 @@ import {
 import { overrideReservationRate } from '../../services/checkin'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
 import { COUNTRIES } from '../../shared/data/countries'
+import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 
@@ -30,6 +31,10 @@ function CheckInModal({
   const [countryCode, setCountryCode] = useState('')
   const [city, setCity] = useState('')
   const [wantsOffers, setWantsOffers] = useState(false)
+  const [originCity, setOriginCity] = useState('')
+  const [travelPurpose, setTravelPurpose] = useState('')
+  const [occupation, setOccupation] = useState('')
+  const [transportMeans, setTransportMeans] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -42,6 +47,10 @@ function CheckInModal({
     birthDate: '',
     countryCode: '',
     city: '',
+    originCity: '',
+    travelPurpose: '',
+    occupation: '',
+    transportMeans: '',
   })
   const companionSlots = Math.max(0, (arrival.numGuests ?? 1) - 1)
   const [companions, setCompanions] = useState<CompanionGuest[]>(() =>
@@ -99,6 +108,10 @@ function CheckInModal({
           countryCode: countryCode.trim().toUpperCase(),
           city: city.trim(),
           wantsOffers,
+          originCity: originCity.trim(),
+          travelPurpose: travelPurpose.trim(),
+          occupation: occupation.trim(),
+          transportMeans: transportMeans.trim(),
         },
         companions,
       )
@@ -240,6 +253,38 @@ function CheckInModal({
               className="mt-1 w-full rounded border border-slate-300 p-2"
             />
           </label>
+          <input
+            placeholder="Ciudad de procedencia"
+            value={originCity}
+            onChange={(e) => setOriginCity(e.target.value)}
+            className="w-full rounded border border-slate-300 p-2"
+          />
+          <select
+            value={travelPurpose}
+            onChange={(e) => setTravelPurpose(e.target.value)}
+            className="w-full rounded border border-slate-300 p-2 text-slate-700"
+          >
+            <option value="">Motivo de viaje…</option>
+            {TRAVEL_PURPOSES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <input
+              placeholder="Profesión / Ocupación"
+              value={occupation}
+              onChange={(e) => setOccupation(e.target.value)}
+              className="w-1/2 rounded border border-slate-300 p-2"
+            />
+            <input
+              placeholder="Medio de transporte"
+              value={transportMeans}
+              onChange={(e) => setTransportMeans(e.target.value)}
+              className="w-1/2 rounded border border-slate-300 p-2"
+            />
+          </div>
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
@@ -306,6 +351,38 @@ function CheckInModal({
                       className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
                     />
                   </label>
+                  <input
+                    placeholder="Ciudad de procedencia"
+                    value={g.originCity}
+                    onChange={(e) => updateCompanion(i, { originCity: e.target.value })}
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                  <select
+                    value={g.travelPurpose}
+                    onChange={(e) => updateCompanion(i, { travelPurpose: e.target.value })}
+                    className="w-full rounded border border-slate-300 p-2 text-sm text-slate-700"
+                  >
+                    <option value="">Motivo de viaje…</option>
+                    {TRAVEL_PURPOSES.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <input
+                      placeholder="Profesión"
+                      value={g.occupation}
+                      onChange={(e) => updateCompanion(i, { occupation: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    />
+                    <input
+                      placeholder="Transporte"
+                      value={g.transportMeans}
+                      onChange={(e) => updateCompanion(i, { transportMeans: e.target.value })}
+                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </div>
                 </div>
               ))}
             </div>
