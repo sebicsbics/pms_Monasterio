@@ -14,7 +14,18 @@ export async function signIn(username: string, password: string): Promise<void> 
     email: email as string,
     password,
   })
-  if (error) throw new Error('Usuario o contraseña incorrectos')
+  if (error) {
+    // No enmascarar errores del servidor (5xx) como "credenciales
+    // inválidas": eso ocultó un 500 de GoTrue durante todo un diagnóstico.
+    // Solo el 400 (credenciales inválidas) usa el mensaje genérico.
+    console.error('signInWithPassword error:', error.status, error.message)
+    if (error.status && error.status >= 500) {
+      throw new Error(
+        'Error del servidor de autenticación. Intentá de nuevo en unos minutos.',
+      )
+    }
+    throw new Error('Usuario o contraseña incorrectos')
+  }
 
   // Marcador de ingreso (best-effort: no bloquea el login si falla).
   if (data.user) {
