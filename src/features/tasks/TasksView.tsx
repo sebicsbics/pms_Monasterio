@@ -10,7 +10,10 @@ import { fetchTasks, createTask, updateTaskStatus } from '../../services/tasks'
 import { PageHeader } from '../../components/ui'
 import { formatDateTime } from '../../lib/date'
 
-const TASK_TYPES: TaskType[] = ['cleaning', 'minibar', 'maintenance', 'other']
+// 'minibar' (Frigobar) queda fuera: ya no hay frigobares en las
+// habitaciones. Se conserva TASK_TYPE_LABEL['minibar'] para mostrar tareas
+// históricas.
+const TASK_TYPES: TaskType[] = ['cleaning', 'maintenance', 'other']
 
 const COLUMN_STYLE: Record<TaskStatus, string> = {
   pending: 'border-amber-200 bg-amber-50',
