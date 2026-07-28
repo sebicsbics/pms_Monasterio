@@ -1,21 +1,15 @@
 import { useState } from 'react'
 import { completeFirstLogin, signOut } from '../../services/auth'
 
-// Primer ingreso: reemplazar la contraseña genérica y registrar el correo real.
+// Primer ingreso: reemplazar la contraseña genérica por una propia.
 export function ChangePassword({ onDone }: { onDone: () => void }) {
-  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [info, setInfo] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!email.trim()) {
-      setError('Ingresá tu correo electrónico')
-      return
-    }
     if (password.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres')
       return
@@ -27,14 +21,8 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
     setBusy(true)
     setError(null)
     try {
-      await completeFirstLogin(password, email.trim())
-      setInfo(
-        'Listo. Te enviamos un correo de verificación a ' +
-          email.trim() +
-          '. Podés continuar usando el sistema.',
-      )
-      // pequeña pausa para que lea el aviso, luego entra
-      setTimeout(onDone, 2500)
+      await completeFirstLogin(password)
+      onDone()
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
@@ -51,7 +39,7 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
           Configurá tu cuenta
         </h1>
         <p className="mb-6 text-sm text-slate-500">
-          Primer ingreso: registrá tu correo y elegí tu propia contraseña.
+          Primer ingreso: elegí tu propia contraseña.
         </p>
 
         {error && (
@@ -59,23 +47,7 @@ export function ChangePassword({ onDone }: { onDone: () => void }) {
             {error}
           </p>
         )}
-        {info && (
-          <p className="mb-4 rounded bg-green-50 p-2 text-sm text-green-700">
-            {info}
-          </p>
-        )}
 
-        <label className="mb-3 block text-sm">
-          <span className="text-slate-600">Tu correo electrónico</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 p-2"
-            autoComplete="email"
-            required
-          />
-        </label>
         <label className="mb-3 block text-sm">
           <span className="text-slate-600">Nueva contraseña</span>
           <input

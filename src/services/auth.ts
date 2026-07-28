@@ -51,16 +51,14 @@ async function recordAccess(userId: string, type: 'login' | 'logout'): Promise<v
   }
 }
 
-// Primer ingreso: fija contraseña propia + correo real (dispara verificación)
-// y baja el flag de contraseña genérica.
-export async function completeFirstLogin(
-  newPassword: string,
-  email: string,
-): Promise<void> {
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword,
-    email,
-  })
+// Primer ingreso: fija la contraseña propia y baja el flag de contraseña
+// genérica. NO toca el email de auth: el login es por username y el email
+// interno (@staff.monasterio.local) es un identificador inmutable. Cambiar
+// el email acá disparaba una validación de GoTrue que rechaza ese TLD y
+// hacía fallar TODO el primer ingreso (incluida la contraseña). El correo
+// real de contacto, si se necesita, se maneja como feature aparte.
+export async function completeFirstLogin(newPassword: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
   if (error) throw new Error(error.message)
   const { error: flagError } = await supabase.rpc('clear_password_change_flag')
   if (flagError) throw new Error(flagError.message)
