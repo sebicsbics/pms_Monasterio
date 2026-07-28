@@ -8,6 +8,7 @@ import {
 } from '../../services/arrivals'
 import { overrideReservationRate } from '../../services/checkin'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
+import { CompanionFields } from '../checkin/CompanionFields'
 import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
 import type { UserRole } from '../../domain/auth/profile'
@@ -43,6 +44,7 @@ function CheckInModal({
   const emptyCompanion = (): CompanionGuest => ({
     firstName: '',
     lastName: '',
+    isMinor: false,
     document: '',
     birthDate: '',
     countryCode: '',
@@ -302,87 +304,10 @@ function CheckInModal({
               {companions.map((g, i) => (
                 <div key={i} className="space-y-2 rounded border border-slate-200 p-3">
                   <p className="text-xs font-semibold text-slate-500">Huésped {i + 2}</p>
-                  <div className="flex gap-2">
-                    <input
-                      placeholder="Nombre"
-                      value={g.firstName}
-                      onChange={(e) => updateCompanion(i, { firstName: e.target.value })}
-                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
-                    />
-                    <input
-                      placeholder="Apellido"
-                      value={g.lastName}
-                      onChange={(e) => updateCompanion(i, { lastName: e.target.value })}
-                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
-                    />
-                  </div>
-                  <input
-                    placeholder="Documento / Pasaporte"
-                    value={g.document}
-                    onChange={(e) => updateCompanion(i, { document: e.target.value })}
-                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  <CompanionFields
+                    companion={g}
+                    onChange={(patch) => updateCompanion(i, patch)}
                   />
-                  <div className="flex gap-2">
-                    <select
-                      value={g.countryCode}
-                      onChange={(e) => updateCompanion(i, { countryCode: e.target.value })}
-                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
-                    >
-                      <option value="">País…</option>
-                      {COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      placeholder="Ciudad"
-                      value={g.city}
-                      onChange={(e) => updateCompanion(i, { city: e.target.value })}
-                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
-                    />
-                  </div>
-                  <label className="block text-xs text-slate-500">
-                    Fecha de nacimiento
-                    <input
-                      type="date"
-                      value={g.birthDate}
-                      onChange={(e) => updateCompanion(i, { birthDate: e.target.value })}
-                      className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
-                    />
-                  </label>
-                  <input
-                    placeholder="Ciudad de procedencia"
-                    value={g.originCity}
-                    onChange={(e) => updateCompanion(i, { originCity: e.target.value })}
-                    className="w-full rounded border border-slate-300 p-2 text-sm"
-                  />
-                  <select
-                    value={g.travelPurpose}
-                    onChange={(e) => updateCompanion(i, { travelPurpose: e.target.value })}
-                    className="w-full rounded border border-slate-300 p-2 text-sm text-slate-700"
-                  >
-                    <option value="">Motivo de viaje…</option>
-                    {TRAVEL_PURPOSES.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <input
-                      placeholder="Profesión"
-                      value={g.occupation}
-                      onChange={(e) => updateCompanion(i, { occupation: e.target.value })}
-                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
-                    />
-                    <input
-                      placeholder="Transporte"
-                      value={g.transportMeans}
-                      onChange={(e) => updateCompanion(i, { transportMeans: e.target.value })}
-                      className="w-1/2 rounded border border-slate-300 p-2 text-sm"
-                    />
-                  </div>
                 </div>
               ))}
             </div>

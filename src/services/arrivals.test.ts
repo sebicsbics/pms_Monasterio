@@ -98,14 +98,15 @@ describe('checkInFromReservation', () => {
   it('maps and sends only companions that have first and last name', async () => {
     rpcMock.mockClear()
     await checkInFromReservation('res-2', profile, [
-      { firstName: 'Ana', lastName: 'Pérez', document: 'X9', birthDate: '1990-01-01', countryCode: 'bol', city: 'Tarija', originCity: 'Sucre', travelPurpose: 'Trabajo', occupation: 'Médica', transportMeans: 'Bus' },
-      { firstName: '', lastName: '', document: '', birthDate: '', countryCode: '', city: '', originCity: '', travelPurpose: '', occupation: '', transportMeans: '' },
+      { firstName: 'Ana', lastName: 'Pérez', isMinor: false, document: 'X9', birthDate: '1990-01-01', countryCode: 'bol', city: 'Tarija', originCity: 'Sucre', travelPurpose: 'Trabajo', occupation: 'Médica', transportMeans: 'Bus' },
+      { firstName: '', lastName: '', isMinor: false, document: '', birthDate: '', countryCode: '', city: '', originCity: '', travelPurpose: '', occupation: '', transportMeans: '' },
     ])
     const payload = rpcMock.mock.calls[0][1] as { p_companions: unknown[] }
     expect(payload.p_companions).toEqual([
       {
         first_name: 'Ana',
         last_name: 'Pérez',
+        is_minor: false,
         document: 'X9',
         birth_date: '1990-01-01',
         country_code: 'BOL',
@@ -116,6 +117,27 @@ describe('checkInFromReservation', () => {
         transport_means: 'Bus',
       },
     ])
+  })
+
+  it('blanks out adult fields for a minor companion but keeps name and birthdate', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-4', profile, [
+      { firstName: 'Niño', lastName: 'Pérez', isMinor: true, document: 'X9', birthDate: '2015-05-05', countryCode: 'BOL', city: 'Tarija', originCity: 'Sucre', travelPurpose: 'Trabajo', occupation: 'x', transportMeans: 'Bus' },
+    ])
+    const payload = rpcMock.mock.calls[0][1] as { p_companions: Record<string, unknown>[] }
+    expect(payload.p_companions[0]).toEqual({
+      first_name: 'Niño',
+      last_name: 'Pérez',
+      is_minor: true,
+      birth_date: '2015-05-05',
+      document: '',
+      country_code: '',
+      city: '',
+      origin_city: '',
+      travel_purpose: '',
+      occupation: '',
+      transport_means: '',
+    })
   })
 
   it('surfaces the occupancy-cap error unchanged', async () => {

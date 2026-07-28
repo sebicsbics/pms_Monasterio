@@ -56,10 +56,12 @@ export interface CheckInProfile {
   transportMeans: string
 }
 
-// Perfil completo de un acompañante (huésped no titular de la habitación).
+// Perfil de un acompañante (huésped no titular de la habitación). Si es
+// menor de 14 (isMinor) no se le piden los datos de adulto.
 export interface CompanionGuest {
   firstName: string
   lastName: string
+  isMinor: boolean
   document: string
   birthDate: string
   countryCode: string
@@ -79,14 +81,16 @@ export function companionsToPayload(companions: CompanionGuest[]) {
     .map((g) => ({
       first_name: g.firstName.trim(),
       last_name: g.lastName.trim(),
-      document: g.document.trim(),
+      is_minor: g.isMinor,
       birth_date: g.birthDate || '',
-      country_code: g.countryCode.trim().toUpperCase(),
-      city: g.city.trim(),
-      origin_city: g.originCity.trim(),
-      travel_purpose: g.travelPurpose.trim(),
-      occupation: g.occupation.trim(),
-      transport_means: g.transportMeans.trim(),
+      // Los menores de 14 no cargan datos de adulto: se mandan en blanco.
+      document: g.isMinor ? '' : g.document.trim(),
+      country_code: g.isMinor ? '' : g.countryCode.trim().toUpperCase(),
+      city: g.isMinor ? '' : g.city.trim(),
+      origin_city: g.isMinor ? '' : g.originCity.trim(),
+      travel_purpose: g.isMinor ? '' : g.travelPurpose.trim(),
+      occupation: g.isMinor ? '' : g.occupation.trim(),
+      transport_means: g.isMinor ? '' : g.transportMeans.trim(),
     }))
 }
 
