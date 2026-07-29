@@ -3,6 +3,7 @@ import type { AvailableRoom, ReservationMethod } from '../../domain/reservations
 import { RESERVATION_METHODS } from '../../domain/reservations/availability'
 import { searchAvailableRooms, createReservation } from '../../services/reservations'
 import { fetchPendingForReservation } from '../../services/rateDiscountRequestsService'
+import { BulkReservation } from './BulkReservation'
 
 // Precarga que llega desde la grilla de Disponibilidad: fecha (1 noche) y
 // habitación a preseleccionar.
@@ -47,6 +48,9 @@ export function NewReservation({ prefill }: { prefill?: ReservationPrefill | nul
   const [success, setSuccess] = useState<string | null>(null)
   const [pendingBanner, setPendingBanner] = useState<string | null>(null)
 
+  // Individual (una habitación) vs grupo (bulk).
+  const [mode, setMode] = useState<'individual' | 'group'>('individual')
+
   async function doSearch(
     ci: string,
     co: string,
@@ -90,6 +94,7 @@ export function NewReservation({ prefill }: { prefill?: ReservationPrefill | nul
   // habitación clickeada (si sigue disponible para esa noche).
   useEffect(() => {
     if (!prefill) return
+    setMode('individual')
     setCheckIn(prefill.checkIn)
     setCheckOut(prefill.checkOut)
     setPax(1)
@@ -158,8 +163,33 @@ export function NewReservation({ prefill }: { prefill?: ReservationPrefill | nul
 
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-6 text-2xl font-bold text-slate-800">Nueva reserva</h1>
+      <h1 className="mb-4 text-2xl font-bold text-slate-800">Nueva reserva</h1>
 
+      <div className="mb-6 inline-flex rounded-lg border border-slate-200 p-1 text-sm">
+        <button
+          type="button"
+          onClick={() => setMode('individual')}
+          className={`rounded-md px-3 py-1 font-medium ${
+            mode === 'individual' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          Individual
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('group')}
+          className={`rounded-md px-3 py-1 font-medium ${
+            mode === 'group' ? 'bg-brand-700 text-white' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          Grupo (en bulk)
+        </button>
+      </div>
+
+      {mode === 'group' && <BulkReservation />}
+
+      {mode === 'individual' && (
+        <>
       {error && (
         <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
       )}
@@ -357,6 +387,8 @@ export function NewReservation({ prefill }: { prefill?: ReservationPrefill | nul
             </button>
           </div>
         </section>
+      )}
+        </>
       )}
     </div>
   )

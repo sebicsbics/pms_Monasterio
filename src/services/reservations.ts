@@ -102,6 +102,52 @@ export async function createReservation(data: ReservationInput): Promise<string>
   return reservationId as string
 }
 
+export interface BulkReservationInput {
+  rooms: { roomId: string; roomTypeId: string }[]
+  firstName: string
+  lastName: string
+  phone: string
+  email: string
+  checkIn: string
+  checkOut: string
+  numGuests: number
+  method: string
+  rateBs?: number | null
+  reason?: string | null
+}
+
+export interface BulkReservationResult {
+  created: string[]
+  failed: { roomId: string; error: string }[]
+}
+
+// Crea muchas reservas de grupo de un saque (mismas fechas + un contacto
+// organizador). Best-effort por habitación: devuelve las creadas y las que
+// fallaron (p.ej. se ocuparon en el medio).
+export async function createBulkReservation(
+  data: BulkReservationInput,
+): Promise<BulkReservationResult> {
+  const { data: res, error } = await supabase.rpc('create_bulk_reservation', {
+    p_rooms: data.rooms.map((r) => ({ room_id: r.roomId, room_type_id: r.roomTypeId })),
+    p_first_name: data.firstName,
+    p_last_name: data.lastName,
+    p_phone: data.phone,
+    p_email: data.email,
+    p_check_in: data.checkIn,
+    p_check_out: data.checkOut,
+    p_num_guests: data.numGuests,
+    p_method: data.method,
+    p_rate_bs: data.rateBs ?? null,
+    p_reason: data.reason ?? null,
+  })
+  if (error) throw new Error(error.message)
+  const r = res as { created: string[]; failed: { room_id: string; error: string }[] }
+  return {
+    created: r.created ?? [],
+    failed: (r.failed ?? []).map((f) => ({ roomId: f.room_id, error: f.error })),
+  }
+}
+
 // Cancela una reserva confirmada. El anticipo (si lo hay) se pierde: no
 // hay reembolso (regla de negocio). La justificación es obligatoria — se
 // valida acá (fail-fast) y de nuevo en la RPC cancel_reservation.
