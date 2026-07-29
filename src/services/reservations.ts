@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { AvailableRoom } from '../domain/reservations/availability'
 import type { RoomType } from '../domain/rooms/room'
+import type { OccupancySpan } from '../domain/availability/occupancy'
 
 interface AvailableRoomRow {
   room_id: string
@@ -34,6 +35,27 @@ export async function searchAvailableRooms(
       basePriceBs: Number(t.basePriceBs),
       maxOccupancy: t.maxOccupancy,
     })),
+  }))
+}
+
+// Reservas activas (confirmadas o con huésped adentro) que se solapan con
+// el rango [from, to], para la grilla de disponibilidad. Una reserva ocupa
+// [check_in, check_out): se solapa si check_in <= to y check_out > from.
+export async function fetchOccupancy(
+  from: string,
+  to: string,
+): Promise<OccupancySpan[]> {
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('room_id, check_in_date, check_out_date')
+    .in('status', ['confirmed', 'checked_in'])
+    .lte('check_in_date', to)
+    .gt('check_out_date', from)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => ({
+    roomId: r.room_id as string,
+    checkIn: r.check_in_date as string,
+    checkOut: r.check_out_date as string,
   }))
 }
 

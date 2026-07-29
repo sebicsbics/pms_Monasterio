@@ -4,6 +4,7 @@ import {
   BarChart3,
   BedDouble,
   CalendarPlus,
+  CalendarRange,
   Clock,
   DoorOpen,
   KeyRound,
@@ -31,6 +32,7 @@ import { RoomBoard } from './features/room-board/RoomBoard'
 import { ArrivalsList } from './features/arrivals/ArrivalsList'
 import { InHouseList } from './features/in-house/InHouseList'
 import { NewReservation } from './features/reservations/NewReservation'
+import { AvailabilityGrid } from './features/availability/AvailabilityGrid'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
 import { TasksView } from './features/tasks/TasksView'
@@ -51,7 +53,7 @@ const Dashboard = lazy(() =>
 )
 
 type Tab =
-  | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'inventory'
+  | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'availability' | 'inventory'
   | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
   | 'access' | 'dashboard' | 'caja' | 'events' | 'discounts' | 'anticipos' | 'anticipos-admin'
 
@@ -67,6 +69,7 @@ const TABS: {
   { id: 'arrivals', label: 'Llegadas', roles: OPERATIONS, icon: DoorOpen, group: 'Operación' },
   { id: 'inhouse', label: 'In-house', roles: SHARED, icon: BedDouble, group: 'Operación' },
   { id: 'reservation', label: 'Nueva reserva', roles: OPERATIONS, icon: CalendarPlus, group: 'Operación' },
+  { id: 'availability', label: 'Disponibilidad', roles: OPERATIONS, icon: CalendarRange, group: 'Operación' },
   { id: 'inventory', label: 'Inventario', roles: SHARED, icon: Package, group: 'Operación' },
   { id: 'caja', label: 'Caja chica', roles: SHARED, icon: Wallet, group: 'Operación' },
   { id: 'events', label: 'Eventos', roles: SHARED, icon: PartyPopper, group: 'Operación' },
@@ -228,6 +231,7 @@ function App() {
         {activeTab === 'arrivals' && <ArrivalsList role={role} />}
         {activeTab === 'inhouse' && <InHouseList />}
         {activeTab === 'reservation' && <NewReservation />}
+        {activeTab === 'availability' && <AvailabilityGrid />}
         {activeTab === 'inventory' && <InventoryView />}
         {activeTab === 'employees' && <EmployeesView role={role} />}
         {activeTab === 'tasks' && <TasksView />}
