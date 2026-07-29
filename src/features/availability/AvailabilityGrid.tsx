@@ -41,7 +41,7 @@ export function AvailabilityGrid({
   onReserve,
   onBulkReserve,
 }: {
-  onReserve?: (date: string, roomNumber: string) => void
+  onReserve?: (checkIn: string, checkOut: string, roomNumber: string) => void
   onBulkReserve?: (checkIn: string, checkOut: string, roomNumbers: string[]) => void
 }) {
   const [rooms, setRooms] = useState<Room[]>([])
@@ -93,21 +93,31 @@ export function AvailabilityGrid({
   const inRect = (r: number, c: number) =>
     !!rect && r >= rect.rMin && r <= rect.rMax && c >= rect.cMin && c <= rect.cMax
 
-  // Cierre del arrastre a nivel documento: un click simple (1 celda) es
-  // reserva individual; un bloque queda seleccionado para bulk.
+  // Cierre del arrastre a nivel documento. El criterio es la cantidad de
+  // HABITACIONES (filas): una sola habitación → reserva individual (aunque
+  // sean varias noches); varias habitaciones → bloque para bulk.
   useEffect(() => {
     if (!dragging) return
     function onUp() {
       setDragging(false)
       if (!rect) return
-      if (rect.rMin === rect.rMax && rect.cMin === rect.cMax) {
+      if (rect.rMin === rect.rMax) {
+        // Una sola habitación → reserva individual con el rango de noches.
         const room = rooms[rect.rMin]
-        const date = dates[rect.cMin]
-        if (room && date && !isOccupied(spans, room.id, date)) {
-          onReserve?.(date, room.roomNumber)
+        const selectedDates = dates.slice(rect.cMin, rect.cMax + 1)
+        const allFree =
+          !!room && selectedDates.length > 0 &&
+          selectedDates.every((d) => !isOccupied(spans, room.id, d))
+        if (room && allFree) {
+          onReserve?.(
+            selectedDates[0],
+            addDays(selectedDates[selectedDates.length - 1], 1),
+            room.roomNumber,
+          )
         }
         setSel(null)
       }
+      // Varias habitaciones → se mantiene la selección y aparece la barra bulk.
     }
     document.addEventListener('mouseup', onUp)
     return () => document.removeEventListener('mouseup', onUp)
@@ -119,13 +129,14 @@ export function AvailabilityGrid({
   const qualifying = selRooms.filter((room) =>
     selDates.every((d) => !isOccupied(spans, room.id, d)),
   )
-  const isBlock = !!rect && (rect.rMin !== rect.rMax || rect.cMin !== rect.cMax)
+  // La barra de bulk solo aparece con VARIAS habitaciones (varias filas).
+  const isBlock = !!rect && rect.rMin !== rect.rMax
 
   return (
     <div className="mx-auto max-w-full select-none p-6">
       <PageHeader
         title="Disponibilidad"
-        subtitle="Verde disponible, amarillo reservado · click para reservar 1, arrastrá para reservar un bloque en grupo"
+        subtitle="Verde disponible, amarillo reservado · una habitación (aunque sean varias noches) = reserva individual; varias habitaciones = reserva en grupo"
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">

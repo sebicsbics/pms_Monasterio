@@ -87,13 +87,6 @@ const TABS: {
   { id: 'anticipos-admin', label: 'Corregir anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
 ]
 
-// Suma días a una fecha 'YYYY-MM-DD'.
-function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00`)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -247,12 +240,8 @@ function App() {
         )}
         {activeTab === 'availability' && (
           <AvailabilityGrid
-            onReserve={(date, roomNumber) => {
-              setReservationPrefill({
-                checkIn: date,
-                checkOut: addDays(date, 1),
-                roomNumber,
-              })
+            onReserve={(checkIn, checkOut, roomNumber) => {
+              setReservationPrefill({ checkIn, checkOut, roomNumber })
               go('reservation')
             }}
             onBulkReserve={(checkIn, checkOut, roomNumbers) => {
