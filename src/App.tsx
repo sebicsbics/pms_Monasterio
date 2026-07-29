@@ -31,7 +31,7 @@ import { ChangePassword } from './features/auth/ChangePassword'
 import { RoomBoard } from './features/room-board/RoomBoard'
 import { ArrivalsList } from './features/arrivals/ArrivalsList'
 import { InHouseList } from './features/in-house/InHouseList'
-import { NewReservation } from './features/reservations/NewReservation'
+import { NewReservation, type ReservationPrefill } from './features/reservations/NewReservation'
 import { AvailabilityGrid } from './features/availability/AvailabilityGrid'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
@@ -86,12 +86,22 @@ const TABS: {
   { id: 'anticipos-admin', label: 'Corregir anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
 ]
 
+// Suma días a una fecha 'YYYY-MM-DD'.
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00`)
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('board')
   const [navOpen, setNavOpen] = useState(false)
+  // Precarga para "Nueva reserva" cuando se llega desde la grilla de
+  // Disponibilidad (click en una celda disponible).
+  const [reservationPrefill, setReservationPrefill] = useState<ReservationPrefill | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -230,8 +240,19 @@ function App() {
         {activeTab === 'board' && <RoomBoard role={role} />}
         {activeTab === 'arrivals' && <ArrivalsList role={role} />}
         {activeTab === 'inhouse' && <InHouseList />}
-        {activeTab === 'reservation' && <NewReservation />}
-        {activeTab === 'availability' && <AvailabilityGrid />}
+        {activeTab === 'reservation' && <NewReservation prefill={reservationPrefill} />}
+        {activeTab === 'availability' && (
+          <AvailabilityGrid
+            onReserve={(date, roomNumber) => {
+              setReservationPrefill({
+                checkIn: date,
+                checkOut: addDays(date, 1),
+                roomNumber,
+              })
+              go('reservation')
+            }}
+          />
+        )}
         {activeTab === 'inventory' && <InventoryView />}
         {activeTab === 'employees' && <EmployeesView role={role} />}
         {activeTab === 'tasks' && <TasksView />}

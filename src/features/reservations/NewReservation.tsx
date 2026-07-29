@@ -1,8 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AvailableRoom, ReservationMethod } from '../../domain/reservations/availability'
 import { RESERVATION_METHODS } from '../../domain/reservations/availability'
 import { searchAvailableRooms, createReservation } from '../../services/reservations'
 import { fetchPendingForReservation } from '../../services/rateDiscountRequestsService'
+
+// Precarga que llega desde la grilla de Disponibilidad: fecha (1 noche) y
+// habitación a preseleccionar.
+export interface ReservationPrefill {
+  checkIn: string
+  checkOut: string
+  roomNumber: string
+}
 
 const METHOD_LABELS: Record<ReservationMethod, string> = {
   phone: 'Llamada',
@@ -14,7 +22,7 @@ const METHOD_LABELS: Record<ReservationMethod, string> = {
 
 const METHODS = RESERVATION_METHODS.map((value) => ({ value, label: METHOD_LABELS[value] }))
 
-export function NewReservation() {
+export function NewReservation({ prefill }: { prefill?: ReservationPrefill | null }) {
   // Paso 1: búsqueda
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
@@ -39,26 +47,37 @@ export function NewReservation() {
   const [success, setSuccess] = useState<string | null>(null)
   const [pendingBanner, setPendingBanner] = useState<string | null>(null)
 
-  async function handleSearch() {
+  async function doSearch(
+    ci: string,
+    co: string,
+    px: number,
+  ): Promise<AvailableRoom[] | null> {
     setError(null)
     setSuccess(null)
     setSelected(null)
-    if (!checkIn || !checkOut) {
+    if (!ci || !co) {
       setError('Elegí fecha de entrada y salida')
-      return
+      return null
     }
-    if (checkOut <= checkIn) {
+    if (co <= ci) {
       setError('La salida debe ser posterior a la entrada')
-      return
+      return null
     }
     setBusy(true)
     try {
-      setResults(await searchAvailableRooms(checkIn, checkOut, pax))
+      const rooms = await searchAvailableRooms(ci, co, px)
+      setResults(rooms)
+      return rooms
     } catch (e) {
       setError((e as Error).message)
+      return null
     } finally {
       setBusy(false)
     }
+  }
+
+  function handleSearch() {
+    void doSearch(checkIn, checkOut, pax)
   }
 
   function selectRoom(room: AvailableRoom) {
@@ -66,6 +85,20 @@ export function NewReservation() {
     setTypeId(room.suitableTypes[0]?.id ?? '')
     setError(null)
   }
+
+  // Precarga desde Disponibilidad: fija fechas, busca y preselecciona la
+  // habitación clickeada (si sigue disponible para esa noche).
+  useEffect(() => {
+    if (!prefill) return
+    setCheckIn(prefill.checkIn)
+    setCheckOut(prefill.checkOut)
+    setPax(1)
+    void doSearch(prefill.checkIn, prefill.checkOut, 1).then((rooms) => {
+      const match = rooms?.find((r) => r.roomNumber === prefill.roomNumber)
+      if (match) selectRoom(match)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill])
 
   async function handleCreate() {
     if (!selected) return

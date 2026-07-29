@@ -30,7 +30,11 @@ function DayHeader({ date }: { date: string }) {
   )
 }
 
-export function AvailabilityGrid() {
+export function AvailabilityGrid({
+  onReserve,
+}: {
+  onReserve?: (date: string, roomNumber: string) => void
+}) {
   const [rooms, setRooms] = useState<Room[]>([])
   const [spans, setSpans] = useState<OccupancySpan[]>([])
   const [from, setFrom] = useState(TODAY)
@@ -134,14 +138,23 @@ export function AvailabilityGrid() {
                 </td>
                 {dates.map((d) => {
                   const occupied = isOccupied(spans, room.id, d)
+                  const canReserve = !occupied && !!onReserve
                   return (
-                    <td
-                      key={d}
-                      title={`Hab. ${room.roomNumber} · ${d} · ${occupied ? 'Reservado' : 'Disponible'}`}
-                      className={`h-7 border border-slate-100 ${
-                        occupied ? 'bg-amber-300' : 'bg-green-300'
-                      }`}
-                    />
+                    <td key={d} className="border border-slate-100 p-0">
+                      <button
+                        type="button"
+                        disabled={!canReserve}
+                        onClick={() => onReserve?.(d, room.roomNumber)}
+                        title={`Hab. ${room.roomNumber} · ${d} · ${
+                          occupied ? 'Reservado' : 'Disponible — click para reservar'
+                        }`}
+                        className={`h-7 w-full disabled:cursor-default ${
+                          occupied
+                            ? 'bg-amber-300'
+                            : 'bg-green-300 hover:bg-green-400 cursor-pointer'
+                        }`}
+                      />
+                    </td>
                   )
                 })}
               </tr>
