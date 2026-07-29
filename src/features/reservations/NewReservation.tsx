@@ -3,7 +3,7 @@ import type { AvailableRoom, ReservationMethod } from '../../domain/reservations
 import { RESERVATION_METHODS } from '../../domain/reservations/availability'
 import { searchAvailableRooms, createReservation } from '../../services/reservations'
 import { fetchPendingForReservation } from '../../services/rateDiscountRequestsService'
-import { BulkReservation } from './BulkReservation'
+import { BulkReservation, type BulkReservationPrefill } from './BulkReservation'
 
 // Precarga que llega desde la grilla de Disponibilidad: fecha (1 noche) y
 // habitación a preseleccionar.
@@ -23,7 +23,13 @@ const METHOD_LABELS: Record<ReservationMethod, string> = {
 
 const METHODS = RESERVATION_METHODS.map((value) => ({ value, label: METHOD_LABELS[value] }))
 
-export function NewReservation({ prefill }: { prefill?: ReservationPrefill | null }) {
+export function NewReservation({
+  prefill,
+  bulkPrefill,
+}: {
+  prefill?: ReservationPrefill | null
+  bulkPrefill?: BulkReservationPrefill | null
+}) {
   // Paso 1: búsqueda
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
@@ -104,6 +110,11 @@ export function NewReservation({ prefill }: { prefill?: ReservationPrefill | nul
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill])
+
+  // Precarga de grupo desde Disponibilidad → entra en modo bulk.
+  useEffect(() => {
+    if (bulkPrefill) setMode('group')
+  }, [bulkPrefill])
 
   async function handleCreate() {
     if (!selected) return
@@ -186,7 +197,7 @@ export function NewReservation({ prefill }: { prefill?: ReservationPrefill | nul
         </button>
       </div>
 
-      {mode === 'group' && <BulkReservation />}
+      {mode === 'group' && <BulkReservation prefill={bulkPrefill} />}
 
       {mode === 'individual' && (
         <>

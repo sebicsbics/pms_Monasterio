@@ -32,6 +32,7 @@ import { RoomBoard } from './features/room-board/RoomBoard'
 import { ArrivalsList } from './features/arrivals/ArrivalsList'
 import { InHouseList } from './features/in-house/InHouseList'
 import { NewReservation, type ReservationPrefill } from './features/reservations/NewReservation'
+import type { BulkReservationPrefill } from './features/reservations/BulkReservation'
 import { AvailabilityGrid } from './features/availability/AvailabilityGrid'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
@@ -102,6 +103,7 @@ function App() {
   // Precarga para "Nueva reserva" cuando se llega desde la grilla de
   // Disponibilidad (click en una celda disponible).
   const [reservationPrefill, setReservationPrefill] = useState<ReservationPrefill | null>(null)
+  const [bulkPrefill, setBulkPrefill] = useState<BulkReservationPrefill | null>(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -240,7 +242,9 @@ function App() {
         {activeTab === 'board' && <RoomBoard role={role} />}
         {activeTab === 'arrivals' && <ArrivalsList role={role} />}
         {activeTab === 'inhouse' && <InHouseList />}
-        {activeTab === 'reservation' && <NewReservation prefill={reservationPrefill} />}
+        {activeTab === 'reservation' && (
+          <NewReservation prefill={reservationPrefill} bulkPrefill={bulkPrefill} />
+        )}
         {activeTab === 'availability' && (
           <AvailabilityGrid
             onReserve={(date, roomNumber) => {
@@ -249,6 +253,10 @@ function App() {
                 checkOut: addDays(date, 1),
                 roomNumber,
               })
+              go('reservation')
+            }}
+            onBulkReserve={(checkIn, checkOut, roomNumbers) => {
+              setBulkPrefill({ checkIn, checkOut, roomNumbers })
               go('reservation')
             }}
           />

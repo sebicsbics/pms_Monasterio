@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AvailableRoom, ReservationMethod } from '../../domain/reservations/availability'
 import { RESERVATION_METHODS } from '../../domain/reservations/availability'
 import {
@@ -6,6 +6,14 @@ import {
   createBulkReservation,
   type BulkReservationResult,
 } from '../../services/reservations'
+
+// Precarga desde la grilla de Disponibilidad: fechas del bloque + números
+// de habitación a preseleccionar.
+export interface BulkReservationPrefill {
+  checkIn: string
+  checkOut: string
+  roomNumbers: string[]
+}
 
 const METHOD_LABELS: Record<ReservationMethod, string> = {
   phone: 'Llamada',
@@ -18,7 +26,7 @@ const METHODS = RESERVATION_METHODS.map((value) => ({ value, label: METHOD_LABEL
 
 // Reserva en grupo: mismas fechas para muchas habitaciones, un contacto
 // organizador. Los datos de cada huésped se completan en el check-in.
-export function BulkReservation() {
+export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill | null }) {
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
   const [pax, setPax] = useState(1)
@@ -36,6 +44,27 @@ export function BulkReservation() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BulkReservationResult | null>(null)
+
+  // Precarga desde Disponibilidad: fija fechas, busca y preselecciona las
+  // habitaciones del bloque que sigan disponibles.
+  useEffect(() => {
+    if (!prefill) return
+    setCheckIn(prefill.checkIn)
+    setCheckOut(prefill.checkOut)
+    setPax(1)
+    setError(null)
+    setResult(null)
+    setBusy(true)
+    searchAvailableRooms(prefill.checkIn, prefill.checkOut, 1)
+      .then((rooms) => {
+        setResults(rooms)
+        const wanted = new Set(prefill.roomNumbers)
+        setSelected(new Set(rooms.filter((r) => wanted.has(r.roomNumber)).map((r) => r.roomId)))
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setBusy(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill])
 
   async function handleSearch() {
     setError(null)
