@@ -6,14 +6,13 @@ import type {
 import {
   ASSIGNMENT_STATUS_LABEL,
   ASSIGNMENT_KIND_LABEL,
+  formatDuration,
 } from '../../domain/housekeeping/assignment'
-import type { AssignableStaff } from '../../domain/tasks/task'
 import {
   fetchAssignments,
   generateAssignments,
   updateAssignmentStatus,
-  assignStaff,
-  fetchAssignableStaff,
+  assignStaffName,
 } from '../../services/housekeeping'
 import { PageHeader } from '../../components/ui'
 import { formatDate } from '../../lib/date'
@@ -38,7 +37,6 @@ function today(): string {
 export function HousekeepingBoardView() {
   const [serviceDate, setServiceDate] = useState(today())
   const [assignments, setAssignments] = useState<HousekeepingAssignment[]>([])
-  const [staff, setStaff] = useState<AssignableStaff[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -51,13 +49,6 @@ export function HousekeepingBoardView() {
   useEffect(() => {
     void reload(serviceDate)
   }, [reload, serviceDate])
-
-  useEffect(() => {
-    fetchAssignableStaff().then(setStaff).catch((e: Error) => setError(e.message))
-  }, [])
-
-  const staffName = (id: string | null) =>
-    id ? (staff.find((s) => s.personId === id)?.fullName ?? '—') : 'Sin asignar'
 
   async function handleGenerate() {
     setBusy(true)
@@ -81,9 +72,10 @@ export function HousekeepingBoardView() {
     }
   }
 
-  async function changeAssignee(id: string, personId: string) {
+  async function saveAssignee(id: string, name: string, prev: string | null) {
+    if (name.trim() === (prev ?? '')) return
     try {
-      await assignStaff(id, personId || null)
+      await assignStaffName(id, name)
       await reload(serviceDate)
     } catch (e) {
       setError((e as Error).message)
@@ -125,58 +117,60 @@ export function HousekeepingBoardView() {
             <tr>
               <th className="p-3">Tipo</th>
               <th className="p-3">Habitación</th>
-              <th className="p-3">Asignada a</th>
+              <th className="p-3">Mucama</th>
               <th className="p-3">Estado</th>
+              <th className="p-3">Duración</th>
               <th className="p-3">Notas</th>
             </tr>
           </thead>
           <tbody>
-            {assignments.map((a) => (
-              <tr key={a.id} className="border-t border-slate-100">
-                <td className="p-3">
-                  <span
-                    className={`rounded px-2 py-1 text-xs font-medium ${KIND_STYLE[a.kind]}`}
-                  >
-                    {ASSIGNMENT_KIND_LABEL[a.kind]}
-                  </span>
-                </td>
-                <td className="p-3">
-                  {a.roomNumber ? `Hab. ${a.roomNumber}` : 'Sin habitación'}
-                </td>
-                <td className="p-3">
-                  <select
-                    value={a.assignedTo ?? ''}
-                    onChange={(e) => changeAssignee(a.id, e.target.value)}
-                    className="rounded border border-slate-300 p-2"
-                  >
-                    <option value="">Sin asignar</option>
-                    {staff.map((s) => (
-                      <option key={s.personId} value={s.personId}>
-                        {s.fullName} ({s.jobTitle})
-                      </option>
-                    ))}
-                  </select>
-                  <span className="sr-only">{staffName(a.assignedTo)}</span>
-                </td>
-                <td className="p-3">
-                  <select
-                    value={a.status}
-                    onChange={(e) => changeStatus(a.id, e.target.value as AssignmentStatus)}
-                    className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[a.status]}`}
-                  >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {ASSIGNMENT_STATUS_LABEL[s]}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="p-3 text-slate-500">{a.notes ?? '—'}</td>
-              </tr>
-            ))}
+            {assignments.map((a) => {
+              const duration = formatDuration(a.startedAt, a.completedAt)
+              return (
+                <tr key={a.id} className="border-t border-slate-100">
+                  <td className="p-3">
+                    <span className={`rounded px-2 py-1 text-xs font-medium ${KIND_STYLE[a.kind]}`}>
+                      {ASSIGNMENT_KIND_LABEL[a.kind]}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    {a.roomNumber ? `Hab. ${a.roomNumber}` : 'Sin habitación'}
+                  </td>
+                  <td className="p-3">
+                    <input
+                      defaultValue={a.assignedToName ?? ''}
+                      placeholder="Nombre de la mucama"
+                      onBlur={(e) => saveAssignee(a.id, e.target.value, a.assignedToName)}
+                      className="w-40 rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </td>
+                  <td className="p-3">
+                    <select
+                      value={a.status}
+                      onChange={(e) => changeStatus(a.id, e.target.value as AssignmentStatus)}
+                      className={`rounded px-2 py-1 text-xs font-medium ${STATUS_STYLE[a.status]}`}
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {ASSIGNMENT_STATUS_LABEL[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="p-3 text-slate-500">
+                    {a.status === 'done'
+                      ? (duration ?? '—')
+                      : a.status === 'in_progress'
+                        ? 'En curso…'
+                        : '—'}
+                  </td>
+                  <td className="p-3 text-slate-500">{a.notes ?? '—'}</td>
+                </tr>
+              )
+            })}
             {assignments.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-4 text-center text-slate-400">
+                <td colSpan={6} className="p-4 text-center text-slate-400">
                   Sin asignaciones para esta fecha. Generá el tablero del día.
                 </td>
               </tr>

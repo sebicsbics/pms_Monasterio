@@ -16,7 +16,12 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { fetchAssignments, generateAssignments, updateAssignmentStatus, assignStaff } from './housekeeping'
+import {
+  fetchAssignments,
+  generateAssignments,
+  updateAssignmentStatus,
+  assignStaffName,
+} from './housekeeping'
 
 describe('fetchAssignments', () => {
   it('maps snake_case rows (with nested room) into camelCase domain objects', async () => {
@@ -26,12 +31,13 @@ describe('fetchAssignments', () => {
           id: 'a1',
           room_id: 'r1',
           service_date: '2026-07-22',
-          assigned_to: 'p1',
+          assigned_to_name: 'María',
           kind: 'stayover',
-          status: 'pending',
+          status: 'done',
           notes: null,
-          completed_at: null,
-          created_at: '2026-07-22T10:00:00.000Z',
+          started_at: '2026-07-22T10:00:00.000Z',
+          completed_at: '2026-07-22T10:25:00.000Z',
+          created_at: '2026-07-22T09:00:00.000Z',
           rooms: { room_number: '101' },
         },
       ],
@@ -48,12 +54,13 @@ describe('fetchAssignments', () => {
         roomId: 'r1',
         roomNumber: '101',
         serviceDate: '2026-07-22',
-        assignedTo: 'p1',
+        assignedToName: 'María',
         kind: 'stayover',
-        status: 'pending',
+        status: 'done',
         notes: null,
-        completedAt: null,
-        createdAt: '2026-07-22T10:00:00.000Z',
+        startedAt: '2026-07-22T10:00:00.000Z',
+        completedAt: '2026-07-22T10:25:00.000Z',
+        createdAt: '2026-07-22T09:00:00.000Z',
       },
     ])
   })
@@ -96,24 +103,44 @@ describe('updateAssignmentStatus', () => {
     expect(eqUpdate).toHaveBeenCalledWith('id', 'a1')
   })
 
-  it('sets completed_at to null when status is not done', async () => {
+  it('starts the timer (started_at) and clears completed_at when in_progress', async () => {
     const eqUpdate = vi.fn().mockResolvedValueOnce({ error: null })
     updateMock.mockReturnValueOnce({ eq: eqUpdate })
 
     await updateAssignmentStatus('a1', 'in_progress')
 
-    expect(updateMock).toHaveBeenCalledWith({ status: 'in_progress', completed_at: null })
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'in_progress', started_at: expect.any(String), completed_at: null }),
+    )
   })
-})
 
-describe('assignStaff', () => {
-  it('updates assigned_to for the given assignment id', async () => {
+  it('resets both timestamps when back to pending', async () => {
     const eqUpdate = vi.fn().mockResolvedValueOnce({ error: null })
     updateMock.mockReturnValueOnce({ eq: eqUpdate })
 
-    await assignStaff('a1', 'p1')
+    await updateAssignmentStatus('a1', 'pending')
 
-    expect(updateMock).toHaveBeenCalledWith({ assigned_to: 'p1' })
+    expect(updateMock).toHaveBeenCalledWith({ status: 'pending', started_at: null, completed_at: null })
+  })
+})
+
+describe('assignStaffName', () => {
+  it('updates assigned_to_name (trimmed) for the given assignment id', async () => {
+    const eqUpdate = vi.fn().mockResolvedValueOnce({ error: null })
+    updateMock.mockReturnValueOnce({ eq: eqUpdate })
+
+    await assignStaffName('a1', '  María  ')
+
+    expect(updateMock).toHaveBeenCalledWith({ assigned_to_name: 'María' })
     expect(eqUpdate).toHaveBeenCalledWith('id', 'a1')
+  })
+
+  it('sends null when the name is blank', async () => {
+    const eqUpdate = vi.fn().mockResolvedValueOnce({ error: null })
+    updateMock.mockReturnValueOnce({ eq: eqUpdate })
+
+    await assignStaffName('a1', '   ')
+
+    expect(updateMock).toHaveBeenCalledWith({ assigned_to_name: null })
   })
 })

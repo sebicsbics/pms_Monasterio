@@ -12,4 +12,5 @@ export interface Arrival {
   checkOutDate: string
   numGuests: number | null
   method: string
+  anticipoTotalBs: number // suma de anticipos activos (0 si no tiene)
 }

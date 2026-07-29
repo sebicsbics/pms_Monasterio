@@ -102,6 +102,30 @@ export async function createReservation(data: ReservationInput): Promise<string>
   return reservationId as string
 }
 
+export interface ReservationBrief {
+  id: string
+  roomNumber: string
+  guestName: string
+  checkIn: string
+  checkOut: string
+  status: string
+}
+
+// Reservas activas (confirmadas o con huésped adentro) con habitación,
+// huésped y fechas — para dropdowns (ej. asociar un anticipo).
+export async function listReservationsBrief(): Promise<ReservationBrief[]> {
+  const { data, error } = await supabase.rpc('list_reservations_brief')
+  if (error) throw new Error(error.message)
+  return (data as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    roomNumber: r.room_number as string,
+    guestName: r.guest_name as string,
+    checkIn: r.check_in_date as string,
+    checkOut: r.check_out_date as string,
+    status: r.status as string,
+  }))
+}
+
 export interface BulkReservationInput {
   rooms: { roomId: string; roomTypeId: string }[]
   firstName: string

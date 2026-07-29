@@ -14,6 +14,7 @@ interface ArrivalRow {
   check_out_date: string
   num_guests: number | null
   method: string
+  anticipo_total_bs: number | string | null
 }
 
 // Llegadas (reservas confirmadas sin check-in) dentro de un rango de
@@ -40,6 +41,7 @@ export async function fetchArrivals(
     checkOutDate: r.check_out_date,
     numGuests: r.num_guests,
     method: r.method,
+    anticipoTotalBs: Number(r.anticipo_total_bs ?? 0),
   }))
 }
 

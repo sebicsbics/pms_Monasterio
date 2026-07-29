@@ -3,6 +3,7 @@ import { userFacingAnticipoError, type Anticipo } from '../../domain/anticipos/a
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { fetchPaymentMethods } from '../../services/payments'
 import { fetchAnticipos, recordAnticipo } from '../../services/anticipos'
+import { listReservationsBrief, type ReservationBrief } from '../../services/reservations'
 import { Button, Card, PageHeader } from '../../components/ui'
 
 const INPUT = 'w-full rounded-lg border border-slate-300 p-2'
@@ -16,6 +17,7 @@ function fmtBs(n: number) {
 // reembolsar/modificar viven en AnticipoAdminView (reception_admin only).
 export function RecordAnticipoView() {
   const [reservationId, setReservationId] = useState('')
+  const [reservations, setReservations] = useState<ReservationBrief[]>([])
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
@@ -31,6 +33,9 @@ export function RecordAnticipoView() {
         setPaymentMethods(methods)
         setPaymentMethod((current) => current || (methods[0]?.code ?? ''))
       })
+      .catch((e: Error) => setError(e.message))
+    listReservationsBrief()
+      .then(setReservations)
       .catch((e: Error) => setError(e.message))
   }, [])
 
@@ -53,7 +58,7 @@ export function RecordAnticipoView() {
     setMessage(null)
     const trimmedId = reservationId.trim()
     if (!trimmedId) {
-      setError('Ingresá el ID de la reserva')
+      setError('Elegí una reserva')
       return
     }
     const amountNum = Number(amount)
@@ -95,13 +100,20 @@ export function RecordAnticipoView() {
       <Card className="p-4">
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-sm text-slate-600">ID de reserva</label>
-            <input
+            <label className="mb-1 block text-sm text-slate-600">Reserva</label>
+            <select
               className={INPUT}
               value={reservationId}
               onChange={(e) => setReservationId(e.target.value)}
-              placeholder="uuid de la reserva"
-            />
+            >
+              <option value="">Elegí una reserva…</option>
+              {reservations.map((r) => (
+                <option key={r.id} value={r.id}>
+                  Hab. {r.roomNumber} · {r.guestName} · {r.checkIn} → {r.checkOut}
+                  {r.status === 'checked_in' ? ' (in-house)' : ''}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex gap-3">
             <div className="flex-1">

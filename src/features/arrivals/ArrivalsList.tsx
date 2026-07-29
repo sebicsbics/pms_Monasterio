@@ -566,6 +566,7 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
                 <th className="p-3">Entrada</th>
                 <th className="p-3">Salida</th>
                 <th className="p-3">Canal</th>
+                <th className="p-3">Anticipo</th>
                 <th className="p-3"></th>
               </tr>
             </thead>
@@ -583,6 +584,15 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
                   <td className="p-3">{a.checkInDate}</td>
                   <td className="p-3">{a.checkOutDate}</td>
                   <td className="p-3">{a.method}</td>
+                  <td className="p-3">
+                    {a.anticipoTotalBs > 0 ? (
+                      <span className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+                        Bs {a.anticipoTotalBs.toFixed(2)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
+                  </td>
                   <td className="p-3">
                     <div className="flex flex-wrap justify-end gap-1">
                       <button
