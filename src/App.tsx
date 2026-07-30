@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
   BarChart3,
@@ -38,6 +38,7 @@ import type { BulkReservationPrefill } from './features/reservations/BulkReserva
 import { AvailabilityGrid } from './features/availability/AvailabilityGrid'
 import { InfoLogView } from './features/info/InfoLogView'
 import { ReceivablesView } from './features/receivables/ReceivablesView'
+import { PrintButton } from './components/ui'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
 import { TasksView } from './features/tasks/TasksView'
@@ -102,6 +103,7 @@ function App() {
   const [navOpen, setNavOpen] = useState(false)
   // Precarga para "Nueva reserva" cuando se llega desde la grilla de
   // Disponibilidad (click en una celda disponible).
+  const mainRef = useRef<HTMLElement>(null)
   const [reservationPrefill, setReservationPrefill] = useState<ReservationPrefill | null>(null)
   const [bulkPrefill, setBulkPrefill] = useState<BulkReservationPrefill | null>(null)
 
@@ -237,8 +239,15 @@ function App() {
         </span>
       </div>
 
+      {/* Botón de impresión global: imprime la vista activa. */}
+      <PrintButton
+        targetRef={mainRef}
+        title={visibleTabs.find((t) => t.id === activeTab)?.label ?? 'Hotel Monasterio'}
+        className="fixed right-4 top-3 z-10 shadow-sm"
+      />
+
       {/* Contenido */}
-      <main className="lg:pl-60">
+      <main ref={mainRef} className="lg:pl-60">
         {activeTab === 'board' && <RoomBoard role={role} />}
         {activeTab === 'arrivals' && <ArrivalsList role={role} />}
         {activeTab === 'inhouse' && <InHouseList />}

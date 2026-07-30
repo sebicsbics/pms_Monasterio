@@ -1,4 +1,6 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactNode, RefObject } from 'react'
+import { Printer } from 'lucide-react'
+import { printRegion } from '../lib/print'
 
 // Sistema de componentes base. Un solo lugar de verdad para botones, tarjetas,
 // badges y encabezados: consistencia visual + estados accesibles.
@@ -90,6 +92,35 @@ export function Badge({
     >
       {children}
     </span>
+  )
+}
+
+// Botón de impresión reutilizable: imprime (en ventana aislada) el nodo
+// referenciado por targetRef. Se oculta a sí mismo en la impresión.
+export function PrintButton({
+  targetRef,
+  title,
+  label = 'Imprimir',
+  className = '',
+}: {
+  targetRef: RefObject<HTMLElement | null>
+  title?: string
+  label?: string
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => targetRef.current && printRegion(targetRef.current, title)}
+      className={
+        'no-print inline-flex items-center gap-1.5 rounded-lg border border-slate-300 ' +
+        'bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 ' +
+        className
+      }
+    >
+      <Printer size={16} />
+      {label}
+    </button>
   )
 }
 

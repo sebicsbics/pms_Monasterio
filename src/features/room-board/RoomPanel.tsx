@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
+import { PrintButton } from '../../components/ui'
 import type { Room } from '../../domain/rooms/room'
 import type { Folio } from '../../domain/folios/folio'
 import {
@@ -83,6 +84,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
 
   // Folio (solo si la habitación está ocupada)
   const [folio, setFolio] = useState<Folio | null>(null)
+  const folioRef = useRef<HTMLDivElement>(null)
   const [chargeDesc, setChargeDesc] = useState('')
   const [chargeAmount, setChargeAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('EFECTIVO')
@@ -525,9 +527,22 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         {isOccupied && (
           <div className="space-y-4">
             <div>
-              <h3 className="mb-2 font-semibold text-slate-700">Folio</h3>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-700">Folio</h3>
+                {folio && (
+                  <PrintButton
+                    targetRef={folioRef}
+                    title={`Folio Hab. ${room.roomNumber}`}
+                    label="Imprimir"
+                    className="!px-2 !py-1 text-xs"
+                  />
+                )}
+              </div>
               {folio ? (
-                <div className="rounded border border-slate-200 p-3 text-sm">
+                <div ref={folioRef} className="rounded border border-slate-200 p-3 text-sm">
+                  <div className="mb-2 border-b border-slate-200 pb-2 font-semibold text-slate-800">
+                    Folio · Hab. {room.roomNumber}
+                  </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Habitación ({folio.roomType})</span>
                     <span>{folio.roomChargeBs.toFixed(2)} Bs</span>
