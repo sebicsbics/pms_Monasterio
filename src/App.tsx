@@ -15,6 +15,7 @@ import {
   Package,
   PartyPopper,
   Percent,
+  ScrollText,
   User,
   Users,
   Wallet,
@@ -34,6 +35,7 @@ import { InHouseList } from './features/in-house/InHouseList'
 import { NewReservation, type ReservationPrefill } from './features/reservations/NewReservation'
 import type { BulkReservationPrefill } from './features/reservations/BulkReservation'
 import { AvailabilityGrid } from './features/availability/AvailabilityGrid'
+import { InfoLogView } from './features/info/InfoLogView'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
 import { TasksView } from './features/tasks/TasksView'
@@ -57,6 +59,7 @@ type Tab =
   | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'availability' | 'inventory'
   | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
   | 'access' | 'dashboard' | 'caja' | 'events' | 'discounts' | 'anticipos' | 'anticipos-admin'
+  | 'info'
 
 
 type Group = 'Operación' | 'Personal' | 'Gestión'
@@ -75,6 +78,7 @@ const TABS: {
   { id: 'caja', label: 'Caja chica', roles: SHARED, icon: Wallet, group: 'Operación' },
   { id: 'events', label: 'Eventos', roles: SHARED, icon: PartyPopper, group: 'Operación' },
   { id: 'tasks', label: 'Tareas', roles: OPERATIONS, icon: ListChecks, group: 'Operación' },
+  { id: 'info', label: 'Pase de información', roles: OPERATIONS, icon: ScrollText, group: 'Operación' },
   { id: 'housekeeping', label: 'Housekeeping', roles: HOUSEKEEPING, icon: BedDouble, group: 'Operación' },
   { id: 'maintenance', label: 'Mantenimiento', roles: SHARED, icon: Wrench, group: 'Operación' },
   { id: 'fichaje', label: 'Fichaje', roles: SHARED, icon: Clock, group: 'Personal' },
@@ -253,6 +257,7 @@ function App() {
         {activeTab === 'inventory' && <InventoryView />}
         {activeTab === 'employees' && <EmployeesView role={role} />}
         {activeTab === 'tasks' && <TasksView />}
+        {activeTab === 'info' && <InfoLogView />}
         {activeTab === 'housekeeping' && <HousekeepingBoardView />}
         {activeTab === 'maintenance' && <MaintenanceView role={role} />}
         {activeTab === 'fichaje' && <FichajeView userId={session.user.id} role={role} />}
