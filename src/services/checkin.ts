@@ -85,6 +85,7 @@ export async function checkOutRoom(
   roomId: string,
   paymentMethod: string,
   receipt: CheckOutReceipt = { receipt: null, paymentReference: null },
+  receivableAccountId: string | null = null,
 ): Promise<number> {
   let receiptPath: string | null = null
   if (receipt.receipt) {
@@ -101,6 +102,7 @@ export async function checkOutRoom(
     p_payment_method: paymentMethod,
     p_receipt_path: receiptPath,
     p_payment_reference: receipt.paymentReference,
+    p_receivable_account_id: receivableAccountId,
   })
   if (error) throw new Error(error.message)
   return Number(data)

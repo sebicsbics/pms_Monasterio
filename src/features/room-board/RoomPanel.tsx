@@ -13,6 +13,8 @@ import { fetchAssignableStaff, createTask } from '../../services/tasks'
 import type { AssignableStaff } from '../../domain/tasks/task'
 import { fetchPaymentMethods } from '../../services/payments'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
+import type { ReceivableAccount } from '../../domain/receivables/receivable'
+import { listReceivableAccounts } from '../../services/receivables'
 import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
 import type { UserRole } from '../../domain/auth/profile'
@@ -85,6 +87,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [chargeAmount, setChargeAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('EFECTIVO')
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [receivableAccounts, setReceivableAccounts] = useState<ReceivableAccount[]>([])
+  const [receivableAccountId, setReceivableAccountId] = useState('')
   const [receiptFile, setReceiptFile] = useState<File | null>(null)
   const [paymentReference, setPaymentReference] = useState('')
 
@@ -128,6 +132,9 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     if (isOccupied) {
       fetchPaymentMethods()
         .then(setPaymentMethods)
+        .catch((e: Error) => setError(e.message))
+      listReceivableAccounts(true)
+        .then(setReceivableAccounts)
         .catch((e: Error) => setError(e.message))
     }
   }, [isOccupied])
@@ -241,13 +248,19 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   }
 
   async function handleCheckOut() {
+    if (paymentMethod === 'CTAS_POR_COBRAR' && !receivableAccountId) {
+      setError('Elegí la cuenta por cobrar a la que se factura')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      const total = await checkOutRoom(room.id, paymentMethod, {
-        receipt: receiptFile,
-        paymentReference: paymentReference.trim() || null,
-      })
+      const total = await checkOutRoom(
+        room.id,
+        paymentMethod,
+        { receipt: receiptFile, paymentReference: paymentReference.trim() || null },
+        paymentMethod === 'CTAS_POR_COBRAR' ? receivableAccountId : null,
+      )
       setMessage(`Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`)
       setReceiptFile(null)
       setPaymentReference('')
@@ -643,6 +656,30 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 ))}
               </select>
             </label>
+            {paymentMethod === 'CTAS_POR_COBRAR' && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Cuenta por cobrar
+                </span>
+                <select
+                  value={receivableAccountId}
+                  onChange={(e) => setReceivableAccountId(e.target.value)}
+                  className="w-full rounded border border-slate-300 p-2"
+                >
+                  <option value="">Elegí una cuenta…</option>
+                  {receivableAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+                {receivableAccounts.length === 0 && (
+                  <span className="mt-1 block text-xs text-amber-700">
+                    No hay cuentas. Creá una en "Cuentas por cobrar".
+                  </span>
+                )}
+              </label>
+            )}
             {paymentMethod === 'EFECTIVO' && (
               <p className="text-xs text-slate-400">
                 El efectivo se registra en la caja (debe estar abierta).

@@ -52,6 +52,7 @@ describe('checkOutRoom', () => {
       p_payment_method: 'TARJETA',
       p_receipt_path: null,
       p_payment_reference: 'AB12345',
+      p_receivable_account_id: null,
     })
   })
 

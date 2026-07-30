@@ -8,6 +8,7 @@ import {
   Clock,
   DoorOpen,
   KeyRound,
+  Landmark,
   LayoutGrid,
   ListChecks,
   LogOut,
@@ -36,6 +37,7 @@ import { NewReservation, type ReservationPrefill } from './features/reservations
 import type { BulkReservationPrefill } from './features/reservations/BulkReservation'
 import { AvailabilityGrid } from './features/availability/AvailabilityGrid'
 import { InfoLogView } from './features/info/InfoLogView'
+import { ReceivablesView } from './features/receivables/ReceivablesView'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
 import { TasksView } from './features/tasks/TasksView'
@@ -59,7 +61,7 @@ type Tab =
   | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'availability' | 'inventory'
   | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
   | 'access' | 'dashboard' | 'caja' | 'events' | 'discounts' | 'anticipos' | 'anticipos-admin'
-  | 'info'
+  | 'info' | 'receivables'
 
 
 type Group = 'Operación' | 'Personal' | 'Gestión'
@@ -89,6 +91,7 @@ const TABS: {
   { id: 'discounts', label: 'Descuentos', roles: DISCOUNT_APPROVAL, icon: Percent, group: 'Gestión' },
   { id: 'anticipos', label: 'Anticipos', roles: OPERATIONS, icon: Wallet, group: 'Operación' },
   { id: 'anticipos-admin', label: 'Corregir anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
+  { id: 'receivables', label: 'Cuentas por cobrar', roles: ['root', 'reception', 'reception_admin', 'accountant'], icon: Landmark, group: 'Gestión' },
 ]
 
 function App() {
@@ -258,6 +261,7 @@ function App() {
         {activeTab === 'employees' && <EmployeesView role={role} />}
         {activeTab === 'tasks' && <TasksView />}
         {activeTab === 'info' && <InfoLogView />}
+        {activeTab === 'receivables' && <ReceivablesView />}
         {activeTab === 'housekeeping' && <HousekeepingBoardView />}
         {activeTab === 'maintenance' && <MaintenanceView role={role} />}
         {activeTab === 'fichaje' && <FichajeView userId={session.user.id} role={role} />}
