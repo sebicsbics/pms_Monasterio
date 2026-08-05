@@ -4,6 +4,7 @@ import type {
   CashSession,
   MovementKind,
 } from '../domain/cash/cash'
+import { uploadReceipt } from './receipts'
 
 function mapSession(r: Record<string, unknown>): CashSession {
   return {
@@ -83,24 +84,16 @@ export async function addCashMovement(input: {
   concept: string
   receipt: File | null
   paymentMethod?: string | null
+  paymentReference?: string | null
 }): Promise<void> {
-  let receiptPath: string | null = null
-  if (input.receipt) {
-    const ext = (input.receipt.name.split('.').pop() ?? 'jpg').toLowerCase()
-    const path = `${new Date().getFullYear()}/${crypto.randomUUID()}.${ext}`
-    const { error: upErr } = await supabase.storage
-      .from('receipts')
-      .upload(path, input.receipt, { contentType: input.receipt.type })
-    if (upErr) throw new Error(upErr.message)
-    receiptPath = path
-  }
   const { error } = await supabase.rpc('add_cash_movement', {
     p_kind: input.kind,
     p_category: input.category,
     p_amount: input.amount,
     p_concept: input.concept || null,
-    p_receipt_path: receiptPath,
+    p_receipt_path: await uploadReceipt(input.receipt),
     p_payment_method: input.paymentMethod ?? null,
+    p_payment_reference: input.paymentReference?.trim() || null,
   })
   if (error) throw new Error(error.message)
 }
@@ -110,11 +103,4 @@ export async function voidMovement(id: string, reason: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-// URL firmada temporal para ver un recibo del bucket privado.
-export async function receiptUrl(path: string): Promise<string | null> {
-  const { data, error } = await supabase.storage
-    .from('receipts')
-    .createSignedUrl(path, 3600)
-  if (error) return null
-  return data.signedUrl
-}
+export { receiptUrl } from './receipts'

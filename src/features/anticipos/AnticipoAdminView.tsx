@@ -6,6 +6,12 @@ import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { fetchPaymentMethods } from '../../services/payments'
 import { fetchAnticipos, modifyAnticipo } from '../../services/anticipos'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
+import type { PaymentProof } from '../../domain/payments/paymentProof'
+import {
+  EMPTY_PAYMENT_PROOF,
+  paymentProofError,
+} from '../../domain/payments/paymentProof'
+import { PaymentProofFields } from '../payments/PaymentProofFields'
 
 const INPUT = 'w-full rounded-lg border border-slate-300 p-2'
 
@@ -29,6 +35,7 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
   const [modifyAmount, setModifyAmount] = useState('')
   const [modifyMethod, setModifyMethod] = useState('')
   const [modifyReason, setModifyReason] = useState('')
+  const [modifyProof, setModifyProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
 
   useEffect(() => {
     fetchPaymentMethods()
@@ -70,15 +77,28 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
       setError('El monto debe ser mayor a 0')
       return
     }
+    const effectiveMethod = modifyMethod || a.paymentMethod
+    const proofErr = paymentProofError(effectiveMethod, modifyProof)
+    if (proofErr) {
+      setError(proofErr)
+      return
+    }
     if (!modifyReason.trim()) {
       setError('La justificación es obligatoria')
       return
     }
     setBusyId(a.id)
     try {
-      await modifyAnticipo(a.id, amountNum, modifyMethod || a.paymentMethod, modifyReason.trim())
+      await modifyAnticipo(
+        a.id,
+        amountNum,
+        effectiveMethod,
+        modifyReason.trim(),
+        modifyProof,
+      )
       setModifyAmount('')
       setModifyReason('')
+      setModifyProof(EMPTY_PAYMENT_PROOF)
       setMessage('Anticipo modificado.')
       await reload(reservationId.trim())
     } catch (e) {
@@ -151,11 +171,20 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={busyId === a.id}
+                    disabled={
+                      busyId === a.id ||
+                      paymentProofError(modifyMethod || a.paymentMethod, modifyProof) !== null
+                    }
                     onClick={() => handleModify(a)}
                   >
                     Corregir
                   </Button>
+                  <PaymentProofFields
+                    className="w-full"
+                    method={modifyMethod || a.paymentMethod}
+                    proof={modifyProof}
+                    onChange={(patch) => setModifyProof((p) => ({ ...p, ...patch }))}
+                  />
                 </div>
               ) : (
                 <p className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-400">

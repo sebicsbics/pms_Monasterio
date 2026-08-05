@@ -38,6 +38,8 @@ describe('recordAnticipo', () => {
       p_amount_bs: 100,
       p_payment_method: 'QR',
       p_notes: null,
+      p_receipt_path: null,
+      p_payment_reference: null,
     })
     expect(result.status).toBe('active')
     expect(result.amountBs).toBe(100)
@@ -75,6 +77,8 @@ describe('modifyAnticipo', () => {
       p_new_amount_bs: 120,
       p_new_payment_method: 'TARJETA',
       p_reason: 'corrección de monto',
+      p_receipt_path: null,
+      p_payment_reference: null,
     })
     expect(result.paymentMethod).toBe('TARJETA')
   })

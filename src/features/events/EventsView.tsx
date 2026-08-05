@@ -20,6 +20,12 @@ import {
 } from '../../domain/events/event'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
 import { formatDate } from '../../lib/date'
+import type { PaymentProof } from '../../domain/payments/paymentProof'
+import {
+  EMPTY_PAYMENT_PROOF,
+  paymentProofError,
+} from '../../domain/payments/paymentProof'
+import { PaymentProofFields } from '../payments/PaymentProofFields'
 
 const fmtBs = (n: number) =>
   `${n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`
@@ -63,6 +69,7 @@ export function EventsView() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
   const [payMethod, setPayMethod] = useState<PaymentMethod>('EFECTIVO')
+  const [payProof, setPayProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
   const [payDeposit, setPayDeposit] = useState(false)
 
   const reload = useCallback(async () => {
@@ -156,10 +163,16 @@ export function EventsView() {
       setError('El monto debe ser mayor a 0')
       return
     }
+    const proofErr = paymentProofError(payMethod, payProof)
+    if (proofErr) {
+      setError(proofErr)
+      return
+    }
     run(async () => {
-      await addEventPayment(ev.id, amt, payMethod, payDeposit)
+      await addEventPayment(ev.id, amt, payMethod, payDeposit, payProof)
       setPayAmount('')
       setPayDeposit(false)
+      setPayProof(EMPTY_PAYMENT_PROOF)
       await reload()
     })
   }
@@ -322,8 +335,21 @@ export function EventsView() {
                       <input type="checkbox" checked={payDeposit} onChange={(e) => setPayDeposit(e.target.checked)} />
                       Adelanto
                     </label>
-                    <Button size="sm" loading={busy} onClick={() => handlePay(ev)}>Registrar pago</Button>
+                    <Button
+                      size="sm"
+                      loading={busy}
+                      disabled={paymentProofError(payMethod, payProof) !== null}
+                      onClick={() => handlePay(ev)}
+                    >
+                      Registrar pago
+                    </Button>
                   </div>
+                  <PaymentProofFields
+                    className="mt-2 max-w-xs"
+                    method={payMethod}
+                    proof={payProof}
+                    onChange={(patch) => setPayProof((p) => ({ ...p, ...patch }))}
+                  />
                   {payMethod === 'EFECTIVO' && (
                     <p className="mt-1 text-xs text-slate-400">El efectivo entra a la caja (debe estar abierta).</p>
                   )}

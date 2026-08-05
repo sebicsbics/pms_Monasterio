@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import type { RoomOperationalStatus } from '../domain/rooms/room'
 import { fetchPendingForReservation } from './rateDiscountRequestsService'
 import { companionsToPayload, type CompanionGuest } from './arrivals'
+import { uploadReceipt } from './receipts'
 
 // Mensaje uniforme para el banner "descuento pendiente de aprobación",
 // reusado en los 3 puntos de entrada de tarifa (create_reservation,
@@ -87,20 +88,10 @@ export async function checkOutRoom(
   receipt: CheckOutReceipt = { receipt: null, paymentReference: null },
   receivableAccountId: string | null = null,
 ): Promise<number> {
-  let receiptPath: string | null = null
-  if (receipt.receipt) {
-    const ext = (receipt.receipt.name.split('.').pop() ?? 'jpg').toLowerCase()
-    const path = `${new Date().getFullYear()}/${crypto.randomUUID()}.${ext}`
-    const { error: upErr } = await supabase.storage
-      .from('receipts')
-      .upload(path, receipt.receipt, { contentType: receipt.receipt.type })
-    if (upErr) throw new Error(upErr.message)
-    receiptPath = path
-  }
   const { data, error } = await supabase.rpc('check_out_room', {
     p_room_id: roomId,
     p_payment_method: paymentMethod,
-    p_receipt_path: receiptPath,
+    p_receipt_path: await uploadReceipt(receipt.receipt),
     p_payment_reference: receipt.paymentReference,
     p_receivable_account_id: receivableAccountId,
   })

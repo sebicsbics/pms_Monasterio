@@ -5,6 +5,9 @@ import type {
   ReceivableAccountKind,
   ReceivableStatus,
 } from '../domain/receivables/receivable'
+import type { PaymentProof } from '../domain/payments/paymentProof'
+import { EMPTY_PAYMENT_PROOF, proofForMethod } from '../domain/payments/paymentProof'
+import { uploadReceipt } from './receipts'
 
 interface AccountRow {
   id: string
@@ -92,8 +95,18 @@ export async function listReceivables(filters: {
   }))
 }
 
-export async function settleReceivable(id: string, method: string): Promise<void> {
-  const { error } = await supabase.rpc('settle_receivable', { p_id: id, p_method: method })
+export async function settleReceivable(
+  id: string,
+  method: string,
+  proof: PaymentProof = EMPTY_PAYMENT_PROOF,
+): Promise<void> {
+  const { receipt, paymentReference } = proofForMethod(method, proof)
+  const { error } = await supabase.rpc('settle_receivable', {
+    p_id: id,
+    p_method: method,
+    p_receipt_path: await uploadReceipt(receipt),
+    p_payment_reference: paymentReference,
+  })
   if (error) throw new Error(error.message)
 }
 

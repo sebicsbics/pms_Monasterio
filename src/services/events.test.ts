@@ -19,6 +19,8 @@ describe('addEventPayment', () => {
       p_amount: 100,
       p_method: 'EFECTIVO',
       p_is_deposit: true,
+      p_receipt_path: null,
+      p_payment_reference: null,
     })
   })
 

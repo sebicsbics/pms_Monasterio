@@ -14,6 +14,8 @@ export interface Anticipo {
   paymentMethod: string
   status: AnticipoStatus
   cashMovementId: string | null
+  receiptPath: string | null // foto del comprobante QR
+  paymentReference: string | null // número de transacción de tarjeta
   receivedBy: string
   receivedAt: string
   notes: string | null

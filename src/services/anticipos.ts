@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
 import type { Anticipo } from '../domain/anticipos/anticipos'
+import type { PaymentProof } from '../domain/payments/paymentProof'
+import { EMPTY_PAYMENT_PROOF, proofForMethod } from '../domain/payments/paymentProof'
+import { uploadReceipt } from './receipts'
 
 function mapAnticipo(r: Record<string, unknown>): Anticipo {
   return {
@@ -9,6 +12,8 @@ function mapAnticipo(r: Record<string, unknown>): Anticipo {
     paymentMethod: r.payment_method as string,
     status: r.status as Anticipo['status'],
     cashMovementId: (r.cash_movement_id as string | null) ?? null,
+    receiptPath: (r.receipt_path as string | null) ?? null,
+    paymentReference: (r.payment_reference as string | null) ?? null,
     receivedBy: r.received_by as string,
     receivedAt: r.received_at as string,
     notes: (r.notes as string | null) ?? null,
@@ -30,12 +35,16 @@ export async function recordAnticipo(input: {
   amountBs: number
   paymentMethod: string
   notes: string | null
+  proof?: PaymentProof
 }): Promise<Anticipo> {
+  const { receipt, paymentReference } = proofForMethod(input.paymentMethod, input.proof ?? EMPTY_PAYMENT_PROOF)
   const { data, error } = await supabase.rpc('record_anticipo', {
     p_reservation_id: input.reservationId,
     p_amount_bs: input.amountBs,
     p_payment_method: input.paymentMethod,
     p_notes: input.notes,
+    p_receipt_path: await uploadReceipt(receipt),
+    p_payment_reference: paymentReference,
   })
   if (error) throw new Error(error.message)
   return mapAnticipo(data as Record<string, unknown>)
@@ -46,12 +55,16 @@ export async function modifyAnticipo(
   newAmountBs: number,
   newPaymentMethod: string,
   reason: string,
+  proof: PaymentProof = EMPTY_PAYMENT_PROOF,
 ): Promise<Anticipo> {
+  const { receipt, paymentReference } = proofForMethod(newPaymentMethod, proof)
   const { data, error } = await supabase.rpc('modify_anticipo', {
     p_anticipo_id: anticipoId,
     p_new_amount_bs: newAmountBs,
     p_new_payment_method: newPaymentMethod,
     p_reason: reason,
+    p_receipt_path: await uploadReceipt(receipt),
+    p_payment_reference: paymentReference,
   })
   if (error) throw new Error(error.message)
   return mapAnticipo(data as Record<string, unknown>)

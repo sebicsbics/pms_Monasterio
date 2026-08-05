@@ -28,6 +28,7 @@ describe('addCashMovement', () => {
       p_concept: 'test',
       p_receipt_path: null,
       p_payment_method: 'QR',
+      p_payment_reference: null,
     })
   })
 

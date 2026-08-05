@@ -1,4 +1,7 @@
 import { supabase } from './supabase'
+import type { PaymentProof } from '../domain/payments/paymentProof'
+import { EMPTY_PAYMENT_PROOF, proofForMethod } from '../domain/payments/paymentProof'
+import { uploadReceipt } from './receipts'
 import type {
   EventArea,
   EventStatus,
@@ -149,12 +152,16 @@ export async function addEventPayment(
   amount: number,
   method: PaymentMethod,
   isDeposit: boolean,
+  proof: PaymentProof = EMPTY_PAYMENT_PROOF,
 ): Promise<void> {
+  const { receipt, paymentReference } = proofForMethod(method, proof)
   const { error } = await supabase.rpc('add_event_payment', {
     p_event_id: eventId,
     p_amount: amount,
     p_method: method,
     p_is_deposit: isDeposit,
+    p_receipt_path: await uploadReceipt(receipt),
+    p_payment_reference: paymentReference,
   })
   if (error) throw new Error(error.message)
 }

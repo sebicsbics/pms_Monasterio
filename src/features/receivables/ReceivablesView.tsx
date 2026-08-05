@@ -18,6 +18,12 @@ import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { fetchPaymentMethods } from '../../services/payments'
 import { PageHeader } from '../../components/ui'
 import { formatDateTime } from '../../lib/date'
+import type { PaymentProof } from '../../domain/payments/paymentProof'
+import {
+  EMPTY_PAYMENT_PROOF,
+  paymentProofError,
+} from '../../domain/payments/paymentProof'
+import { PaymentProofFields } from '../payments/PaymentProofFields'
 
 const KINDS: ReceivableAccountKind[] = ['empresa', 'agencia', 'persona']
 const STATUS_FILTERS: (ReceivableStatus | '')[] = ['', 'pending', 'paid', 'cancelled']
@@ -53,6 +59,7 @@ export function ReceivablesView() {
   // Cobro
   const [settling, setSettling] = useState<Receivable | null>(null)
   const [settleMethod, setSettleMethod] = useState('')
+  const [settleProof, setSettleProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
 
   const loadAccounts = useCallback(() => {
     return listReceivableAccounts()
@@ -111,12 +118,18 @@ export function ReceivablesView() {
 
   async function confirmSettle() {
     if (!settling || !settleMethod) return
+    const proofErr = paymentProofError(settleMethod, settleProof)
+    if (proofErr) {
+      setError(proofErr)
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      await settleReceivable(settling.id, settleMethod)
+      await settleReceivable(settling.id, settleMethod, settleProof)
       setMessage(`Deuda cobrada (${fmtBs(settling.amountBs)}).`)
       setSettling(null)
+      setSettleProof(EMPTY_PAYMENT_PROOF)
       await loadReceivables()
     } catch (e) {
       setError((e as Error).message)
@@ -320,13 +333,21 @@ export function ReceivablesView() {
                 ))}
               </select>
             </label>
+            <PaymentProofFields
+              className="mt-3"
+              method={settleMethod}
+              proof={settleProof}
+              onChange={(patch) => setSettleProof((p) => ({ ...p, ...patch }))}
+            />
             <p className="mt-2 text-xs text-slate-400">
               En efectivo se registra en la caja (requiere caja abierta).
             </p>
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                disabled={busy || !settleMethod}
+                disabled={
+                  busy || !settleMethod || paymentProofError(settleMethod, settleProof) !== null
+                }
                 onClick={confirmSettle}
                 className="w-1/2 rounded bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >

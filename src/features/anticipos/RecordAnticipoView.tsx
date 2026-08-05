@@ -5,6 +5,12 @@ import { fetchPaymentMethods } from '../../services/payments'
 import { fetchAnticipos, recordAnticipo } from '../../services/anticipos'
 import { listReservationsBrief, type ReservationBrief } from '../../services/reservations'
 import { Button, Card, PageHeader } from '../../components/ui'
+import type { PaymentProof } from '../../domain/payments/paymentProof'
+import {
+  EMPTY_PAYMENT_PROOF,
+  paymentProofError,
+} from '../../domain/payments/paymentProof'
+import { PaymentProofFields } from '../payments/PaymentProofFields'
 
 const INPUT = 'w-full rounded-lg border border-slate-300 p-2'
 
@@ -21,6 +27,7 @@ export function RecordAnticipoView() {
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
+  const [proof, setProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [anticipos, setAnticipos] = useState<Anticipo[]>([])
   const [busy, setBusy] = useState(false)
@@ -66,6 +73,11 @@ export function RecordAnticipoView() {
       setError('El monto debe ser mayor a 0')
       return
     }
+    const proofErr = paymentProofError(paymentMethod, proof)
+    if (proofErr) {
+      setError(proofErr)
+      return
+    }
     setBusy(true)
     try {
       await recordAnticipo({
@@ -73,6 +85,7 @@ export function RecordAnticipoView() {
         amountBs: amountNum,
         paymentMethod,
         notes: notes.trim() || null,
+        proof,
       })
       setAmount('')
       setNotes('')
@@ -138,6 +151,11 @@ export function RecordAnticipoView() {
               </select>
             </div>
           </div>
+          <PaymentProofFields
+            method={paymentMethod}
+            proof={proof}
+            onChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
+          />
           <div>
             <label className="mb-1 block text-sm text-slate-600">Notas (opcional)</label>
             <input
@@ -146,7 +164,13 @@ export function RecordAnticipoView() {
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-          <Button loading={busy} onClick={handleSubmit}>Registrar anticipo</Button>
+          <Button
+            loading={busy}
+            disabled={paymentProofError(paymentMethod, proof) !== null}
+            onClick={handleSubmit}
+          >
+            Registrar anticipo
+          </Button>
         </div>
       </Card>
 
