@@ -25,3 +25,6 @@ assets/
 *.njsproj
 *.sln
 *.sw?
+
+# Herramientas locales de agentes
+.atl/
