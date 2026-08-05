@@ -90,6 +90,27 @@ export function NewReservation({
     void doSearch(checkIn, checkOut, pax)
   }
 
+  // Vuelve el formulario a cero. Antes, una vez elegida la fecha no había
+  // forma de empezar de nuevo salvo recargar el navegador entero.
+  function handleReset() {
+    setCheckIn('')
+    setCheckOut('')
+    setPax(1)
+    setResults(null)
+    setSelected(null)
+    setTypeId('')
+    setFirstName('')
+    setLastName('')
+    setPhone('')
+    setEmail('')
+    setMethod('phone')
+    setRateBs('')
+    setRateReason('')
+    setError(null)
+    setSuccess(null)
+    setPendingBanner(null)
+  }
+
   function selectRoom(room: AvailableRoom) {
     setSelected(room)
     setTypeId(room.suitableTypes[0]?.id ?? '')
@@ -217,9 +238,16 @@ export function NewReservation({
 
       {/* Paso 1: fechas y personas */}
       <section className="mb-6 rounded border border-slate-200 p-4">
-        <h2 className="mb-3 font-semibold text-slate-700">
-          1 · Fechas y personas
-        </h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-700">1 · Fechas y personas</h2>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Empezar de nuevo
+          </button>
+        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <label className="text-sm">
             <span className="text-slate-600">Entrada</span>

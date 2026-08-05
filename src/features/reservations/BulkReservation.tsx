@@ -29,9 +29,12 @@ const METHODS = RESERVATION_METHODS.map((value) => ({ value, label: METHOD_LABEL
 export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill | null }) {
   const [checkIn, setCheckIn] = useState('')
   const [checkOut, setCheckOut] = useState('')
-  const [pax, setPax] = useState(1)
   const [results, setResults] = useState<AvailableRoom[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Personas por habitación (roomId -> cantidad). Se siembra con la
+  // capacidad del tipo al seleccionar, pero se puede exceder: cuando el
+  // hotel se llena se habilitan camas extras.
+  const [guestsByRoom, setGuestsByRoom] = useState<Record<string, number>>({})
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -51,7 +54,6 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
     if (!prefill) return
     setCheckIn(prefill.checkIn)
     setCheckOut(prefill.checkOut)
-    setPax(1)
     setError(null)
     setResult(null)
     setBusy(true)
@@ -80,7 +82,11 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
     }
     setBusy(true)
     try {
-      setResults(await searchAvailableRooms(checkIn, checkOut, pax))
+      // pax = 1: la búsqueda muestra TODAS las habitaciones libres y la
+      // ocupación se decide por habitación en el paso 2. Filtrar acá por
+      // el total del grupo escondería justamente las chicas que el grupo
+      // igual necesita.
+      setResults(await searchAvailableRooms(checkIn, checkOut, 1))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -88,17 +94,52 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
     }
   }
 
+  const capacityOf = (roomId: string) =>
+    results?.find((r) => r.roomId === roomId)?.suitableTypes[0]?.maxOccupancy ?? 1
+
   function toggle(roomId: string) {
     setSelected((prev) => {
       const next = new Set(prev)
       if (next.has(roomId)) next.delete(roomId)
-      else next.add(roomId)
+      else {
+        next.add(roomId)
+        setGuestsByRoom((g) => (g[roomId] ? g : { ...g, [roomId]: capacityOf(roomId) }))
+      }
       return next
     })
   }
 
   function selectAll() {
-    setSelected(new Set((results ?? []).map((r) => r.roomId)))
+    const all = results ?? []
+    setSelected(new Set(all.map((r) => r.roomId)))
+    setGuestsByRoom((g) => {
+      const next = { ...g }
+      for (const r of all) {
+        if (!next[r.roomId]) next[r.roomId] = r.suitableTypes[0]?.maxOccupancy ?? 1
+      }
+      return next
+    })
+  }
+
+  const totalPax = [...selected].reduce((sum, id) => sum + (guestsByRoom[id] ?? 1), 0)
+
+  // Vuelve la pantalla a cero: hasta ahora, elegida una fecha, la única
+  // forma de empezar de nuevo era recargar el navegador entero.
+  function handleReset() {
+    setCheckIn('')
+    setCheckOut('')
+    setResults(null)
+    setSelected(new Set())
+    setGuestsByRoom({})
+    setFirstName('')
+    setLastName('')
+    setPhone('')
+    setEmail('')
+    setMethod('phone')
+    setRateBs('')
+    setRateReason('')
+    setError(null)
+    setResult(null)
   }
 
   async function handleCreate() {
@@ -128,6 +169,7 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
         rooms: chosen.map((r) => ({
           roomId: r.roomId,
           roomTypeId: r.suitableTypes[0]?.id ?? '',
+          numGuests: guestsByRoom[r.roomId] ?? 1,
         })),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -135,7 +177,6 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
         email: email.trim(),
         checkIn,
         checkOut,
-        numGuests: pax,
         method,
         rateBs: rateBs.trim() ? Number(rateBs) : null,
         reason: rateReason.trim() || null,
@@ -178,9 +219,9 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
         </div>
       )}
 
-      {/* Paso 1: fechas y personas por habitación */}
+      {/* Paso 1: fechas */}
       <section className="rounded border border-slate-200 p-4">
-        <h2 className="mb-3 font-semibold text-slate-700">1 · Fechas y personas por habitación</h2>
+        <h2 className="mb-3 font-semibold text-slate-700">1 · Fechas del grupo</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <label className="text-sm">
             <span className="text-slate-600">Entrada</span>
@@ -192,16 +233,16 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
             <input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)}
               className="mt-1 w-full rounded border border-slate-300 p-2" />
           </label>
-          <label className="text-sm">
-            <span className="text-slate-600">Personas / hab.</span>
-            <input type="number" min={1} value={pax}
-              onChange={(e) => setPax(Math.max(1, Number(e.target.value)))}
-              className="mt-1 w-full rounded border border-slate-300 p-2" />
-          </label>
           <div className="flex items-end">
             <button type="button" disabled={busy} onClick={handleSearch}
               className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50">
               Buscar
+            </button>
+          </div>
+          <div className="flex items-end">
+            <button type="button" onClick={handleReset}
+              className="w-full rounded border border-slate-300 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              Empezar de nuevo
             </button>
           </div>
         </div>
@@ -213,6 +254,11 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-slate-700">
               2 · Elegí habitaciones ({selected.size}/{results.length})
+              {selected.size > 0 && (
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  · {totalPax} huésped(es) en total
+                </span>
+              )}
             </h2>
             <div className="flex gap-2 text-xs">
               <button type="button" onClick={selectAll}
@@ -226,28 +272,54 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
             </div>
           </div>
           {results.length === 0 ? (
-            <p className="text-sm text-slate-400">No hay habitaciones disponibles para esas fechas y personas.</p>
+            <p className="text-sm text-slate-400">No hay habitaciones disponibles para esas fechas.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {results.map((room) => {
                 const type = room.suitableTypes[0]
                 const on = selected.has(room.roomId)
+                const capacity = type?.maxOccupancy ?? 1
+                const guests = guestsByRoom[room.roomId] ?? capacity
+                const overCapacity = on && guests > capacity
                 return (
-                  <button type="button" key={room.roomId} onClick={() => toggle(room.roomId)}
-                    className={`flex items-start gap-2 rounded border p-2 text-left text-sm ${
-                      on ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:bg-slate-50'
+                  <div key={room.roomId}
+                    className={`flex items-center gap-2 rounded border p-2 text-sm ${
+                      on ? 'border-blue-500 bg-blue-50' : 'border-slate-300'
                     }`}>
-                    <input type="checkbox" checked={on} readOnly className="mt-1" />
-                    <span>
-                      <span className="font-bold">Hab. {room.roomNumber}</span>
-                      <span className="block text-xs text-slate-500">
-                        {type ? `${type.name} · ${type.basePriceBs} Bs` : 'Sin tipo'}
+                    <button type="button" onClick={() => toggle(room.roomId)}
+                      className="flex flex-1 items-start gap-2 text-left">
+                      <input type="checkbox" checked={on} readOnly className="mt-1" />
+                      <span>
+                        <span className="font-bold">Hab. {room.roomNumber}</span>
+                        <span className="block text-xs text-slate-500">
+                          {type ? `${type.name} · hasta ${capacity}` : 'Sin tipo'}
+                        </span>
                       </span>
-                    </span>
-                  </button>
+                    </button>
+                    {on && (
+                      <label className="shrink-0 text-right text-xs text-slate-500">
+                        Personas
+                        <input type="number" min={1} value={guests}
+                          onChange={(e) =>
+                            setGuestsByRoom((g) => ({
+                              ...g,
+                              [room.roomId]: Math.max(1, Number(e.target.value)),
+                            }))
+                          }
+                          className={`mt-1 block w-16 rounded border p-1 text-center text-sm ${
+                            overCapacity ? 'border-amber-400 bg-amber-50' : 'border-slate-300'
+                          }`} />
+                      </label>
+                    )}
+                  </div>
                 )
               })}
             </div>
+          )}
+          {[...selected].some((id) => (guestsByRoom[id] ?? 1) > capacityOf(id)) && (
+            <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-800">
+              Hay habitaciones por encima de su capacidad: se asume cama extra.
+            </p>
           )}
         </section>
       )}

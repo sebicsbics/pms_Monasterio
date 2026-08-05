@@ -93,7 +93,6 @@ export async function createReservation(data: ReservationInput): Promise<string>
     p_email: data.email,
     p_check_in: data.checkIn,
     p_check_out: data.checkOut,
-    p_num_guests: data.numGuests,
     p_method: data.method,
     p_rate_bs: data.rateBs ?? null,
     p_reason: data.reason ?? null,
@@ -127,14 +126,16 @@ export async function listReservationsBrief(): Promise<ReservationBrief[]> {
 }
 
 export interface BulkReservationInput {
-  rooms: { roomId: string; roomTypeId: string }[]
+  // La ocupación es POR habitación: en un grupo de 9 entran 4 en una
+  // cuádruple, 3 en una triple y 2 en una matrimonial. Puede exceder la
+  // capacidad del tipo — el hotel habilita camas extras cuando se llena.
+  rooms: { roomId: string; roomTypeId: string; numGuests: number }[]
   firstName: string
   lastName: string
   phone: string
   email: string
   checkIn: string
   checkOut: string
-  numGuests: number
   method: string
   rateBs?: number | null
   reason?: string | null
@@ -152,14 +153,17 @@ export async function createBulkReservation(
   data: BulkReservationInput,
 ): Promise<BulkReservationResult> {
   const { data: res, error } = await supabase.rpc('create_bulk_reservation', {
-    p_rooms: data.rooms.map((r) => ({ room_id: r.roomId, room_type_id: r.roomTypeId })),
+    p_rooms: data.rooms.map((r) => ({
+      room_id: r.roomId,
+      room_type_id: r.roomTypeId,
+      num_guests: r.numGuests,
+    })),
     p_first_name: data.firstName,
     p_last_name: data.lastName,
     p_phone: data.phone,
     p_email: data.email,
     p_check_in: data.checkIn,
     p_check_out: data.checkOut,
-    p_num_guests: data.numGuests,
     p_method: data.method,
     p_rate_bs: data.rateBs ?? null,
     p_reason: data.reason ?? null,
