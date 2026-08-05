@@ -13,6 +13,7 @@ interface ArrivalRow {
   check_in_date: string
   check_out_date: string
   num_guests: number | null
+  max_occupancy: number | null
   method: string
   anticipo_total_bs: number | string | null
 }
@@ -40,6 +41,7 @@ export async function fetchArrivals(
     checkInDate: r.check_in_date,
     checkOutDate: r.check_out_date,
     numGuests: r.num_guests,
+    maxOccupancy: r.max_occupancy,
     method: r.method,
     anticipoTotalBs: Number(r.anticipo_total_bs ?? 0),
   }))

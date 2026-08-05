@@ -40,7 +40,11 @@ function CheckInModal({
   const [error, setError] = useState<string | null>(null)
 
   // Acompañantes: perfil completo de los demás huéspedes de la habitación.
-  // Se pre-arma una ficha vacía por cada plaza más allá del titular.
+  // Se pre-arma una ficha por cada plaza que la reserva estimó, pero el
+  // recepcionista puede AGREGAR o QUITAR: `numGuests` es lo que se estimó
+  // al tomar la reserva (muchas veces 1, o null) y no la gente que
+  // realmente llega. El tope real es la capacidad de la habitación
+  // (max_occupancy), igual que en el walk-in del tablero.
   const emptyCompanion = (): CompanionGuest => ({
     firstName: '',
     lastName: '',
@@ -58,6 +62,7 @@ function CheckInModal({
   const [companions, setCompanions] = useState<CompanionGuest[]>(() =>
     Array.from({ length: companionSlots }, emptyCompanion),
   )
+  const maxCompanions = Math.max(0, (arrival.maxOccupancy ?? 1) - 1)
   function updateCompanion(index: number, patch: Partial<CompanionGuest>) {
     setCompanions((prev) =>
       prev.map((g, i) => (i === index ? { ...g, ...patch } : g)),
@@ -296,22 +301,40 @@ function CheckInModal({
             Acepta recibir promociones por correo
           </label>
 
-          {companions.length > 0 && (
-            <div className="space-y-3 border-t border-slate-200 pt-3">
-              <p className="text-xs font-medium text-slate-600">
-                Acompañantes ({companions.length}) — perfil completo de cada huésped
-              </p>
-              {companions.map((g, i) => (
-                <div key={i} className="space-y-2 rounded border border-slate-200 p-3">
-                  <p className="text-xs font-semibold text-slate-500">Huésped {i + 2}</p>
-                  <CompanionFields
-                    companion={g}
-                    onChange={(patch) => updateCompanion(i, patch)}
-                  />
-                </div>
-              ))}
+          <div className="space-y-3 border-t border-slate-200 pt-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-600">
+                Acompañantes {companions.length > 0 && `(${companions.length})`}
+              </span>
+              {companions.length < maxCompanions && (
+                <button
+                  type="button"
+                  onClick={() => setCompanions((prev) => [...prev, emptyCompanion()])}
+                  className="text-xs font-medium text-brand-700 hover:underline"
+                >
+                  + Agregar huésped
+                </button>
+              )}
             </div>
-          )}
+            {companions.map((g, i) => (
+              <div key={i} className="space-y-2 rounded border border-slate-200 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-500">Huésped {i + 2}</p>
+                  <button
+                    type="button"
+                    onClick={() => setCompanions((prev) => prev.filter((_, j) => j !== i))}
+                    className="text-xs text-slate-400 hover:text-red-600"
+                  >
+                    Quitar
+                  </button>
+                </div>
+                <CompanionFields
+                  companion={g}
+                  onChange={(patch) => updateCompanion(i, patch)}
+                />
+              </div>
+            ))}
+          </div>
 
           <button
             type="button"

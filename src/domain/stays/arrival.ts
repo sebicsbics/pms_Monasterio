@@ -10,7 +10,8 @@ export interface Arrival {
   email: string | null
   checkInDate: string
   checkOutDate: string
-  numGuests: number | null
+  numGuests: number | null // ocupación ESTIMADA al tomar la reserva
+  maxOccupancy: number | null // capacidad real del tipo de habitación
   method: string
   anticipoTotalBs: number // suma de anticipos activos (0 si no tiene)
 }

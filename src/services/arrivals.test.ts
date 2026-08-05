@@ -47,6 +47,7 @@ describe('fetchArrivals', () => {
           check_in_date: '2026-07-27',
           check_out_date: '2026-07-29',
           num_guests: 2,
+          max_occupancy: 3,
           method: 'web',
           anticipo_total_bs: '150.00',
         },
@@ -57,6 +58,7 @@ describe('fetchArrivals', () => {
     expect(arrival.reservationId).toBe('res-1')
     expect(arrival.roomNumber).toBe('101')
     expect(arrival.numGuests).toBe(2)
+    expect(arrival.maxOccupancy).toBe(3)
     expect(arrival.anticipoTotalBs).toBe(150)
   })
 
