@@ -22,6 +22,20 @@ import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 import type { CompanionGuest } from '../../services/arrivals'
 import { CompanionFields } from '../checkin/CompanionFields'
+import type { StayGuest } from '../../domain/stays/stayGuest'
+import { guestFullName } from '../../domain/stays/stayGuest'
+import { fetchStayGuests, addGuestsToStay } from '../../services/stayGuests'
+import type { StaySegment } from '../../domain/stays/staySegment'
+import { segmentNights, segmentTotalBs } from '../../domain/stays/staySegment'
+import { fetchStaySegments, extendStay, changeRoom } from '../../services/staySegments'
+import { fetchRooms } from '../../services/rooms'
+import type { PaymentProof } from '../../domain/payments/paymentProof'
+import {
+  EMPTY_PAYMENT_PROOF,
+  paymentProofError,
+  proofForMethod,
+} from '../../domain/payments/paymentProof'
+import { PaymentProofFields } from '../payments/PaymentProofFields'
 
 interface Props {
   room: Room
@@ -77,10 +91,45 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   // regla que "Editar tarifa" post-check-in (ver más abajo).
   const selectedType = room.typeOptions.find((t) => t.id === typeId) ?? room.defaultType
   const defaultRateBs = selectedType?.basePriceBs ?? 0
-  const [checkInRate, setCheckInRate] = useState(String(defaultRateBs))
+  // La tarifa NO se precarga ni se muestra el precio de lista: en temporada
+  // baja se vende más barato y en alta más caro, así que el precio del tipo
+  // casi nunca es el que se cobra. Recepción lo escribe en cada check-in.
+  // El precio de lista sigue existiendo por detrás como referencia para el
+  // workflow de aprobación de descuentos (>20% pide justificación).
+  const [checkInRate, setCheckInRate] = useState('')
   const [checkInRateReason, setCheckInRateReason] = useState('')
-  const canEditCheckInRate = canEditRateGate(role)
-  const checkInRateDiffers = Number(checkInRate) !== defaultRateBs
+  const checkInRateNum = Number(checkInRate)
+  const checkInRateMissing = checkInRate.trim() === '' || !(checkInRateNum > 0)
+  // Sólo un descuento fuerte pide motivo. Escribir 380 en vez de 420 es la
+  // operación normal del hotel, no una excepción que haya que justificar.
+  const DEEP_DISCOUNT_PCT = 20
+  const checkInDeepDiscount =
+    defaultRateBs > 0 &&
+    !checkInRateMissing &&
+    (defaultRateBs - checkInRateNum) / defaultRateBs > DEEP_DISCOUNT_PCT / 100
+
+  // Huéspedes de la estadía en curso (titular + acompañantes) y alta de
+  // huéspedes nuevos mid-stay: el caso real es la simple que se vende a un
+  // hombre y a los dos días llega su esposa. El incremento se cobra como
+  // línea del folio (ver add_guests_to_stay), no como cambio de tarifa.
+  const [stayGuests, setStayGuests] = useState<StayGuest[]>([])
+  const [addGuestOpen, setAddGuestOpen] = useState(false)
+  const [newGuests, setNewGuests] = useState<CompanionGuest[]>([])
+  const [extraCharge, setExtraCharge] = useState('')
+  const [extraChargeDesc, setExtraChargeDesc] = useState('')
+
+  // Tramos de la estadía: cuántas noches en qué habitación y a qué tarifa.
+  // Es lo que permite extender noches y mudar al huésped sin perder el
+  // registro de lo que ya se cobró.
+  const [segments, setSegments] = useState<StaySegment[]>([])
+  const [stayAction, setStayAction] = useState<'extend' | 'move' | null>(null)
+  const [newCheckOut, setNewCheckOut] = useState('')
+  const [stayRate, setStayRate] = useState('')
+  const [stayReason, setStayReason] = useState('')
+  const [moveRooms, setMoveRooms] = useState<Room[]>([])
+  const [moveRoomId, setMoveRoomId] = useState('')
+  const [moveTypeId, setMoveTypeId] = useState('')
+  const [moveFrom, setMoveFrom] = useState(new Date().toISOString().slice(0, 10))
 
   // Folio (solo si la habitación está ocupada)
   const [folio, setFolio] = useState<Folio | null>(null)
@@ -91,8 +140,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [receivableAccounts, setReceivableAccounts] = useState<ReceivableAccount[]>([])
   const [receivableAccountId, setReceivableAccountId] = useState('')
-  const [receiptFile, setReceiptFile] = useState<File | null>(null)
-  const [paymentReference, setPaymentReference] = useState('')
+  const [proof, setProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
+  const proofError = paymentProofError(paymentMethod, proof)
 
   // Edición de tarifa (root/reception), con justificación obligatoria
   const [rateEditOpen, setRateEditOpen] = useState(false)
@@ -111,13 +160,19 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   useEffect(() => {
     if (isOccupied) {
       fetchFolio(room.id)
-        .then(setFolio)
+        .then((f) => {
+          setFolio(f)
+          if (f) return fetchStaySegments(f.reservationId).then(setSegments)
+        })
+        .catch((e: Error) => setError(e.message))
+      fetchStayGuests(room.id)
+        .then(setStayGuests)
         .catch((e: Error) => setError(e.message))
     }
   }, [room.id, isOccupied])
 
   useEffect(() => {
-    setCheckInRate(String(defaultRateBs))
+    setCheckInRate('')
     setCheckInRateReason('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, room.id])
@@ -157,7 +212,89 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   }
 
   async function reloadFolio() {
-    setFolio(await fetchFolio(room.id))
+    const f = await fetchFolio(room.id)
+    setFolio(f)
+    setSegments(f ? await fetchStaySegments(f.reservationId) : [])
+  }
+
+  // Habitaciones a las que se puede mudar: libres o por limpiar, distintas
+  // de la actual. La disponibilidad por FECHAS la revalida change_room.
+  function openMove() {
+    setStayAction('move')
+    setStayRate('')
+    setStayReason('')
+    fetchRooms()
+      .then((all) =>
+        setMoveRooms(
+          all.filter(
+            (r) =>
+              r.id !== room.id &&
+              (r.operationalStatus === 'available' || r.operationalStatus === 'dirty'),
+          ),
+        ),
+      )
+      .catch((e: Error) => setError(e.message))
+  }
+
+  async function handleExtend() {
+    const rate = Number(stayRate)
+    if (!newCheckOut) {
+      setError('Elegí la nueva fecha de salida')
+      return
+    }
+    if (!(rate > 0)) {
+      setError('Ingresá la tarifa por noche de las noches nuevas')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const total = await extendStay(room.id, newCheckOut, rate, stayReason)
+      setMessage(`Estadía extendida hasta ${newCheckOut}. Total: ${total.toFixed(2)} Bs`)
+      setStayAction(null)
+      setNewCheckOut('')
+      setStayRate('')
+      setStayReason('')
+      await reloadFolio()
+      onDone()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleChangeRoom() {
+    const rate = Number(stayRate)
+    if (!moveRoomId || !moveTypeId) {
+      setError('Elegí la habitación destino')
+      return
+    }
+    if (!(rate > 0)) {
+      setError('Ingresá la tarifa por noche de la habitación nueva')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const total = await changeRoom({
+        roomId: room.id,
+        newRoomId: moveRoomId,
+        newRoomTypeId: moveTypeId,
+        rateBs: rate,
+        fromDate: moveFrom || null,
+        reason: stayReason,
+      })
+      setMessage(`Huésped mudado. Total de la estadía: ${total.toFixed(2)} Bs`)
+      setStayAction(null)
+      onDone()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function handleAddCharge() {
@@ -172,6 +309,39 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       await addFolioCharge(room.id, chargeDesc.trim(), amount)
       setChargeDesc('')
       setChargeAmount('')
+      await reloadFolio()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function updateNewGuest(index: number, patch: Partial<CompanionGuest>) {
+    setNewGuests((prev) => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)))
+  }
+
+  async function handleAddGuests() {
+    const extra = Number(extraCharge || 0)
+    if (!(extra >= 0)) {
+      setError('El incremento debe ser un monto válido')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const total = await addGuestsToStay(room.id, newGuests, extra, extraChargeDesc)
+      setMessage(
+        extra > 0
+          ? `Huésped(es) agregado(s). Ocupación: ${total}. Se cargó ${extra.toFixed(2)} Bs al folio.`
+          : `Huésped(es) agregado(s). Ocupación: ${total}.`,
+      )
+      setNewGuests([])
+      setExtraCharge('')
+      setExtraChargeDesc('')
+      setAddGuestOpen(false)
+      setStayGuests(await fetchStayGuests(room.id))
       await reloadFolio()
     } catch (e) {
       setError((e as Error).message)
@@ -220,9 +390,14 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       setError('Nombre y apellido son obligatorios')
       return
     }
-    const rate = Number(checkInRate)
-    if (canEditCheckInRate && checkInRateDiffers && !checkInRateReason.trim()) {
-      setError('La justificación es obligatoria para cambiar la tarifa')
+    if (checkInRateMissing) {
+      setError('Ingresá la tarifa por noche')
+      return
+    }
+    if (checkInDeepDiscount && !checkInRateReason.trim()) {
+      setError(
+        `La justificación es obligatoria para un descuento mayor al ${DEEP_DISCOUNT_PCT}%`,
+      )
       return
     }
     run(() =>
@@ -238,8 +413,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         city: city.trim(),
         wantsOffers,
         nights,
-        rateBs: canEditCheckInRate && checkInRateDiffers ? rate : null,
-        rateReason: canEditCheckInRate && checkInRateDiffers ? checkInRateReason.trim() : null,
+        rateBs: checkInRateNum,
+        rateReason: checkInRateReason.trim() || 'Tarifa de temporada',
         originCity: originCity.trim(),
         travelPurpose: travelPurpose.trim(),
         occupation: occupation.trim(),
@@ -254,18 +429,21 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       setError('Elegí la cuenta por cobrar a la que se factura')
       return
     }
+    if (proofError) {
+      setError(proofError)
+      return
+    }
     setBusy(true)
     setError(null)
     try {
       const total = await checkOutRoom(
         room.id,
         paymentMethod,
-        { receipt: receiptFile, paymentReference: paymentReference.trim() || null },
+        proofForMethod(paymentMethod, proof),
         paymentMethod === 'CTAS_POR_COBRAR' ? receivableAccountId : null,
       )
       setMessage(`Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`)
-      setReceiptFile(null)
-      setPaymentReference('')
+      setProof(EMPTY_PAYMENT_PROOF)
       onDone()
     } catch (e) {
       setError((e as Error).message)
@@ -321,7 +499,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 >
                   {room.typeOptions.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name} — {t.basePriceBs} Bs
+                      {t.name} — hasta {t.maxOccupancy} personas
                     </option>
                   ))}
                 </select>
@@ -433,37 +611,36 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               />
             </label>
 
-            {canEditCheckInRate && (
-              <div className="space-y-2 rounded border border-slate-200 p-3">
+            <div className="space-y-2 rounded border border-slate-200 p-3">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Tarifa por noche (Bs) — obligatoria
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={checkInRate}
+                  onChange={(e) => setCheckInRate(e.target.value)}
+                  placeholder="Precio acordado con el huésped"
+                  className="w-full rounded border border-slate-300 p-2 text-sm"
+                />
+              </label>
+              {checkInDeepDiscount && (
                 <label className="block text-sm">
                   <span className="mb-1 block text-xs font-medium text-slate-500">
-                    Tarifa por noche (Bs)
+                    Justificación (obligatoria: descuento mayor al {DEEP_DISCOUNT_PCT}%)
                   </span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={checkInRate}
-                    onChange={(e) => setCheckInRate(e.target.value)}
+                  <textarea
+                    value={checkInRateReason}
+                    onChange={(e) => setCheckInRateReason(e.target.value)}
+                    placeholder="Ej. Última cuádruple disponible, se vende a precio de matrimonial"
                     className="w-full rounded border border-slate-300 p-2 text-sm"
+                    rows={2}
                   />
                 </label>
-                {checkInRateDiffers && (
-                  <label className="block text-sm">
-                    <span className="mb-1 block text-xs font-medium text-slate-500">
-                      Justificación (obligatoria)
-                    </span>
-                    <textarea
-                      value={checkInRateReason}
-                      onChange={(e) => setCheckInRateReason(e.target.value)}
-                      placeholder="Ej. Última cuádruple disponible, se vende a precio de matrimonial"
-                      className="w-full rounded border border-slate-300 p-2 text-sm"
-                      rows={2}
-                    />
-                  </label>
-                )}
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="space-y-3 border-t border-slate-200 pt-3">
               <div className="flex items-center justify-between">
@@ -504,7 +681,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               type="button"
               disabled={
                 busy ||
-                (canEditCheckInRate && checkInRateDiffers && !checkInRateReason.trim())
+                checkInRateMissing ||
+                (checkInDeepDiscount && !checkInRateReason.trim())
               }
               onClick={handleCheckIn}
               className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
@@ -526,6 +704,142 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         {/* OCUPADA → folio + consumos + check-out */}
         {isOccupied && (
           <div className="space-y-4">
+            {/* Huéspedes en la habitación — arriba del folio, porque es lo
+                primero que recepción necesita saber al abrir el panel. */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-700">
+                  Huéspedes {stayGuests.length > 0 && `(${stayGuests.length})`}
+                </h3>
+                {!addGuestOpen && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddGuestOpen(true)
+                      setNewGuests([emptyCompanion()])
+                    }}
+                    className="text-xs font-medium text-brand-700 hover:underline"
+                  >
+                    + Agregar huésped
+                  </button>
+                )}
+              </div>
+
+              {stayGuests.length === 0 ? (
+                <p className="text-sm text-slate-400">Cargando huéspedes…</p>
+              ) : (
+                <ul className="rounded border border-slate-200 text-sm">
+                  {stayGuests.map((g) => (
+                    <li
+                      key={g.personId}
+                      className="flex items-center justify-between border-b border-slate-100 px-3 py-2 last:border-b-0"
+                    >
+                      <span className="text-slate-700">{guestFullName(g)}</span>
+                      <span className="text-xs text-slate-400">
+                        {g.isHolder ? 'Titular' : g.isMinor ? 'Menor' : 'Acompañante'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {addGuestOpen && (
+                <div className="mt-2 space-y-3 rounded border border-slate-200 p-3">
+                  <p className="text-xs text-slate-500">
+                    El incremento se carga como un consumo del folio, así queda
+                    visible por separado en el folio impreso.
+                  </p>
+
+                  {newGuests.map((g, i) => (
+                    <div key={i} className="space-y-2 rounded border border-slate-200 p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-slate-500">
+                          Nuevo huésped {i + 1}
+                        </p>
+                        {newGuests.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setNewGuests((prev) => prev.filter((_, j) => j !== i))
+                            }
+                            className="text-xs text-slate-400 hover:text-red-600"
+                          >
+                            Quitar
+                          </button>
+                        )}
+                      </div>
+                      <CompanionFields
+                        companion={g}
+                        onChange={(patch) => updateNewGuest(i, patch)}
+                      />
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() => setNewGuests((prev) => [...prev, emptyCompanion()])}
+                    className="text-xs font-medium text-brand-700 hover:underline"
+                  >
+                    + Otro huésped
+                  </button>
+
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Incremento a cobrar (Bs) — 0 si no se cobra
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={extraCharge}
+                      onChange={(e) => setExtraCharge(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Descripción del cargo (opcional)
+                    </span>
+                    <input
+                      value={extraChargeDesc}
+                      onChange={(e) => setExtraChargeDesc(e.target.value)}
+                      placeholder="Ej. Huésped adicional — 2 noches"
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        !newGuests.some(
+                          (g) => g.firstName.trim() !== '' && g.lastName.trim() !== '',
+                        )
+                      }
+                      onClick={handleAddGuests}
+                      className="w-1/2 rounded bg-brand-700 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                    >
+                      {busy ? 'Procesando…' : 'Agregar'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddGuestOpen(false)
+                        setNewGuests([])
+                        setExtraCharge('')
+                        setExtraChargeDesc('')
+                      }}
+                      className="w-1/2 rounded border border-slate-300 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="font-semibold text-slate-700">Folio</h3>
@@ -542,11 +856,31 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 <div ref={folioRef} className="rounded border border-slate-200 p-3 text-sm">
                   <div className="mb-2 border-b border-slate-200 pb-2 font-semibold text-slate-800">
                     Folio · Hab. {room.roomNumber}
+                    {stayGuests.length > 0 && (
+                      <span className="block text-xs font-normal text-slate-500">
+                        {stayGuests.map(guestFullName).join(' · ')}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>Habitación ({folio.roomType})</span>
-                    <span>{folio.roomChargeBs.toFixed(2)} Bs</span>
-                  </div>
+                  {segments.length > 1 ? (
+                    segments.map((sg) => (
+                      <div key={sg.id} className="flex justify-between text-slate-600">
+                        <span>
+                          Hab. {sg.roomNumber} ({sg.roomType}) · {segmentNights(sg)} noche(s) ×{' '}
+                          {sg.rateBs.toFixed(2)}
+                          <span className="block text-xs text-slate-400">
+                            {sg.startDate} → {sg.endDate}
+                          </span>
+                        </span>
+                        <span>{segmentTotalBs(sg).toFixed(2)} Bs</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Habitación ({folio.roomType})</span>
+                      <span>{folio.roomChargeBs.toFixed(2)} Bs</span>
+                    </div>
+                  )}
                   {folio.charges.map((c) => (
                     <div key={c.id} className="flex justify-between text-slate-600">
                       <span>{c.description}</span>
@@ -626,6 +960,187 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               )}
             </div>
 
+            <div className="space-y-2 border-t border-slate-200 pt-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium text-slate-600">Estadía</h4>
+                {stayAction === null && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStayAction('extend')
+                        setNewCheckOut('')
+                        setStayRate('')
+                        setStayReason('')
+                      }}
+                      className="text-xs font-medium text-brand-700 hover:underline"
+                    >
+                      Extender noches
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openMove}
+                      className="text-xs font-medium text-brand-700 hover:underline"
+                    >
+                      Cambiar habitación
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {stayAction === 'extend' && (
+                <div className="space-y-2 rounded border border-slate-200 p-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Nueva fecha de salida
+                    </span>
+                    <input
+                      type="date"
+                      value={newCheckOut}
+                      onChange={(e) => setNewCheckOut(e.target.value)}
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Tarifa por noche de las noches nuevas (Bs)
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={stayRate}
+                      onChange={(e) => setStayRate(e.target.value)}
+                      placeholder="Precio acordado"
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+                  <input
+                    value={stayReason}
+                    onChange={(e) => setStayReason(e.target.value)}
+                    placeholder="Motivo (opcional)"
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy || !newCheckOut || !(Number(stayRate) > 0)}
+                      onClick={handleExtend}
+                      className="w-1/2 rounded bg-brand-700 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                    >
+                      {busy ? 'Procesando…' : 'Extender'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStayAction(null)}
+                      className="w-1/2 rounded border border-slate-300 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {stayAction === 'move' && (
+                <div className="space-y-2 rounded border border-slate-200 p-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Habitación destino
+                    </span>
+                    <select
+                      value={moveRoomId}
+                      onChange={(e) => {
+                        setMoveRoomId(e.target.value)
+                        const r = moveRooms.find((x) => x.id === e.target.value)
+                        setMoveTypeId(r?.defaultType?.id ?? '')
+                      }}
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                    >
+                      <option value="">Elegí una habitación…</option>
+                      {moveRooms.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          Hab. {r.roomNumber} · {r.defaultType?.name ?? 'Sin tipo'}
+                          {r.operationalStatus === 'dirty' ? ' (por limpiar)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {(moveRooms.find((r) => r.id === moveRoomId)?.typeOptions.length ?? 0) > 1 && (
+                    <label className="block text-sm">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">
+                        Vender como
+                      </span>
+                      <select
+                        value={moveTypeId}
+                        onChange={(e) => setMoveTypeId(e.target.value)}
+                        className="w-full rounded border border-slate-300 p-2 text-sm"
+                      >
+                        {moveRooms
+                          .find((r) => r.id === moveRoomId)!
+                          .typeOptions.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} — hasta {t.maxOccupancy} personas
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Se muda desde
+                    </span>
+                    <input
+                      type="date"
+                      value={moveFrom}
+                      onChange={(e) => setMoveFrom(e.target.value)}
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">
+                      Tarifa por noche en la habitación nueva (Bs)
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={stayRate}
+                      onChange={(e) => setStayRate(e.target.value)}
+                      placeholder="Precio acordado"
+                      className="w-full rounded border border-slate-300 p-2 text-sm"
+                    />
+                  </label>
+                  <input
+                    value={stayReason}
+                    onChange={(e) => setStayReason(e.target.value)}
+                    placeholder="Motivo del cambio (opcional)"
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Las noches ya dormidas en la {room.roomNumber} se conservan en el
+                    folio con su tarifa.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={busy || !moveRoomId || !(Number(stayRate) > 0)}
+                      onClick={handleChangeRoom}
+                      className="w-1/2 rounded bg-brand-700 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
+                    >
+                      {busy ? 'Procesando…' : 'Mudar huésped'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStayAction(null)}
+                      className="w-1/2 rounded border border-slate-300 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-slate-600">
                 Agregar consumo
@@ -701,32 +1216,15 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               </p>
             )}
 
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-500">
-                Comprobante (imagen QR, opcional)
-              </span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
-                className="w-full rounded border border-slate-300 p-2 text-sm"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-slate-500">
-                Código de referencia (tarjeta, opcional)
-              </span>
-              <input
-                placeholder="Ej. AB12345"
-                value={paymentReference}
-                onChange={(e) => setPaymentReference(e.target.value)}
-                className="w-full rounded border border-slate-300 p-2 text-sm"
-              />
-            </label>
+            <PaymentProofFields
+              method={paymentMethod}
+              proof={proof}
+              onChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
+            />
 
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || proofError !== null}
               onClick={handleCheckOut}
               className="w-full rounded bg-amber-600 py-2 font-medium text-white hover:bg-amber-700 disabled:opacity-50"
             >
