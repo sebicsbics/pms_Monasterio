@@ -18,15 +18,24 @@ import {
 import { fetchPaymentMethods } from '../../services/payments'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import {
+  CAJA_PAYMENT_METHODS,
   categoryLabel,
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES,
+  isCashMovement,
   type CashMovement,
   type CashSession,
   type MovementKind,
 } from '../../domain/cash/cash'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
 import type { UserRole } from '../../domain/auth/profile'
+import type { PaymentProof } from '../../domain/payments/paymentProof'
+import {
+  EMPTY_PAYMENT_PROOF,
+  needsReceiptPhoto,
+  paymentProofError,
+} from '../../domain/payments/paymentProof'
+import { PaymentProofFields } from '../payments/PaymentProofFields'
 
 const fmtBs = (n: number) => `${n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`
 const fmtDateTime = (iso: string) =>
@@ -52,8 +61,13 @@ export function CajaView({ role }: { role?: UserRole | null }) {
   const [amount, setAmount] = useState('')
   const [concept, setConcept] = useState('')
   const [receipt, setReceipt] = useState<File | null>(null)
+  const [proof, setProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
-  const [paymentMethod, setPaymentMethod] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('DEPOSITO')
+  // Pestaña activa. La caja del recepcionista es SOLO el efectivo: los
+  // cobros por QR, depósito o tarjeta no entran ni salen del cajón, así que
+  // viven en su propia pestaña y no mueven el saldo esperado del cierre.
+  const [tab, setTab] = useState<'cash' | 'other'>('cash')
   // Cierre
   const [closing, setClosing] = useState(false)
   const [counted, setCounted] = useState('')
@@ -74,12 +88,28 @@ export function CajaView({ role }: { role?: UserRole | null }) {
 
   useEffect(() => {
     fetchPaymentMethods()
-      .then((methods) => {
-        setPaymentMethods(methods)
-        setPaymentMethod((current) => current || (methods[0]?.code ?? ''))
-      })
+      .then((methods) =>
+        setPaymentMethods(
+          methods.filter((m) =>
+            (CAJA_PAYMENT_METHODS as readonly string[]).includes(m.code),
+          ),
+        ),
+      )
       .catch((e: Error) => setError(e.message))
   }, [])
+
+  // Formas de pago que NO son efectivo (las de la pestaña "Otros medios").
+  const otherMethods = paymentMethods.filter((m) => m.code !== 'EFECTIVO')
+
+  useEffect(() => {
+    // Al cambiar de pestaña, el medio de pago del formulario tiene que
+    // seguirla: registrar un "egreso en efectivo" desde la pestaña de
+    // otros medios (o al revés) sería exactamente el error que este
+    // cambio busca evitar.
+    if (tab === 'cash') setPaymentMethod('EFECTIVO')
+    else setPaymentMethod((c) => (c !== 'EFECTIVO' ? c : (otherMethods[0]?.code ?? '')))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, paymentMethods])
 
   async function run(action: () => Promise<void>) {
     setBusy(true)
@@ -99,15 +129,30 @@ export function CajaView({ role }: { role?: UserRole | null }) {
     setCategory(k === 'income' ? 'cobro_habitacion' : 'compras')
   }
 
-  const live = movements.filter((m) => !m.voided)
+  // El saldo esperado del cierre se calcula SOLO con efectivo: es lo que
+  // el recepcionista tiene que contar en el cajón.
+  const cashMovements = movements.filter(isCashMovement)
+  const otherMovements = movements.filter((m) => !isCashMovement(m))
+  const shown = tab === 'cash' ? cashMovements : otherMovements
+
+  const live = cashMovements.filter((m) => !m.voided)
   const totalIncome = live.filter((m) => m.kind === 'income').reduce((s, m) => s + m.amountBs, 0)
   const totalExpense = live.filter((m) => m.kind === 'expense').reduce((s, m) => s + m.amountBs, 0)
   const expected = (session?.openingBalanceBs ?? 0) + totalIncome - totalExpense
+
+  const otherLive = otherMovements.filter((m) => !m.voided)
+  const otherIncome = otherLive.filter((m) => m.kind === 'income').reduce((s, m) => s + m.amountBs, 0)
+  const otherExpense = otherLive.filter((m) => m.kind === 'expense').reduce((s, m) => s + m.amountBs, 0)
 
   function handleAdd() {
     const amt = Number(amount)
     if (!(amt > 0)) {
       setError('El monto debe ser mayor a 0')
+      return
+    }
+    const proofErr = paymentProofError(paymentMethod, proof)
+    if (proofErr) {
+      setError(proofErr)
       return
     }
     run(async () => {
@@ -116,12 +161,16 @@ export function CajaView({ role }: { role?: UserRole | null }) {
         category,
         amount: amt,
         concept: concept.trim(),
-        receipt,
+        // En QR la foto del comprobante ES el respaldo del movimiento; en
+        // el resto vale el adjunto genérico (factura de la compra, etc.).
+        receipt: needsReceiptPhoto(paymentMethod) ? proof.receipt : receipt,
         paymentMethod: paymentMethod || null,
+        paymentReference: proof.paymentReference,
       })
       setAmount('')
       setConcept('')
       setReceipt(null)
+      setProof(EMPTY_PAYMENT_PROOF)
     })
   }
 
@@ -188,25 +237,58 @@ export function CajaView({ role }: { role?: UserRole | null }) {
         </Card>
       ) : (
         <>
-          {/* ---------- Resumen ---------- */}
-          <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Fondo inicial</p>
-              <p className="tabular mt-1 text-lg font-bold text-slate-800">{fmtBs(session.openingBalanceBs)}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Ingresos</p>
-              <p className="tabular mt-1 text-lg font-bold text-green-700">+{fmtBs(totalIncome)}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Egresos</p>
-              <p className="tabular mt-1 text-lg font-bold text-red-600">−{fmtBs(totalExpense)}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Saldo esperado</p>
-              <p className="tabular mt-1 text-lg font-bold text-brand-700">{fmtBs(expected)}</p>
-            </Card>
+          {/* ---------- Pestañas: efectivo vs. otros medios ---------- */}
+          <div className="mb-4 flex gap-2">
+            <button type="button" onClick={() => setTab('cash')}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                tab === 'cash' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              Efectivo
+            </button>
+            <button type="button" onClick={() => setTab('other')}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                tab === 'other' ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+              Otros medios{otherMovements.length > 0 && ` (${otherMovements.length})`}
+            </button>
           </div>
+
+          {/* ---------- Resumen ---------- */}
+          {tab === 'cash' ? (
+            <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Card className="p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Fondo inicial</p>
+                <p className="tabular mt-1 text-lg font-bold text-slate-800">{fmtBs(session.openingBalanceBs)}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Ingresos</p>
+                <p className="tabular mt-1 text-lg font-bold text-green-700">+{fmtBs(totalIncome)}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Egresos</p>
+                <p className="tabular mt-1 text-lg font-bold text-red-600">−{fmtBs(totalExpense)}</p>
+              </Card>
+              <Card className="p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Saldo esperado</p>
+                <p className="tabular mt-1 text-lg font-bold text-brand-700">{fmtBs(expected)}</p>
+              </Card>
+            </div>
+          ) : (
+            <>
+              <div className="mb-3 grid grid-cols-2 gap-3">
+                <Card className="p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Ingresos (QR / depósito / tarjeta)</p>
+                  <p className="tabular mt-1 text-lg font-bold text-green-700">+{fmtBs(otherIncome)}</p>
+                </Card>
+                <Card className="p-4">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Egresos (QR / depósito / tarjeta)</p>
+                  <p className="tabular mt-1 text-lg font-bold text-red-600">−{fmtBs(otherExpense)}</p>
+                </Card>
+              </div>
+              <p className="mb-6 rounded bg-slate-50 p-2 text-xs text-slate-500">
+                Estos movimientos no pasan por el cajón: no afectan el saldo
+                esperado ni el arqueo del cierre.
+              </p>
+            </>
+          )}
 
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm text-slate-500">
@@ -284,33 +366,54 @@ export function CajaView({ role }: { role?: UserRole | null }) {
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Forma de pago</span>
-                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={INPUT}>
-                  {paymentMethods.map((m) => (
-                    <option key={m.code} value={m.code}>{m.label}</option>
-                  ))}
-                </select>
+                {tab === 'cash' ? (
+                  <p className={`${INPUT} bg-slate-50 text-slate-500`}>Efectivo</p>
+                ) : (
+                  <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={INPUT}>
+                    {otherMethods.map((m) => (
+                      <option key={m.code} value={m.code}>{m.label}</option>
+                    ))}
+                  </select>
+                )}
               </label>
             </div>
+            <PaymentProofFields
+              className="mt-3 max-w-xs"
+              method={paymentMethod}
+              proof={proof}
+              onChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
+            />
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-                <Paperclip size={16} />
-                {receipt ? receipt.name : 'Adjuntar recibo/factura (opcional)'}
-                <input type="file" accept="image/*" className="hidden"
-                  onChange={(e) => setReceipt(e.target.files?.[0] ?? null)} />
-              </label>
-              <Button loading={busy} onClick={handleAdd} className="ml-auto">
+              {!needsReceiptPhoto(paymentMethod) && (
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                  <Paperclip size={16} />
+                  {receipt ? receipt.name : 'Adjuntar recibo/factura (opcional)'}
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={(e) => setReceipt(e.target.files?.[0] ?? null)} />
+                </label>
+              )}
+              <Button
+                loading={busy}
+                disabled={paymentProofError(paymentMethod, proof) !== null}
+                onClick={handleAdd}
+                className="ml-auto"
+              >
                 Registrar {kind === 'income' ? 'ingreso' : 'egreso'}
               </Button>
             </div>
           </Card>
 
           {/* ---------- Movimientos ---------- */}
-          <h3 className="mb-2 font-semibold text-slate-700">Movimientos del turno</h3>
+          <h3 className="mb-2 font-semibold text-slate-700">
+            {tab === 'cash'
+              ? 'Movimientos en efectivo del turno'
+              : 'Movimientos por QR, depósito y tarjeta'}
+          </h3>
           <div className="space-y-2">
-            {live.length === 0 && movements.length === 0 && (
+            {shown.length === 0 && (
               <p className="text-sm text-slate-400">Sin movimientos todavía.</p>
             )}
-            {movements.map((m) => (
+            {shown.map((m) => (
               <Card key={m.id} className={`flex items-center gap-3 p-3 ${m.voided ? 'opacity-50' : ''}`}>
                 {m.kind === 'income'
                   ? <ArrowDownCircle className="shrink-0 text-green-600" size={20} />

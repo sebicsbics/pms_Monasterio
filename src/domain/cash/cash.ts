@@ -25,6 +25,19 @@ export function categoryLabel(kind: MovementKind, code: string): string {
   return map[code] ?? code
 }
 
+// Formas de pago admitidas EN CAJA CHICA. El catálogo `payment_methods`
+// es global y tiene más códigos (CTAS_POR_COBRAR, MIXTO, CORTESÍA…) que
+// sí valen para el check-out o los eventos, pero no para un movimiento de
+// caja: acá solo entra plata de verdad, por uno de estos cuatro medios.
+export const CAJA_PAYMENT_METHODS = ['EFECTIVO', 'DEPOSITO', 'TARJETA', 'QR'] as const
+
+// El único medio que toca el efectivo físico que cuenta el recepcionista
+// al cerrar. `null` = movimiento histórico anterior a que existiera la
+// columna payment_method: en esa época todo era efectivo.
+export function isCashMovement(m: CashMovement): boolean {
+  return m.paymentMethod == null || m.paymentMethod === 'EFECTIVO'
+}
+
 export interface CashSession {
   id: string
   openedAt: string
