@@ -11,6 +11,13 @@ import {
   paymentProofError,
 } from '../../domain/payments/paymentProof'
 import { PaymentProofFields } from '../payments/PaymentProofFields'
+import type { MixedPayment } from '../../domain/payments/mixedPayment'
+import {
+  EMPTY_MIXED_PAYMENT,
+  isMixed,
+  mixedPaymentError,
+} from '../../domain/payments/mixedPayment'
+import { MixedPaymentFields } from '../payments/MixedPaymentFields'
 
 const INPUT = 'w-full rounded-lg border border-slate-300 p-2'
 
@@ -28,6 +35,11 @@ export function RecordAnticipoView() {
   const [paymentMethod, setPaymentMethod] = useState('')
   const [notes, setNotes] = useState('')
   const [proof, setProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
+  const [mixed, setMixed] = useState<MixedPayment>(EMPTY_MIXED_PAYMENT)
+  const amountNumber = Number(amount) || 0
+  const payError = isMixed(paymentMethod)
+    ? mixedPaymentError(amountNumber, mixed, proof)
+    : paymentProofError(paymentMethod, proof)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [anticipos, setAnticipos] = useState<Anticipo[]>([])
   const [busy, setBusy] = useState(false)
@@ -73,9 +85,8 @@ export function RecordAnticipoView() {
       setError('El monto debe ser mayor a 0')
       return
     }
-    const proofErr = paymentProofError(paymentMethod, proof)
-    if (proofErr) {
-      setError(proofErr)
+    if (payError) {
+      setError(payError)
       return
     }
     setBusy(true)
@@ -86,6 +97,13 @@ export function RecordAnticipoView() {
         paymentMethod,
         notes: notes.trim() || null,
         proof,
+        mixed: isMixed(paymentMethod)
+          ? {
+              cashBs: Number(mixed.cashBs),
+              nonCashBs: Number(mixed.nonCashBs),
+              nonCashMethod: mixed.nonCashMethod,
+            }
+          : null,
       })
       setAmount('')
       setNotes('')
@@ -151,11 +169,21 @@ export function RecordAnticipoView() {
               </select>
             </div>
           </div>
-          <PaymentProofFields
-            method={paymentMethod}
-            proof={proof}
-            onChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
-          />
+          {isMixed(paymentMethod) ? (
+            <MixedPaymentFields
+              total={amountNumber}
+              split={mixed}
+              proof={proof}
+              onSplitChange={(patch) => setMixed((m) => ({ ...m, ...patch }))}
+              onProofChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
+            />
+          ) : (
+            <PaymentProofFields
+              method={paymentMethod}
+              proof={proof}
+              onChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
+            />
+          )}
           <div>
             <label className="mb-1 block text-sm text-slate-600">Notas (opcional)</label>
             <input
@@ -166,7 +194,7 @@ export function RecordAnticipoView() {
           </div>
           <Button
             loading={busy}
-            disabled={paymentProofError(paymentMethod, proof) !== null}
+            disabled={payError !== null}
             onClick={handleSubmit}
           >
             Registrar anticipo

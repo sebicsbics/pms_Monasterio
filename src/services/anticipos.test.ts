@@ -40,6 +40,9 @@ describe('recordAnticipo', () => {
       p_notes: null,
       p_receipt_path: null,
       p_payment_reference: null,
+      p_cash_bs: null,
+      p_non_cash_bs: null,
+      p_non_cash_method: null,
     })
     expect(result.status).toBe('active')
     expect(result.amountBs).toBe(100)

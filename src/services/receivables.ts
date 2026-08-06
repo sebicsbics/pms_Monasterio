@@ -99,6 +99,7 @@ export async function settleReceivable(
   id: string,
   method: string,
   proof: PaymentProof = EMPTY_PAYMENT_PROOF,
+  mixed: { cashBs: number; nonCashBs: number; nonCashMethod: string } | null = null,
 ): Promise<void> {
   const { receipt, paymentReference } = proofForMethod(method, proof)
   const { error } = await supabase.rpc('settle_receivable', {
@@ -106,6 +107,9 @@ export async function settleReceivable(
     p_method: method,
     p_receipt_path: await uploadReceipt(receipt),
     p_payment_reference: paymentReference,
+    p_cash_bs: mixed?.cashBs ?? null,
+    p_non_cash_bs: mixed?.nonCashBs ?? null,
+    p_non_cash_method: mixed?.nonCashMethod ?? null,
   })
   if (error) throw new Error(error.message)
 }

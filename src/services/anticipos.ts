@@ -36,6 +36,7 @@ export async function recordAnticipo(input: {
   paymentMethod: string
   notes: string | null
   proof?: PaymentProof
+  mixed?: { cashBs: number; nonCashBs: number; nonCashMethod: string } | null
 }): Promise<Anticipo> {
   const { receipt, paymentReference } = proofForMethod(input.paymentMethod, input.proof ?? EMPTY_PAYMENT_PROOF)
   const { data, error } = await supabase.rpc('record_anticipo', {
@@ -45,6 +46,9 @@ export async function recordAnticipo(input: {
     p_notes: input.notes,
     p_receipt_path: await uploadReceipt(receipt),
     p_payment_reference: paymentReference,
+    p_cash_bs: input.mixed?.cashBs ?? null,
+    p_non_cash_bs: input.mixed?.nonCashBs ?? null,
+    p_non_cash_method: input.mixed?.nonCashMethod ?? null,
   })
   if (error) throw new Error(error.message)
   return mapAnticipo(data as Record<string, unknown>)

@@ -53,6 +53,9 @@ describe('checkOutRoom', () => {
       p_receipt_path: null,
       p_payment_reference: 'AB12345',
       p_receivable_account_id: null,
+      p_cash_bs: null,
+      p_non_cash_bs: null,
+      p_non_cash_method: null,
     })
   })
 

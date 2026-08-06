@@ -24,6 +24,13 @@ import {
   paymentProofError,
 } from '../../domain/payments/paymentProof'
 import { PaymentProofFields } from '../payments/PaymentProofFields'
+import type { MixedPayment } from '../../domain/payments/mixedPayment'
+import {
+  EMPTY_MIXED_PAYMENT,
+  isMixed,
+  mixedPaymentError,
+} from '../../domain/payments/mixedPayment'
+import { MixedPaymentFields } from '../payments/MixedPaymentFields'
 
 const KINDS: ReceivableAccountKind[] = ['empresa', 'agencia', 'persona']
 const STATUS_FILTERS: (ReceivableStatus | '')[] = ['', 'pending', 'paid', 'cancelled']
@@ -60,6 +67,12 @@ export function ReceivablesView() {
   const [settling, setSettling] = useState<Receivable | null>(null)
   const [settleMethod, setSettleMethod] = useState('')
   const [settleProof, setSettleProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
+  const [settleMixed, setSettleMixed] = useState<MixedPayment>(EMPTY_MIXED_PAYMENT)
+  const settleError = !settling
+    ? null
+    : isMixed(settleMethod)
+      ? mixedPaymentError(settling.amountBs, settleMixed, settleProof)
+      : paymentProofError(settleMethod, settleProof)
 
   const loadAccounts = useCallback(() => {
     return listReceivableAccounts()
@@ -118,18 +131,29 @@ export function ReceivablesView() {
 
   async function confirmSettle() {
     if (!settling || !settleMethod) return
-    const proofErr = paymentProofError(settleMethod, settleProof)
-    if (proofErr) {
-      setError(proofErr)
+    if (settleError) {
+      setError(settleError)
       return
     }
     setBusy(true)
     setError(null)
     try {
-      await settleReceivable(settling.id, settleMethod, settleProof)
+      await settleReceivable(
+        settling.id,
+        settleMethod,
+        settleProof,
+        isMixed(settleMethod)
+          ? {
+              cashBs: Number(settleMixed.cashBs),
+              nonCashBs: Number(settleMixed.nonCashBs),
+              nonCashMethod: settleMixed.nonCashMethod,
+            }
+          : null,
+      )
       setMessage(`Deuda cobrada (${fmtBs(settling.amountBs)}).`)
       setSettling(null)
       setSettleProof(EMPTY_PAYMENT_PROOF)
+      setSettleMixed(EMPTY_MIXED_PAYMENT)
       await loadReceivables()
     } catch (e) {
       setError((e as Error).message)
@@ -333,21 +357,30 @@ export function ReceivablesView() {
                 ))}
               </select>
             </label>
-            <PaymentProofFields
-              className="mt-3"
-              method={settleMethod}
-              proof={settleProof}
-              onChange={(patch) => setSettleProof((p) => ({ ...p, ...patch }))}
-            />
+            {isMixed(settleMethod) ? (
+              <MixedPaymentFields
+                className="mt-3"
+                total={settling.amountBs}
+                split={settleMixed}
+                proof={settleProof}
+                onSplitChange={(patch) => setSettleMixed((m) => ({ ...m, ...patch }))}
+                onProofChange={(patch) => setSettleProof((p) => ({ ...p, ...patch }))}
+              />
+            ) : (
+              <PaymentProofFields
+                className="mt-3"
+                method={settleMethod}
+                proof={settleProof}
+                onChange={(patch) => setSettleProof((p) => ({ ...p, ...patch }))}
+              />
+            )}
             <p className="mt-2 text-xs text-slate-400">
               En efectivo se registra en la caja (requiere caja abierta).
             </p>
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                disabled={
-                  busy || !settleMethod || paymentProofError(settleMethod, settleProof) !== null
-                }
+                disabled={busy || !settleMethod || settleError !== null}
                 onClick={confirmSettle}
                 className="w-1/2 rounded bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >

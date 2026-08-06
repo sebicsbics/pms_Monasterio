@@ -36,6 +36,13 @@ import {
   proofForMethod,
 } from '../../domain/payments/paymentProof'
 import { PaymentProofFields } from '../payments/PaymentProofFields'
+import type { MixedPayment } from '../../domain/payments/mixedPayment'
+import {
+  EMPTY_MIXED_PAYMENT,
+  isMixed,
+  mixedPaymentError,
+} from '../../domain/payments/mixedPayment'
+import { MixedPaymentFields } from '../payments/MixedPaymentFields'
 
 interface Props {
   room: Room
@@ -141,7 +148,13 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [receivableAccounts, setReceivableAccounts] = useState<ReceivableAccount[]>([])
   const [receivableAccountId, setReceivableAccountId] = useState('')
   const [proof, setProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
-  const proofError = paymentProofError(paymentMethod, proof)
+  const [mixed, setMixed] = useState<MixedPayment>(EMPTY_MIXED_PAYMENT)
+  const checkOutTotal = folio?.totalBs ?? 0
+  // En MIXTO el respaldo pertenece a la parte electrónica, así que el
+  // error se evalúa contra ese medio, no contra 'MIXTO'.
+  const proofError = isMixed(paymentMethod)
+    ? mixedPaymentError(checkOutTotal, mixed, proof)
+    : paymentProofError(paymentMethod, proof)
 
   // Edición de tarifa (root/reception), con justificación obligatoria
   const [rateEditOpen, setRateEditOpen] = useState(false)
@@ -436,14 +449,31 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     setBusy(true)
     setError(null)
     try {
+      const mixedOn = isMixed(paymentMethod)
       const total = await checkOutRoom(
         room.id,
         paymentMethod,
-        proofForMethod(paymentMethod, proof),
+        // El respaldo se resuelve contra el medio que realmente lo pide:
+        // con MIXTO, el de la parte electrónica.
+        proofForMethod(mixedOn ? mixed.nonCashMethod : paymentMethod, proof),
         paymentMethod === 'CTAS_POR_COBRAR' ? receivableAccountId : null,
+        mixedOn
+          ? {
+              cashBs: Number(mixed.cashBs),
+              nonCashBs: Number(mixed.nonCashBs),
+              nonCashMethod: mixed.nonCashMethod,
+            }
+          : null,
       )
-      setMessage(`Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`)
+      setMessage(
+        mixedOn
+          ? `Check-out realizado. ${Number(mixed.cashBs).toFixed(2)} Bs en efectivo y ` +
+            `${Number(mixed.nonCashBs).toFixed(2)} Bs por ${mixed.nonCashMethod.toLowerCase()}, ` +
+            'ambos registrados en caja.'
+          : `Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`,
+      )
       setProof(EMPTY_PAYMENT_PROOF)
+      setMixed(EMPTY_MIXED_PAYMENT)
       onDone()
     } catch (e) {
       setError((e as Error).message)
@@ -1216,11 +1246,21 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               </p>
             )}
 
-            <PaymentProofFields
-              method={paymentMethod}
-              proof={proof}
-              onChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
-            />
+            {isMixed(paymentMethod) ? (
+              <MixedPaymentFields
+                total={checkOutTotal}
+                split={mixed}
+                proof={proof}
+                onSplitChange={(patch) => setMixed((m) => ({ ...m, ...patch }))}
+                onProofChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
+              />
+            ) : (
+              <PaymentProofFields
+                method={paymentMethod}
+                proof={proof}
+                onChange={(patch) => setProof((p) => ({ ...p, ...patch }))}
+              />
+            )}
 
             <button
               type="button"

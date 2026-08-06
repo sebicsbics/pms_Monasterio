@@ -79,6 +79,13 @@ export interface CheckOutReceipt {
   paymentReference: string | null
 }
 
+// Desglose del pago mixto, ya resuelto a números. null si no es MIXTO.
+export interface MixedSplit {
+  cashBs: number
+  nonCashBs: number
+  nonCashMethod: string
+}
+
 // Check-out: sube el comprobante (si hay imagen) al bucket privado
 // 'receipts' reusando la convención exacta de cash.ts (ruta plana
 // `${año}/${uuid}.${ext}`, mismo bucket) y devuelve el total a cobrar (Bs).
@@ -87,6 +94,7 @@ export async function checkOutRoom(
   paymentMethod: string,
   receipt: CheckOutReceipt = { receipt: null, paymentReference: null },
   receivableAccountId: string | null = null,
+  mixed: MixedSplit | null = null,
 ): Promise<number> {
   const { data, error } = await supabase.rpc('check_out_room', {
     p_room_id: roomId,
@@ -94,6 +102,9 @@ export async function checkOutRoom(
     p_receipt_path: await uploadReceipt(receipt.receipt),
     p_payment_reference: receipt.paymentReference,
     p_receivable_account_id: receivableAccountId,
+    p_cash_bs: mixed?.cashBs ?? null,
+    p_non_cash_bs: mixed?.nonCashBs ?? null,
+    p_non_cash_method: mixed?.nonCashMethod ?? null,
   })
   if (error) throw new Error(error.message)
   return Number(data)
