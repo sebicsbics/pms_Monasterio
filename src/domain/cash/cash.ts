@@ -4,6 +4,7 @@ export const INCOME_CATEGORIES: Record<string, string> = {
   cobro_habitacion: 'Cobro habitación',
   venta_minibar: 'Venta minibar',
   evento: 'Evento / salón',
+  cobro_cuenta: 'Cobro cuenta por cobrar',
   adelanto: 'Adelanto / seña',
   reembolso: 'Reembolso recibido',
   otro_ingreso: 'Otro ingreso',
