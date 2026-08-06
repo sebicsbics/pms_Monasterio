@@ -11,7 +11,7 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { cancelReservation, rescheduleReservation } from './reservations'
+import { cancelReservation, createReservation, rescheduleReservation } from './reservations'
 
 describe('cancelReservation', () => {
   it('rejects a missing justification before calling the RPC', async () => {
@@ -78,5 +78,44 @@ describe('rescheduleReservation', () => {
     await expect(
       rescheduleReservation('res-3', '2026-08-01', '2026-08-03', 'motivo'),
     ).rejects.toThrow('La habitación no está disponible para esas fechas')
+  })
+})
+
+// Regresión: create_reservation dejó de recibir p_num_guests al sacarlo de
+// create_bulk_reservation con un reemplazo de texto sin límite de
+// ocurrencias. TypeScript no lo vio —el payload de una RPC es un objeto
+// sin tipar— y PostgREST falló recién en runtime con "Could not find the
+// function ... in the schema cache". El payload se afirma completo: si
+// alguien vuelve a quitar una clave, el test cae acá y no en producción.
+describe('createReservation', () => {
+  it('sends every parameter the create_reservation RPC declares', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: 'res-1', error: null })
+    await createReservation({
+      roomId: 'room-1',
+      roomTypeId: 'type-1',
+      firstName: 'Ana',
+      lastName: 'Pérez',
+      phone: '555',
+      email: 'ana@example.com',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-07',
+      numGuests: 2,
+      method: 'phone',
+    })
+    expect(rpcMock).toHaveBeenCalledWith('create_reservation', {
+      p_room_id: 'room-1',
+      p_room_type_id: 'type-1',
+      p_first_name: 'Ana',
+      p_last_name: 'Pérez',
+      p_phone: '555',
+      p_email: 'ana@example.com',
+      p_check_in: '2026-08-06',
+      p_check_out: '2026-08-07',
+      p_num_guests: 2,
+      p_method: 'phone',
+      p_rate_bs: null,
+      p_reason: null,
+    })
   })
 })

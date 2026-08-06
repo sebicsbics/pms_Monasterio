@@ -93,6 +93,7 @@ export async function createReservation(data: ReservationInput): Promise<string>
     p_email: data.email,
     p_check_in: data.checkIn,
     p_check_out: data.checkOut,
+    p_num_guests: data.numGuests,
     p_method: data.method,
     p_rate_bs: data.rateBs ?? null,
     p_reason: data.reason ?? null,
