@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Anticipo } from '../domain/anticipos/anticipos'
+import type { Anticipo, AnticipoListItem, AnticipoStatus } from '../domain/anticipos/anticipos'
 import type { PaymentProof } from '../domain/payments/paymentProof'
 import { EMPTY_PAYMENT_PROOF, proofForMethod } from '../domain/payments/paymentProof'
 import { uploadReceipt } from './receipts'
@@ -72,4 +72,34 @@ export async function modifyAnticipo(
   })
   if (error) throw new Error(error.message)
   return mapAnticipo(data as Record<string, unknown>)
+}
+
+// Todos los anticipos con su contexto, para la lista y el selector de
+// corrección. El join lo resuelve la RPC.
+export async function listAnticipos(
+  onlyActive = false,
+  limit = 200,
+): Promise<AnticipoListItem[]> {
+  const { data, error } = await supabase.rpc('list_anticipos', {
+    p_only_active: onlyActive,
+    p_limit: limit,
+  })
+  if (error) throw new Error(error.message)
+  return (data as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    reservationId: r.reservation_id as string,
+    roomNumber: r.room_number as string,
+    guestName: r.guest_name as string,
+    checkInDate: r.check_in_date as string,
+    checkOutDate: r.check_out_date as string,
+    reservationStatus: r.reservation_status as string,
+    amountBs: Number(r.amount_bs),
+    paymentMethod: r.payment_method as string,
+    status: r.status as AnticipoStatus,
+    receiptPath: (r.receipt_path as string | null) ?? null,
+    paymentReference: (r.payment_reference as string | null) ?? null,
+    receivedByName: (r.received_by_name as string | null) ?? '—',
+    receivedAt: r.received_at as string,
+    notes: (r.notes as string | null) ?? null,
+  }))
 }

@@ -5,6 +5,7 @@ import { fetchPaymentMethods } from '../../services/payments'
 import { fetchAnticipos, recordAnticipo } from '../../services/anticipos'
 import { listReservationsBrief, type ReservationBrief } from '../../services/reservations'
 import { Button, Card, PageHeader } from '../../components/ui'
+import { AnticipoList } from './AnticipoList'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
   EMPTY_PAYMENT_PROOF,
@@ -45,6 +46,7 @@ export function RecordAnticipoView() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     fetchPaymentMethods()
@@ -108,6 +110,7 @@ export function RecordAnticipoView() {
       setAmount('')
       setNotes('')
       setMessage('Anticipo registrado.')
+      setRefreshKey((k) => k + 1)
       await reload(trimmedId)
     } catch (e) {
       setError(userFacingAnticipoError((e as Error).message))
@@ -221,6 +224,8 @@ export function RecordAnticipoView() {
           ))}
         </div>
       )}
+
+      <AnticipoList refreshKey={refreshKey} />
     </div>
   )
 }

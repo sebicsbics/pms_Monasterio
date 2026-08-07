@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { UserRole } from '../../domain/auth/profile'
 import { ANTICIPOS_ADMIN } from '../../domain/auth/roleGroups'
-import { userFacingAnticipoError, type Anticipo } from '../../domain/anticipos/anticipos'
+import {
+  anticipoLabel,
+  isCorrectable,
+  userFacingAnticipoError,
+  type AnticipoListItem,
+} from '../../domain/anticipos/anticipos'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { fetchPaymentMethods } from '../../services/payments'
-import { fetchAnticipos, modifyAnticipo } from '../../services/anticipos'
+import { listAnticipos, modifyAnticipo } from '../../services/anticipos'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
+import { AnticipoList } from './AnticipoList'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
   EMPTY_PAYMENT_PROOF,
@@ -25,8 +31,11 @@ function fmtBs(n: number) {
 // modify_anticipo escribe una fila de corrección y solo se permite mientras
 // status='active' (queda bloqueado si la reserva se canceló → 'forfeited').
 export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
-  const [reservationId, setReservationId] = useState('')
-  const [anticipos, setAnticipos] = useState<Anticipo[]>([])
+  // Se elige el ANTICIPO directamente. Antes había que pegar a mano el
+  // UUID de la reserva, que nadie tiene a mano en el mostrador.
+  const [anticipos, setAnticipos] = useState<AnticipoListItem[]>([])
+  const [selectedId, setSelectedId] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -43,19 +52,20 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
       .catch((e: Error) => setError(e.message))
   }, [])
 
-  const reload = useCallback((id: string) => {
-    if (!id) {
-      setAnticipos([])
-      return Promise.resolve()
-    }
-    return fetchAnticipos(id)
+  // Sólo los vigentes: un anticipo 'forfeited' (reserva cancelada) está
+  // congelado y modify_anticipo lo rechaza, así que ofrecerlo en el
+  // selector sería ofrecer una acción que siempre falla.
+  const reload = useCallback(() => {
+    return listAnticipos(true)
       .then(setAnticipos)
       .catch((e: Error) => setError(userFacingAnticipoError(e.message)))
   }, [])
 
   useEffect(() => {
-    void reload(reservationId.trim())
-  }, [reservationId, reload])
+    void reload()
+  }, [reload])
+
+  const selected = anticipos.find((a) => a.id === selectedId) ?? null
 
   if (!ANTICIPOS_ADMIN.includes(role as UserRole)) {
     return (
@@ -65,11 +75,11 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
     )
   }
 
-  async function handleModify(a: Anticipo) {
+  async function handleModify(a: AnticipoListItem) {
     setError(null)
     setMessage(null)
-    if (a.status !== 'active') {
-      setError('No se puede modificar un anticipo ya reembolsado (total o parcialmente)')
+    if (!isCorrectable(a)) {
+      setError('El anticipo está perdido (reserva cancelada): no se puede modificar')
       return
     }
     const amountNum = Number(modifyAmount)
@@ -100,7 +110,8 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
       setModifyReason('')
       setModifyProof(EMPTY_PAYMENT_PROOF)
       setMessage('Anticipo modificado.')
-      await reload(reservationId.trim())
+      setRefreshKey((k) => k + 1)
+      await reload()
     } catch (e) {
       setError(userFacingAnticipoError((e as Error).message))
     } finally {
@@ -120,81 +131,101 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
       {message && (
         <p className="mb-4 rounded bg-green-50 p-2 text-sm text-green-700">{message}</p>
       )}
-      <div className="mb-4">
-        <label className="mb-1 block text-sm text-slate-600">ID de reserva</label>
-        <input
+      <label className="mb-4 block text-sm">
+        <span className="mb-1 block text-slate-600">Anticipo a corregir</span>
+        <select
           className={INPUT}
-          value={reservationId}
-          onChange={(e) => setReservationId(e.target.value)}
-          placeholder="uuid de la reserva"
-        />
-      </div>
+          value={selectedId}
+          onChange={(e) => {
+            setSelectedId(e.target.value)
+            setModifyAmount('')
+            setModifyMethod('')
+            setModifyReason('')
+            setModifyProof(EMPTY_PAYMENT_PROOF)
+            setError(null)
+            setMessage(null)
+          }}
+        >
+          <option value="">Elegí un anticipo…</option>
+          {anticipos.map((a) => (
+            <option key={a.id} value={a.id}>
+              {anticipoLabel(a)}
+            </option>
+          ))}
+        </select>
+      </label>
 
       {anticipos.length === 0 ? (
-        <p className="text-sm text-slate-400">Sin anticipos para esta reserva.</p>
+        <p className="text-sm text-slate-400">
+          No hay anticipos vigentes para corregir.
+        </p>
+      ) : !selected ? (
+        <p className="text-sm text-slate-400">
+          Elegí un anticipo de la lista para corregirlo.
+        </p>
       ) : (
-        <div className="space-y-4">
-          {anticipos.map((a) => (
-            <Card key={a.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">
-                    {fmtBs(a.amountBs)} · {a.paymentMethod}
-                  </p>
-                </div>
-                <Badge tone={a.status === 'active' ? 'success' : 'warning'}>{a.status}</Badge>
-              </div>
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">
+                Hab. {selected.roomNumber} · {selected.guestName}
+              </p>
+              <p className="text-xs text-slate-500">
+                {fmtBs(selected.amountBs)} · {selected.paymentMethod} · cobrado por{' '}
+                {selected.receivedByName}
+              </p>
+              <p className="text-xs text-slate-400">
+                Estadía {selected.checkInDate} → {selected.checkOutDate}
+                {selected.notes && ` · ${selected.notes}`}
+              </p>
+            </div>
+            <Badge tone="success">vigente</Badge>
+          </div>
 
-              {a.status === 'active' ? (
-                <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-200 pt-3">
-                  <input
-                    type="number" min={0} step="0.01" placeholder="Nuevo monto"
-                    className="w-32 rounded-lg border border-slate-300 p-2 text-sm"
-                    value={modifyAmount}
-                    onChange={(e) => setModifyAmount(e.target.value)}
-                  />
-                  <select
-                    className="rounded-lg border border-slate-300 p-2 text-sm"
-                    value={modifyMethod || a.paymentMethod}
-                    onChange={(e) => setModifyMethod(e.target.value)}
-                  >
-                    {paymentMethods.map((m) => (
-                      <option key={m.code} value={m.code}>{m.label}</option>
-                    ))}
-                  </select>
-                  <input
-                    placeholder="Motivo de la corrección"
-                    className="flex-1 rounded-lg border border-slate-300 p-2 text-sm"
-                    value={modifyReason}
-                    onChange={(e) => setModifyReason(e.target.value)}
-                  />
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={
-                      busyId === a.id ||
-                      paymentProofError(modifyMethod || a.paymentMethod, modifyProof) !== null
-                    }
-                    onClick={() => handleModify(a)}
-                  >
-                    Corregir
-                  </Button>
-                  <PaymentProofFields
-                    className="w-full"
-                    method={modifyMethod || a.paymentMethod}
-                    proof={modifyProof}
-                    onChange={(patch) => setModifyProof((p) => ({ ...p, ...patch }))}
-                  />
-                </div>
-              ) : (
-                <p className="mt-3 border-t border-slate-200 pt-3 text-xs text-slate-400">
-                  Anticipo perdido (reserva cancelada): no se puede modificar.
-                </p>
-              )}
-            </Card>
-          ))}
-        </div>
+          <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-200 pt-3">
+            <input
+              type="number" min={0} step="0.01" placeholder="Nuevo monto"
+              className="w-32 rounded-lg border border-slate-300 p-2 text-sm"
+              value={modifyAmount}
+              onChange={(e) => setModifyAmount(e.target.value)}
+            />
+            <select
+              className="rounded-lg border border-slate-300 p-2 text-sm"
+              value={modifyMethod || selected.paymentMethod}
+              onChange={(e) => setModifyMethod(e.target.value)}
+            >
+              {paymentMethods.map((m) => (
+                <option key={m.code} value={m.code}>{m.label}</option>
+              ))}
+            </select>
+            <input
+              placeholder="Motivo de la corrección"
+              className="flex-1 rounded-lg border border-slate-300 p-2 text-sm"
+              value={modifyReason}
+              onChange={(e) => setModifyReason(e.target.value)}
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={
+                busyId === selected.id ||
+                paymentProofError(modifyMethod || selected.paymentMethod, modifyProof) !== null
+              }
+              onClick={() => handleModify(selected)}
+            >
+              Corregir
+            </Button>
+            <PaymentProofFields
+              className="w-full"
+              method={modifyMethod || selected.paymentMethod}
+              proof={modifyProof}
+              onChange={(patch) => setModifyProof((p) => ({ ...p, ...patch }))}
+            />
+          </div>
+        </Card>
       )}
+
+      <AnticipoList refreshKey={refreshKey} />
     </div>
   )
 }
