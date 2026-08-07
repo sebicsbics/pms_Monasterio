@@ -61,3 +61,42 @@ export interface CashMovement {
   voided: boolean
   voidReason: string | null
 }
+
+// Un turno de caja cerrado (o el abierto), con el arqueo ya resuelto por
+// `cash_session_history`. Es lo que necesita gerencia para el arqueo
+// mensual: quién abrió, con cuánto, con cuánto cerró y qué diferencia hubo.
+export interface CashSessionSummary {
+  id: string
+  openedAt: string
+  openedByName: string
+  openingBalanceBs: number
+  closedAt: string | null
+  closedByName: string | null
+  countedBalanceBs: number | null
+  cashIncomeBs: number
+  cashExpenseBs: number
+  // Esperado contando SÓLO el efectivo del cajón.
+  expectedBs: number
+  differenceBs: number | null
+  otherIncomeBs: number
+  otherExpenseBs: number
+  movements: number
+  status: 'open' | 'closed'
+  notes: string | null
+}
+
+// Esperado bajo el criterio ANTERIOR al split efectivo/otros medios, que
+// sumaba todos los movimientos sin importar la forma de pago.
+//
+// Se conserva porque los turnos cerrados antes del cambio se arquearon con
+// ese criterio: mostrar sólo el nuevo haría aparecer descuadres de cientos
+// de bolivianos en turnos que cerraron cuadrados, y en un arqueo eso señala
+// a una persona por un cambio de fórmula.
+export function expectedWithOtherMeansBs(s: CashSessionSummary): number {
+  return s.expectedBs + s.otherIncomeBs - s.otherExpenseBs
+}
+
+export function differenceWithOtherMeansBs(s: CashSessionSummary): number | null {
+  if (s.countedBalanceBs === null) return null
+  return s.countedBalanceBs - expectedWithOtherMeansBs(s)
+}

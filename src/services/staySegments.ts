@@ -33,14 +33,16 @@ export async function fetchStaySegments(reservationId: string): Promise<StaySegm
   }))
 }
 
-// El huésped se queda más noches. Devuelve el total nuevo de la estadía.
-export async function extendStay(
+// Mueve la fecha de salida: el huésped se queda más noches o se va antes.
+// La tarifa sólo hace falta al EXTENDER — las noches que ya estaban tienen
+// su precio. Devuelve el total nuevo de la estadía.
+export async function modifyStayDates(
   roomId: string,
   newCheckOut: string,
-  rateBs: number,
+  rateBs: number | null,
   reason: string,
 ): Promise<number> {
-  const { data, error } = await supabase.rpc('extend_stay', {
+  const { data, error } = await supabase.rpc('modify_stay_dates', {
     p_room_id: roomId,
     p_new_check_out: newCheckOut,
     p_rate_bs: rateBs,

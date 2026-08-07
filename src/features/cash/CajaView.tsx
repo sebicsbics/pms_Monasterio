@@ -10,7 +10,6 @@ import {
   closeCashSession,
   fetchMovements,
   fetchOpenSession,
-  fetchSessions,
   openCashSession,
   receiptUrl,
   voidMovement,
@@ -27,8 +26,9 @@ import {
   type CashSession,
   type MovementKind,
 } from '../../domain/cash/cash'
-import { Badge, Button, Card, PageHeader } from '../../components/ui'
+import { Button, Card, PageHeader } from '../../components/ui'
 import type { UserRole } from '../../domain/auth/profile'
+import { CashHistory } from './CashHistory'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
   EMPTY_PAYMENT_PROOF,
@@ -46,12 +46,14 @@ const INPUT = 'w-full rounded-lg border border-slate-300 p-2'
 export function CajaView({ role }: { role?: UserRole | null }) {
   const [session, setSession] = useState<CashSession | null>(null)
   const [movements, setMovements] = useState<CashMovement[]>([])
-  const [history, setHistory] = useState<CashSession[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isMgmt = role === 'root' || role === 'accountant'
+  // Arqueo: root, administrador de recepción y contadora. reception a
+  // secas maneja su turno pero no audita los de los demás.
+  const isMgmt =
+    role === 'root' || role === 'accountant' || role === 'reception_admin'
 
   // Apertura
   const [opening, setOpening] = useState('')
@@ -77,8 +79,7 @@ export function CajaView({ role }: { role?: UserRole | null }) {
     const s = await fetchOpenSession()
     setSession(s)
     setMovements(s ? await fetchMovements(s.id) : [])
-    if (isMgmt) setHistory(await fetchSessions())
-  }, [isMgmt])
+  }, [])
 
   useEffect(() => {
     reload()
@@ -451,36 +452,7 @@ export function CajaView({ role }: { role?: UserRole | null }) {
         </>
       )}
 
-      {/* ---------- Historial de cierres (gerencia) ---------- */}
-      {isMgmt && history.filter((s) => s.status === 'closed').length > 0 && (
-        <div className="mt-8">
-          <h3 className="mb-2 font-semibold text-slate-700">Cierres anteriores</h3>
-          <Card className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="p-3">Cerrada</th>
-                  <th className="p-3 text-right">Fondo</th>
-                  <th className="p-3 text-right">Contado</th>
-                  <th className="p-3">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.filter((s) => s.status === 'closed').map((s) => (
-                  <tr key={s.id} className="border-t border-slate-100">
-                    <td className="p-3 text-slate-600">{s.closedAt ? fmtDateTime(s.closedAt) : '—'}</td>
-                    <td className="tabular p-3 text-right">{fmtBs(s.openingBalanceBs)}</td>
-                    <td className="tabular p-3 text-right">
-                      {s.countedBalanceBs == null ? '—' : fmtBs(s.countedBalanceBs)}
-                    </td>
-                    <td className="p-3"><Badge tone="neutral">Cerrada</Badge></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </div>
-      )}
+      {isMgmt && <CashHistory />}
     </div>
   )
 }

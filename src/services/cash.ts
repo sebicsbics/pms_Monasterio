@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import type {
   CashMovement,
   CashSession,
+  CashSessionSummary,
   MovementKind,
 } from '../domain/cash/cash'
 import { uploadReceipt } from './receipts'
@@ -104,3 +105,35 @@ export async function voidMovement(id: string, reason: string): Promise<void> {
 }
 
 export { receiptUrl } from './receipts'
+
+// Historial de turnos para el arqueo (root, reception_admin, accountant).
+// El cálculo del esperado vive en la RPC: recalcularlo en el navegador
+// obligaría a traerse los movimientos de todos los turnos del rango.
+export async function fetchCashSessionHistory(
+  from: string | null,
+  to: string | null,
+): Promise<CashSessionSummary[]> {
+  const { data, error } = await supabase.rpc('cash_session_history', {
+    p_from: from,
+    p_to: to,
+  })
+  if (error) throw new Error(error.message)
+  return (data as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    openedAt: r.opened_at as string,
+    openedByName: (r.opened_by_name as string | null) ?? '—',
+    openingBalanceBs: Number(r.opening_balance_bs),
+    closedAt: (r.closed_at as string | null) ?? null,
+    closedByName: (r.closed_by_name as string | null) ?? null,
+    countedBalanceBs: r.counted_balance_bs == null ? null : Number(r.counted_balance_bs),
+    cashIncomeBs: Number(r.cash_income_bs),
+    cashExpenseBs: Number(r.cash_expense_bs),
+    expectedBs: Number(r.expected_bs),
+    differenceBs: r.difference_bs == null ? null : Number(r.difference_bs),
+    otherIncomeBs: Number(r.other_income_bs),
+    otherExpenseBs: Number(r.other_expense_bs),
+    movements: Number(r.movements),
+    status: r.status as 'open' | 'closed',
+    notes: (r.notes as string | null) ?? null,
+  }))
+}

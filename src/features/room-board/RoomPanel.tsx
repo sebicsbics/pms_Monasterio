@@ -27,7 +27,7 @@ import { guestFullName } from '../../domain/stays/stayGuest'
 import { fetchStayGuests, addGuestsToStay } from '../../services/stayGuests'
 import type { StaySegment } from '../../domain/stays/staySegment'
 import { segmentNights, segmentTotalBs } from '../../domain/stays/staySegment'
-import { fetchStaySegments, extendStay, changeRoom } from '../../services/staySegments'
+import { fetchStaySegments, modifyStayDates, changeRoom } from '../../services/staySegments'
 import { fetchRooms } from '../../services/rooms'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
@@ -129,7 +129,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   // Es lo que permite extender noches y mudar al huésped sin perder el
   // registro de lo que ya se cobró.
   const [segments, setSegments] = useState<StaySegment[]>([])
-  const [stayAction, setStayAction] = useState<'extend' | 'move' | null>(null)
+  const [stayAction, setStayAction] = useState<'dates' | 'move' | null>(null)
   const [newCheckOut, setNewCheckOut] = useState('')
   const [stayRate, setStayRate] = useState('')
   const [stayReason, setStayReason] = useState('')
@@ -249,13 +249,25 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       .catch((e: Error) => setError(e.message))
   }
 
-  async function handleExtend() {
+  // Salida actual = fin del último tramo. Con eso se sabe si el cambio de
+  // fecha agrega noches (hay que valorarlas) o las quita (no se pregunta
+  // tarifa: las que quedan ya tienen su precio).
+  const currentCheckOut =
+    segments.length > 0 ? segments[segments.length - 1].endDate : ''
+  const isExtending = newCheckOut !== '' && newCheckOut > currentCheckOut
+  const isShortening = newCheckOut !== '' && newCheckOut < currentCheckOut
+
+  async function handleModifyDates() {
     const rate = Number(stayRate)
     if (!newCheckOut) {
       setError('Elegí la nueva fecha de salida')
       return
     }
-    if (!(rate > 0)) {
+    if (newCheckOut === currentCheckOut) {
+      setError('La fecha de salida es la misma que la actual')
+      return
+    }
+    if (isExtending && !(rate > 0)) {
       setError('Ingresá la tarifa por noche de las noches nuevas')
       return
     }
@@ -263,8 +275,16 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     setError(null)
     setMessage(null)
     try {
-      const total = await extendStay(room.id, newCheckOut, rate, stayReason)
-      setMessage(`Estadía extendida hasta ${newCheckOut}. Total: ${total.toFixed(2)} Bs`)
+      const total = await modifyStayDates(
+        room.id,
+        newCheckOut,
+        isExtending ? rate : null,
+        stayReason,
+      )
+      setMessage(
+        `${isExtending ? 'Estadía extendida' : 'Salida adelantada'} al ${newCheckOut}. ` +
+          `Total: ${total.toFixed(2)} Bs`,
+      )
       setStayAction(null)
       setNewCheckOut('')
       setStayRate('')
@@ -998,14 +1018,14 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                     <button
                       type="button"
                       onClick={() => {
-                        setStayAction('extend')
+                        setStayAction('dates')
                         setNewCheckOut('')
                         setStayRate('')
                         setStayReason('')
                       }}
                       className="text-xs font-medium text-brand-700 hover:underline"
                     >
-                      Extender noches
+                      Modificar fechas
                     </button>
                     <button
                       type="button"
@@ -1018,8 +1038,11 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 )}
               </div>
 
-              {stayAction === 'extend' && (
+              {stayAction === 'dates' && (
                 <div className="space-y-2 rounded border border-slate-200 p-3">
+                  <p className="text-xs text-slate-500">
+                    Salida actual: <span className="font-semibold">{currentCheckOut || '—'}</span>
+                  </p>
                   <label className="block text-sm">
                     <span className="mb-1 block text-xs font-medium text-slate-500">
                       Nueva fecha de salida
@@ -1031,20 +1054,32 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                       className="w-full rounded border border-slate-300 p-2 text-sm"
                     />
                   </label>
-                  <label className="block text-sm">
-                    <span className="mb-1 block text-xs font-medium text-slate-500">
-                      Tarifa por noche de las noches nuevas (Bs)
-                    </span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={stayRate}
-                      onChange={(e) => setStayRate(e.target.value)}
-                      placeholder="Precio acordado"
-                      className="w-full rounded border border-slate-300 p-2 text-sm"
-                    />
-                  </label>
+
+                  {/* La tarifa sólo se pide al agregar noches: las que ya
+                      estaban tienen su precio en el tramo. */}
+                  {isExtending && (
+                    <label className="block text-sm">
+                      <span className="mb-1 block text-xs font-medium text-slate-500">
+                        Tarifa por noche de las noches nuevas (Bs)
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={stayRate}
+                        onChange={(e) => setStayRate(e.target.value)}
+                        placeholder="Precio acordado"
+                        className="w-full rounded border border-slate-300 p-2 text-sm"
+                      />
+                    </label>
+                  )}
+                  {isShortening && (
+                    <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">
+                      Se quitan las noches posteriores al {newCheckOut} y dejan de cobrarse.
+                      No se pueden quitar noches ya dormidas.
+                    </p>
+                  )}
+
                   <input
                     value={stayReason}
                     onChange={(e) => setStayReason(e.target.value)}
@@ -1054,11 +1089,22 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      disabled={busy || !newCheckOut || !(Number(stayRate) > 0)}
-                      onClick={handleExtend}
+                      disabled={
+                        busy ||
+                        !newCheckOut ||
+                        newCheckOut === currentCheckOut ||
+                        (isExtending && !(Number(stayRate) > 0))
+                      }
+                      onClick={handleModifyDates}
                       className="w-1/2 rounded bg-brand-700 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
                     >
-                      {busy ? 'Procesando…' : 'Extender'}
+                      {busy
+                        ? 'Procesando…'
+                        : isShortening
+                          ? 'Quitar noches'
+                          : isExtending
+                            ? 'Agregar noches'
+                            : 'Guardar'}
                     </button>
                     <button
                       type="button"
