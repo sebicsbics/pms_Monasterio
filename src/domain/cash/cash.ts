@@ -17,7 +17,7 @@ export const EXPENSE_CATEGORIES: Record<string, string> = {
   transporte: 'Transporte',
   servicios: 'Servicios (luz, agua, etc.)',
   sueldos: 'Adelanto de sueldo',
-  reembolso_anticipo: 'Reembolso anticipo',
+  ajuste_anticipo: 'Ajuste de anticipo',
   otro_egreso: 'Otro egreso',
 }
 
@@ -31,6 +31,19 @@ export function categoryLabel(kind: MovementKind, code: string): string {
 // sí valen para el check-out o los eventos, pero no para un movimiento de
 // caja: acá solo entra plata de verdad, por uno de estos cuatro medios.
 export const CAJA_PAYMENT_METHODS = ['EFECTIVO', 'DEPOSITO', 'TARJETA', 'QR'] as const
+
+// Formas de pago válidas para un ANTICIPO. Son las de caja más MIXTO: un
+// anticipo es plata que YA entró, así que CTAS_POR_COBRAR (plata que
+// todavía no entró) es una contradicción, y cortesías o intercambios no
+// generan adelanto que registrar.
+export const ANTICIPO_PAYMENT_METHODS = [
+  ...CAJA_PAYMENT_METHODS,
+  'MIXTO',
+] as const
+
+export function isAnticipoMethod(code: string): boolean {
+  return (ANTICIPO_PAYMENT_METHODS as readonly string[]).includes(code)
+}
 
 // El único medio que toca el efectivo físico que cuenta el recepcionista
 // al cerrar. `null` = movimiento histórico anterior a que existiera la

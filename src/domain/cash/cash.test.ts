@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ANTICIPO_PAYMENT_METHODS,
   CAJA_PAYMENT_METHODS,
+  isAnticipoMethod,
   differenceWithOtherMeansBs,
   expectedWithOtherMeansBs,
   isCashMovement,
@@ -36,6 +38,27 @@ describe('isCashMovement', () => {
     expect(isCashMovement(movement('QR'))).toBe(false)
     expect(isCashMovement(movement('DEPOSITO'))).toBe(false)
     expect(isCashMovement(movement('TARJETA'))).toBe(false)
+  })
+})
+
+describe('isAnticipoMethod', () => {
+  it('accepts the four cash-register methods plus MIXTO', () => {
+    for (const code of ANTICIPO_PAYMENT_METHODS) {
+      expect(isAnticipoMethod(code)).toBe(true)
+    }
+    expect(ANTICIPO_PAYMENT_METHODS).toHaveLength(5)
+  })
+
+  // Un anticipo es plata que YA entró; "por cobrar" es exactamente lo
+  // contrario, y una cortesía o un canje no generan adelanto.
+  it('rejects CTAS_POR_COBRAR — an advance cannot be money not yet received', () => {
+    expect(isAnticipoMethod('CTAS_POR_COBRAR')).toBe(false)
+  })
+
+  it('rejects methods with no cash flow', () => {
+    expect(isAnticipoMethod('CORTESIA')).toBe(false)
+    expect(isAnticipoMethod('INTERCAMBIO')).toBe(false)
+    expect(isAnticipoMethod('OTRO')).toBe(false)
   })
 })
 

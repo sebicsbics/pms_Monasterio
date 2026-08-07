@@ -38,7 +38,10 @@ export async function recordAnticipo(input: {
   proof?: PaymentProof
   mixed?: { cashBs: number; nonCashBs: number; nonCashMethod: string } | null
 }): Promise<Anticipo> {
-  const { receipt, paymentReference } = proofForMethod(input.paymentMethod, input.proof ?? EMPTY_PAYMENT_PROOF)
+  const { receipt, paymentReference } = proofForMethod(
+    input.mixed ? input.mixed.nonCashMethod : input.paymentMethod,
+    input.proof ?? EMPTY_PAYMENT_PROOF,
+  )
   const { data, error } = await supabase.rpc('record_anticipo', {
     p_reservation_id: input.reservationId,
     p_amount_bs: input.amountBs,
@@ -60,8 +63,14 @@ export async function modifyAnticipo(
   newPaymentMethod: string,
   reason: string,
   proof: PaymentProof = EMPTY_PAYMENT_PROOF,
+  mixed: { cashBs: number; nonCashBs: number; nonCashMethod: string } | null = null,
 ): Promise<Anticipo> {
-  const { receipt, paymentReference } = proofForMethod(newPaymentMethod, proof)
+  // Con MIXTO el respaldo pertenece a la parte electrónica: resolverlo
+  // contra 'MIXTO' lo descartaría (no es ni QR ni tarjeta).
+  const { receipt, paymentReference } = proofForMethod(
+    mixed ? mixed.nonCashMethod : newPaymentMethod,
+    proof,
+  )
   const { data, error } = await supabase.rpc('modify_anticipo', {
     p_anticipo_id: anticipoId,
     p_new_amount_bs: newAmountBs,
@@ -69,6 +78,9 @@ export async function modifyAnticipo(
     p_reason: reason,
     p_receipt_path: await uploadReceipt(receipt),
     p_payment_reference: paymentReference,
+    p_cash_bs: mixed?.cashBs ?? null,
+    p_non_cash_bs: mixed?.nonCashBs ?? null,
+    p_non_cash_method: mixed?.nonCashMethod ?? null,
   })
   if (error) throw new Error(error.message)
   return mapAnticipo(data as Record<string, unknown>)

@@ -6,6 +6,7 @@ import { fetchAnticipos, recordAnticipo } from '../../services/anticipos'
 import { listReservationsBrief, type ReservationBrief } from '../../services/reservations'
 import { Button, Card, PageHeader } from '../../components/ui'
 import { AnticipoList } from './AnticipoList'
+import { isAnticipoMethod } from '../../domain/cash/cash'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
   EMPTY_PAYMENT_PROOF,
@@ -51,8 +52,11 @@ export function RecordAnticipoView() {
   useEffect(() => {
     fetchPaymentMethods()
       .then((methods) => {
-        setPaymentMethods(methods)
-        setPaymentMethod((current) => current || (methods[0]?.code ?? ''))
+        // Un anticipo es plata que YA entró: no tiene sentido ofrecer
+        // "cuentas por cobrar", que es exactamente lo contrario.
+        const usable = methods.filter((m) => isAnticipoMethod(m.code))
+        setPaymentMethods(usable)
+        setPaymentMethod((current) => current || (usable[0]?.code ?? ''))
       })
       .catch((e: Error) => setError(e.message))
     listReservationsBrief()

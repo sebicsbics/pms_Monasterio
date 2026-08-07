@@ -11,6 +11,14 @@ import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { fetchPaymentMethods } from '../../services/payments'
 import { listAnticipos, modifyAnticipo } from '../../services/anticipos'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
+import { isAnticipoMethod } from '../../domain/cash/cash'
+import type { MixedPayment } from '../../domain/payments/mixedPayment'
+import {
+  EMPTY_MIXED_PAYMENT,
+  isMixed,
+  mixedPaymentError,
+} from '../../domain/payments/mixedPayment'
+import { MixedPaymentFields } from '../payments/MixedPaymentFields'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
   EMPTY_PAYMENT_PROOF,
@@ -43,10 +51,11 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
   const [modifyMethod, setModifyMethod] = useState('')
   const [modifyReason, setModifyReason] = useState('')
   const [modifyProof, setModifyProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
+  const [modifyMixed, setModifyMixed] = useState<MixedPayment>(EMPTY_MIXED_PAYMENT)
 
   useEffect(() => {
     fetchPaymentMethods()
-      .then(setPaymentMethods)
+      .then((methods) => setPaymentMethods(methods.filter((m) => isAnticipoMethod(m.code))))
       .catch((e: Error) => setError(e.message))
   }, [])
 
@@ -86,9 +95,11 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
       return
     }
     const effectiveMethod = modifyMethod || a.paymentMethod
-    const proofErr = paymentProofError(effectiveMethod, modifyProof)
-    if (proofErr) {
-      setError(proofErr)
+    const payErr = isMixed(effectiveMethod)
+      ? mixedPaymentError(amountNum, modifyMixed, modifyProof)
+      : paymentProofError(effectiveMethod, modifyProof)
+    if (payErr) {
+      setError(payErr)
       return
     }
     if (!modifyReason.trim()) {
@@ -103,10 +114,18 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
         effectiveMethod,
         modifyReason.trim(),
         modifyProof,
+        isMixed(effectiveMethod)
+          ? {
+              cashBs: Number(modifyMixed.cashBs),
+              nonCashBs: Number(modifyMixed.nonCashBs),
+              nonCashMethod: modifyMixed.nonCashMethod,
+            }
+          : null,
       )
       setModifyAmount('')
       setModifyReason('')
       setModifyProof(EMPTY_PAYMENT_PROOF)
+      setModifyMixed(EMPTY_MIXED_PAYMENT)
       setMessage('Anticipo modificado.')
       await reload()
     } catch (e) {
@@ -139,6 +158,7 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
             setModifyMethod('')
             setModifyReason('')
             setModifyProof(EMPTY_PAYMENT_PROOF)
+            setModifyMixed(EMPTY_MIXED_PAYMENT)
             setError(null)
             setMessage(null)
           }}
@@ -206,18 +226,33 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
               variant="secondary"
               disabled={
                 busyId === selected.id ||
-                paymentProofError(modifyMethod || selected.paymentMethod, modifyProof) !== null
+                (isMixed(modifyMethod || selected.paymentMethod)
+                  ? mixedPaymentError(Number(modifyAmount) || 0, modifyMixed, modifyProof) !== null
+                  : paymentProofError(modifyMethod || selected.paymentMethod, modifyProof) !== null)
               }
               onClick={() => handleModify(selected)}
             >
               Corregir
             </Button>
-            <PaymentProofFields
-              className="w-full"
-              method={modifyMethod || selected.paymentMethod}
-              proof={modifyProof}
-              onChange={(patch) => setModifyProof((p) => ({ ...p, ...patch }))}
-            />
+            {/* Con MIXTO el desglose se valida contra el monto NUEVO, que
+                es lo que se va a cobrar tras la corrección. */}
+            {isMixed(modifyMethod || selected.paymentMethod) ? (
+              <MixedPaymentFields
+                className="w-full"
+                total={Number(modifyAmount) || 0}
+                split={modifyMixed}
+                proof={modifyProof}
+                onSplitChange={(patch) => setModifyMixed((m) => ({ ...m, ...patch }))}
+                onProofChange={(patch) => setModifyProof((p) => ({ ...p, ...patch }))}
+              />
+            ) : (
+              <PaymentProofFields
+                className="w-full"
+                method={modifyMethod || selected.paymentMethod}
+                proof={modifyProof}
+                onChange={(patch) => setModifyProof((p) => ({ ...p, ...patch }))}
+              />
+            )}
           </div>
         </Card>
       )}
