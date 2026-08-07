@@ -11,7 +11,6 @@ import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import { fetchPaymentMethods } from '../../services/payments'
 import { listAnticipos, modifyAnticipo } from '../../services/anticipos'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
-import { AnticipoList } from './AnticipoList'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
   EMPTY_PAYMENT_PROOF,
@@ -35,7 +34,6 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
   // UUID de la reserva, que nadie tiene a mano en el mostrador.
   const [anticipos, setAnticipos] = useState<AnticipoListItem[]>([])
   const [selectedId, setSelectedId] = useState('')
-  const [refreshKey, setRefreshKey] = useState(0)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -110,7 +108,6 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
       setModifyReason('')
       setModifyProof(EMPTY_PAYMENT_PROOF)
       setMessage('Anticipo modificado.')
-      setRefreshKey((k) => k + 1)
       await reload()
     } catch (e) {
       setError(userFacingAnticipoError((e as Error).message))
@@ -225,7 +222,6 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
         </Card>
       )}
 
-      <AnticipoList refreshKey={refreshKey} />
     </div>
   )
 }
