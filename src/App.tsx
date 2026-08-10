@@ -26,7 +26,7 @@ import {
 import { supabase } from './services/supabase'
 import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
-import { canWrite, ROLE_LABEL } from './domain/auth/profile'
+import { canWrite, hasAccess, ROLE_LABEL } from './domain/auth/profile'
 import { RoleProvider } from './shared/lib/canWriteContext'
 import { ANTICIPOS_ADMIN, DISCOUNT_APPROVAL, FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
 import { Login } from './features/auth/Login'
@@ -133,6 +133,32 @@ function App() {
   if (!session) return <Login />
   if (!profile) return <p className="p-8 text-slate-500">Cargando perfil…</p>
   if (profile.mustChangePassword) return <ChangePassword onDone={reloadProfile} />
+
+  // Cuenta sin rol asignado (registro público). No tiene acceso a nada en
+  // la base, así que la aplicación se lo dice en vez de mostrar un
+  // esqueleto vacío que parece un error.
+  if (!hasAccess(profile.role)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <div className="max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="mb-2 text-lg font-semibold text-slate-800">
+            Tu cuenta todavía no tiene acceso
+          </h1>
+          <p className="text-sm text-slate-500">
+            Un administrador tiene que asignarte un rol antes de que puedas usar
+            el sistema.
+          </p>
+          <button
+            type="button"
+            onClick={() => void supabase.auth.signOut()}
+            className="mt-4 rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const role = profile.role
   const visibleTabs = TABS.filter((t) => role && t.roles.includes(role))
