@@ -115,3 +115,48 @@ export async function fetchTimeEntries(limit = 300): Promise<TimeEntry[]> {
   if (error) throw new Error(error.message)
   return (data as unknown as TimeRow[]).map(mapTime)
 }
+
+// ---------- Cierre de fichaje por root ----------
+
+export interface OpenTimeEntry {
+  id: string
+  userId: string
+  userName: string
+  username: string
+  role: UserRole | null
+  clockIn: string
+  hoursOpen: number
+}
+
+// Turnos abiertos ahora mismo (root/accountant). Es lo que root necesita
+// para saber a quién le quedó el fichaje sin cerrar.
+export async function fetchOpenTimeEntries(): Promise<OpenTimeEntry[]> {
+  const { data, error } = await supabase.rpc('open_time_entries')
+  if (error) throw new Error(error.message)
+  return (data as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    userId: r.user_id as string,
+    userName: r.user_name as string,
+    username: (r.username as string | null) ?? '',
+    role: (r.role as UserRole | null) ?? null,
+    clockIn: r.clock_in as string,
+    hoursOpen: Number(r.hours_open),
+  }))
+}
+
+// Cierra (o corrige) el fichaje de otra persona. Sólo root; la
+// justificación es obligatoria y queda auditada — son horas de nómina.
+export async function forceClockOut(
+  entryId: string,
+  clockOut: Date,
+  reason: string,
+): Promise<void> {
+  const trimmed = reason.trim()
+  if (!trimmed) throw new Error('La justificación es obligatoria')
+  const { error } = await supabase.rpc('force_clock_out', {
+    p_entry_id: entryId,
+    p_clock_out: clockOut.toISOString(),
+    p_reason: trimmed,
+  })
+  if (error) throw new Error(error.message)
+}

@@ -10,6 +10,7 @@ import {
 import { ROLE_LABEL, type UserRole } from '../../domain/auth/profile'
 import { Card, PageHeader } from '../../components/ui'
 import { formatDate } from '../../lib/date'
+import { ForceClockOut } from './ForceClockOut'
 
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
@@ -40,6 +41,8 @@ export function FichajeView({
   const [now, setNow] = useState(Date.now())
 
   const isMgmt = role === 'root' || role === 'accountant'
+  // Cerrar el fichaje de OTRA persona es dato de nómina: sólo root.
+  const isRoot = role === 'root'
 
   function reload() {
     const start = new Date()
@@ -208,6 +211,7 @@ export function FichajeView({
           )}
         </div>
       )}
+      {isRoot && <ForceClockOut entries={all} onDone={() => void reload()} />}
     </div>
   )
 }
