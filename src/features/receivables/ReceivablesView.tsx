@@ -31,6 +31,7 @@ import {
   mixedPaymentError,
 } from '../../domain/payments/mixedPayment'
 import { MixedPaymentFields } from '../payments/MixedPaymentFields'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 const KINDS: ReceivableAccountKind[] = ['empresa', 'agencia', 'persona']
 const STATUS_FILTERS: (ReceivableStatus | '')[] = ['', 'pending', 'paid', 'cancelled']
@@ -46,6 +47,8 @@ function fmtBs(n: number) {
 }
 
 export function ReceivablesView() {
+  // owner: solo lectura — los controles de escritura quedan inertes.
+  const canEdit = useCanWrite()
   const [accounts, setAccounts] = useState<ReceivableAccount[]>([])
   const [receivables, setReceivables] = useState<Receivable[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
@@ -221,7 +224,7 @@ export function ReceivablesView() {
           />
           <button
             type="button"
-            disabled={busy}
+            disabled={!canEdit || busy}
             onClick={handleCreateAccount}
             className="rounded bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
@@ -307,14 +310,14 @@ export function ReceivablesView() {
                 <td className="p-3">
                   {r.status === 'pending' && (
                     <div className="flex gap-1">
-                      <button
+                      <button disabled={!canEdit}
                         type="button"
                         onClick={() => openSettle(r)}
                         className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
                       >
                         Cobrar
                       </button>
-                      <button
+                      <button disabled={!canEdit}
                         type="button"
                         onClick={() => handleCancel(r)}
                         className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
@@ -380,7 +383,7 @@ export function ReceivablesView() {
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                disabled={busy || !settleMethod || settleError !== null}
+                disabled={!canEdit || busy || !settleMethod || settleError !== null}
                 onClick={confirmSettle}
                 className="w-1/2 rounded bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >

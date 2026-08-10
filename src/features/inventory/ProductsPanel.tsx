@@ -9,6 +9,7 @@ import {
   createCategory,
 } from '../../services/inventory'
 import { Button, Card } from '../../components/ui'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 // Etiqueta reutilizable: etiqueta visible, no placeholder-only (así se sabe qué
 // es cada campo aunque muestre 0).
@@ -32,6 +33,8 @@ function Labeled({
 const INPUT = 'w-full rounded-lg border border-slate-300 p-2'
 
 export function ProductsPanel() {
+  // owner: solo lectura — los controles de escritura quedan inertes.
+  const canEdit = useCanWrite()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<ProductCategory[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -129,7 +132,7 @@ export function ProductsPanel() {
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              <button
+              <button disabled={!canEdit}
                 type="button"
                 onClick={() => setAddingCat((v) => !v)}
                 aria-label="Agregar tipo de producto"
@@ -183,7 +186,7 @@ export function ProductsPanel() {
               onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
               className="min-w-52 flex-1 rounded-lg border border-slate-300 p-2 text-sm"
             />
-            <Button size="sm" onClick={handleAddCategory}>Crear tipo</Button>
+            <Button disabled={!canEdit} size="sm" onClick={handleAddCategory}>Crear tipo</Button>
             <Button
               size="sm"
               variant="ghost"
@@ -203,7 +206,7 @@ export function ProductsPanel() {
           cargarlo al minibar de un huésped.
         </p>
 
-        <Button loading={busy} onClick={handleCreate} className="mt-3">
+        <Button disabled={!canEdit} loading={busy} onClick={handleCreate} className="mt-3">
           Agregar producto
         </Button>
       </Card>

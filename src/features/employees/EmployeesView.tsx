@@ -10,8 +10,11 @@ import {
 } from '../../services/employees'
 import type { UserRole } from '../../domain/auth/profile'
 import { Button, Card, PageHeader } from '../../components/ui'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 export function EmployeesView({ role }: { role?: UserRole | null }) {
+  // owner: solo lectura — los controles de escritura quedan inertes.
+  const canEdit = useCanWrite()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [profiles, setProfiles] = useState<SystemProfile[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -206,7 +209,7 @@ export function EmployeesView({ role }: { role?: UserRole | null }) {
         </div>
 
         <Button
-          disabled={busy}
+          disabled={!canEdit || busy}
           loading={busy}
           onClick={handleCreate}
           className="mt-3"
@@ -256,7 +259,7 @@ export function EmployeesView({ role }: { role?: UserRole | null }) {
                         @{e.accountUsername ?? '—'}
                         {e.accountRole && ` · ${e.accountRole}`}
                       </span>
-                      <button
+                      <button disabled={!canEdit}
                         type="button"
                         onClick={() => link(e.personId, null)}
                         className="text-xs text-slate-400 hover:text-red-600"
@@ -283,7 +286,7 @@ export function EmployeesView({ role }: { role?: UserRole | null }) {
                 </td>
                 <td className="p-3 text-right">
                   <div className="flex justify-end gap-2">
-                    <button
+                    <button disabled={!canEdit}
                       type="button"
                       onClick={() => toggleStatus(e)}
                       className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
@@ -291,7 +294,7 @@ export function EmployeesView({ role }: { role?: UserRole | null }) {
                       {e.status === 'active' ? 'Desactivar' : 'Reactivar'}
                     </button>
                     {role === 'root' && (
-                      <button
+                      <button disabled={!canEdit}
                         type="button"
                         onClick={() => remove(e)}
                         className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"

@@ -3,8 +3,11 @@ import type { InfoNote } from '../../domain/info/infoNote'
 import { fetchInfoNotes, createInfoNote, resolveInfoNote } from '../../services/infoNotes'
 import { PageHeader } from '../../components/ui'
 import { formatDateTime } from '../../lib/date'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 export function InfoLogView() {
+  // owner: solo lectura, sin acciones.
+  const canEdit = useCanWrite()
   const [notes, setNotes] = useState<InfoNote[]>([])
   const [content, setContent] = useState('')
   const [search, setSearch] = useState('')
@@ -69,6 +72,7 @@ export function InfoLogView() {
       )}
 
       {/* Registrar */}
+      {canEdit && (
       <div className="mb-6 rounded border border-slate-200 p-4">
         <h3 className="mb-2 font-semibold text-slate-700">Registrar información</h3>
         <textarea
@@ -87,6 +91,8 @@ export function InfoLogView() {
           Registrar
         </button>
       </div>
+
+      )}
 
       {/* Búsqueda */}
       <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -132,7 +138,7 @@ export function InfoLogView() {
               <p className={`text-sm ${n.resolved ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
                 {n.content}
               </p>
-              {!n.resolved && (
+              {!n.resolved && canEdit && (
                 <button
                   type="button"
                   onClick={() => handleResolve(n)}

@@ -27,6 +27,7 @@ import { supabase } from './services/supabase'
 import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
 import { canWrite, ROLE_LABEL } from './domain/auth/profile'
+import { RoleProvider } from './shared/lib/canWriteContext'
 import { ANTICIPOS_ADMIN, DISCOUNT_APPROVAL, FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
 import { Login } from './features/auth/Login'
 import { ChangePassword } from './features/auth/ChangePassword'
@@ -247,6 +248,7 @@ function App() {
       />
 
       {/* Contenido */}
+      <RoleProvider role={role}>
       <main ref={mainRef} className="lg:pl-60">
         {/* El rol owner ve todo el PMS pero no puede escribir nada. Se
             avisa una sola vez acá en vez de repetirlo en cada pantalla. */}
@@ -296,6 +298,7 @@ function App() {
           </Suspense>
         )}
       </main>
+      </RoleProvider>
     </div>
   )
 }

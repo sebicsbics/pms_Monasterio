@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import type { Product } from '../../domain/inventory/product'
 import { fetchProducts, registerStockEntry } from '../../services/inventory'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 interface Line {
   productId: string
@@ -12,6 +13,8 @@ interface Line {
 const TODAY = new Date().toISOString().slice(0, 10)
 
 export function StockEntryForm({ onSaved }: { onSaved: () => void }) {
+  // owner: solo lectura — los controles de escritura quedan inertes.
+  const canEdit = useCanWrite()
   const [products, setProducts] = useState<Product[]>([])
   const [entryDate, setEntryDate] = useState(TODAY)
   const [isInvoiced, setIsInvoiced] = useState(false)
@@ -165,7 +168,7 @@ export function StockEntryForm({ onSaved }: { onSaved: () => void }) {
               onChange={(e) => updateLine(i, { unitPrice: e.target.value })}
               className="w-1/4 rounded border border-slate-300 p-2 text-sm"
             />
-            <button
+            <button disabled={!canEdit}
               type="button"
               onClick={() => removeLine(i)}
               aria-label="Quitar renglón"
@@ -177,7 +180,7 @@ export function StockEntryForm({ onSaved }: { onSaved: () => void }) {
         ))}
       </div>
 
-      <button
+      <button disabled={!canEdit}
         type="button"
         onClick={addLine}
         className="mt-2 text-sm text-blue-600 hover:underline"
@@ -191,7 +194,7 @@ export function StockEntryForm({ onSaved }: { onSaved: () => void }) {
         </span>
         <button
           type="button"
-          disabled={busy}
+          disabled={!canEdit || busy}
           onClick={handleSave}
           className="rounded bg-green-600 px-4 py-2 font-medium text-white hover:bg-green-700 disabled:opacity-50"
         >

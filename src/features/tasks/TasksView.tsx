@@ -9,6 +9,7 @@ import {
 import { fetchTasks, createTask, updateTaskStatus } from '../../services/tasks'
 import { PageHeader } from '../../components/ui'
 import { formatDateTime } from '../../lib/date'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 // 'minibar' (Frigobar) queda fuera: ya no hay frigobares en las
 // habitaciones. Se conserva TASK_TYPE_LABEL['minibar'] para mostrar tareas
@@ -22,6 +23,8 @@ const COLUMN_STYLE: Record<TaskStatus, string> = {
 }
 
 export function TasksView() {
+  // owner: solo lectura, sin acciones.
+  const canEdit = useCanWrite()
   const [tasks, setTasks] = useState<Task[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -108,6 +111,7 @@ export function TasksView() {
             className="rounded border border-slate-300 p-2"
           />
         </div>
+        {canEdit && (
         <button
           type="button"
           disabled={busy}
@@ -116,6 +120,7 @@ export function TasksView() {
         >
           Registrar
         </button>
+        )}
       </div>
 
       {/* Tablero Kanban: una columna por estado. */}
@@ -149,6 +154,7 @@ export function TasksView() {
                           {TASK_TYPE_LABEL[t.taskType]}
                         </span>
                         <div className="flex gap-1">
+                          {canEdit && (
                           <button
                             type="button"
                             disabled={index === 0}
@@ -158,6 +164,8 @@ export function TasksView() {
                           >
                             <ChevronLeft size={16} />
                           </button>
+                          )}
+                          {canEdit && (
                           <button
                             type="button"
                             disabled={index === TASK_STATUS_ORDER.length - 1}
@@ -167,6 +175,7 @@ export function TasksView() {
                           >
                             <ChevronRight size={16} />
                           </button>
+                          )}
                         </div>
                       </div>
 

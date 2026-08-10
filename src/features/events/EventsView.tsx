@@ -26,6 +26,7 @@ import {
   paymentProofError,
 } from '../../domain/payments/paymentProof'
 import { PaymentProofFields } from '../payments/PaymentProofFields'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 const fmtBs = (n: number) =>
   `${n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`
@@ -44,6 +45,8 @@ function Labeled({ label, className = '', children }: {
 }
 
 export function EventsView() {
+  // owner: solo lectura, sin acciones.
+  const canEdit = useCanWrite()
   const [events, setEvents] = useState<HotelEvent[]>([])
   const [types, setTypes] = useState<EventType[]>([])
   const [areas, setAreas] = useState<EventArea[]>([])
@@ -186,6 +189,7 @@ export function EventsView() {
       {error && <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
       {/* Alta de evento */}
+      {canEdit && (
       <Card className="mb-6 p-4">
         <h3 className="mb-3 font-semibold text-slate-700">Nuevo evento</h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -252,6 +256,7 @@ export function EventsView() {
 
         <Button loading={busy} onClick={handleCreate} className="mt-3">Programar evento</Button>
       </Card>
+      )}
 
       {/* Lista de eventos */}
       <div className="space-y-3">
@@ -294,12 +299,16 @@ export function EventsView() {
                 </Button>
                 {ev.status === 'scheduled' && (
                   <>
+                    {canEdit && (
                     <Button size="sm" variant="ghost" onClick={() => run(() => setEventStatus(ev.id, 'done').then(reload))}>
                       Marcar realizado
                     </Button>
+                    )}
+                    {canEdit && (
                     <Button size="sm" variant="ghost" onClick={() => run(() => setEventStatus(ev.id, 'cancelled').then(reload))}>
                       Cancelar
                     </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -323,6 +332,8 @@ export function EventsView() {
                       </div>
                     </div>
                   )}
+                  {canEdit && (
+                  <>
                   <div className="flex flex-wrap items-end gap-2">
                     <input type="number" min={0} step="0.01" value={payAmount}
                       onChange={(e) => setPayAmount(e.target.value)} placeholder="Monto Bs"
@@ -352,6 +363,8 @@ export function EventsView() {
                   />
                   {payMethod === 'EFECTIVO' && (
                     <p className="mt-1 text-xs text-slate-400">El efectivo entra a la caja (debe estar abierta).</p>
+                  )}
+                  </>
                   )}
                 </div>
               )}

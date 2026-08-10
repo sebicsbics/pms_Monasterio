@@ -16,6 +16,7 @@ import {
 } from '../../services/housekeeping'
 import { PageHeader } from '../../components/ui'
 import { formatDate } from '../../lib/date'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 const STATUSES: AssignmentStatus[] = ['pending', 'in_progress', 'done']
 
@@ -35,6 +36,8 @@ function today(): string {
 }
 
 export function HousekeepingBoardView() {
+  // owner: solo lectura, sin acciones.
+  const canEdit = useCanWrite()
   const [serviceDate, setServiceDate] = useState(today())
   const [assignments, setAssignments] = useState<HousekeepingAssignment[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -100,7 +103,8 @@ export function HousekeepingBoardView() {
             className="mt-1 rounded border border-slate-300 p-2"
           />
         </label>
-        <button
+        {canEdit && (
+          <button
           type="button"
           disabled={busy}
           onClick={handleGenerate}
@@ -108,6 +112,7 @@ export function HousekeepingBoardView() {
         >
           Generar tablero del día
         </button>
+        )}
         <span className="text-sm text-slate-500">{formatDate(serviceDate)}</span>
       </div>
 

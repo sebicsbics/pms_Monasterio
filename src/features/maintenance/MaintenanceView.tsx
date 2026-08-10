@@ -29,6 +29,7 @@ import { SchedulesPanel } from './SchedulesPanel'
 import { MaintenanceMetrics } from './MaintenanceMetrics'
 import type { UserRole } from '../../domain/auth/profile'
 import { PageHeader } from '../../components/ui'
+import { useCanWrite } from '../../shared/lib/canWriteContext'
 
 const fmtBs = (n: number) => `${Math.round(n).toLocaleString('es-BO')} Bs`
 
@@ -50,6 +51,8 @@ const FILTERS: { id: TicketStatus | 'all'; label: string }[] = [
 ]
 
 export function MaintenanceView({ role }: { role?: UserRole | null }) {
+  // owner: solo lectura — los controles de escritura quedan inertes.
+  const canEdit = useCanWrite()
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
   const [staff, setStaff] = useState<AssignableStaff[]>([])
@@ -219,7 +222,7 @@ export function MaintenanceView({ role }: { role?: UserRole | null }) {
         </div>
         <button
           type="button"
-          disabled={busy}
+          disabled={!canEdit || busy}
           onClick={handleCreate}
           className="mt-3 rounded bg-brand-700 px-4 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
         >
@@ -299,7 +302,7 @@ export function MaintenanceView({ role }: { role?: UserRole | null }) {
                 <button
                   key={next}
                   type="button"
-                  disabled={busy}
+                  disabled={!canEdit || busy}
                   onClick={() => run(() => updateTicketStatus(t.id, next))}
                   className="rounded border border-slate-300 px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                 >
@@ -316,7 +319,7 @@ export function MaintenanceView({ role }: { role?: UserRole | null }) {
               {role === 'root' && (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={!canEdit || busy}
                   onClick={() => {
                     if (window.confirm(`¿Eliminar el ticket MT-${t.ticketNo}? Esta acción no se puede deshacer.`)) {
                       run(() => deleteTicket(t.id))

@@ -7,7 +7,7 @@ import {
   fetchTimeEntries,
   type TimeEntry,
 } from '../../services/attendance'
-import { ROLE_LABEL, type UserRole } from '../../domain/auth/profile'
+import { ROLE_LABEL, canWrite, type UserRole } from '../../domain/auth/profile'
 import { Card, PageHeader } from '../../components/ui'
 import { formatDate } from '../../lib/date'
 import { ForceClockOut } from './ForceClockOut'
@@ -40,7 +40,10 @@ export function FichajeView({
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
 
-  const isMgmt = role === 'root' || role === 'accountant'
+  // owner NO ficha: no es empleado, no cumple turno. La RPC también lo
+  // rechaza (20260809030000); acá se le oculta la tarjeta de marcaje.
+  const punches = canWrite(role)
+  const isMgmt = role === 'root' || role === 'accountant' || role === 'owner'
   // Cerrar el fichaje de OTRA persona es dato de nómina: sólo root.
   const isRoot = role === 'root'
 
@@ -94,10 +97,19 @@ export function FichajeView({
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <PageHeader title="Fichaje" subtitle="Marcá tu entrada y salida del turno" />
+      <PageHeader
+        title="Fichaje"
+        subtitle={
+          punches
+            ? 'Marcá tu entrada y salida del turno'
+            : 'Asistencia del personal (tu usuario no ficha)'
+        }
+      />
 
       {error && <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
+      {punches && (
+        <>
       {/* Widget personal */}
       <Card className="mb-6 p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -123,7 +135,7 @@ export function FichajeView({
             </p>
           </div>
 
-          {open ? (
+          {!punches ? null : open ? (
             <button
               type="button"
               disabled={busy}
@@ -164,6 +176,9 @@ export function FichajeView({
       </Card>
 
       {/* Vista de gestión: root / contaduría */}
+        </>
+      )}
+
       {isMgmt && (
         <div>
           <h2 className="mb-3 font-semibold text-slate-700">
