@@ -28,7 +28,16 @@ import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
 import { canWrite, hasAccess, ROLE_LABEL } from './domain/auth/profile'
 import { RoleProvider } from './shared/lib/canWriteContext'
-import { ANTICIPOS_ADMIN, DISCOUNT_APPROVAL, FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
+import {
+  ANTICIPOS_ADMIN,
+  DISCOUNT_APPROVAL,
+  FINANCE,
+  FINANCE_STAFF,
+  HOUSEKEEPING,
+  OPERATIONS,
+  SHARED,
+  STAFF,
+} from './domain/auth/roleGroups'
 import { Login } from './features/auth/Login'
 import { ChangePassword } from './features/auth/ChangePassword'
 import { RoomBoard } from './features/room-board/RoomBoard'
@@ -86,14 +95,14 @@ const TABS: {
   { id: 'housekeeping', label: 'Housekeeping', roles: HOUSEKEEPING, icon: BedDouble, group: 'Operación' },
   { id: 'maintenance', label: 'Mantenimiento', roles: SHARED, icon: Wrench, group: 'Operación' },
   { id: 'fichaje', label: 'Fichaje', roles: SHARED, icon: Clock, group: 'Personal' },
-  { id: 'profile', label: 'Mi perfil', roles: SHARED, icon: User, group: 'Personal' },
-  { id: 'employees', label: 'Empleados', roles: FINANCE, icon: Users, group: 'Gestión' },
-  { id: 'access', label: 'Accesos', roles: FINANCE, icon: KeyRound, group: 'Gestión' },
+  { id: 'profile', label: 'Mi perfil', roles: STAFF, icon: User, group: 'Personal' },
+  { id: 'employees', label: 'Empleados', roles: FINANCE_STAFF, icon: Users, group: 'Gestión' },
+  { id: 'access', label: 'Accesos', roles: FINANCE_STAFF, icon: KeyRound, group: 'Gestión' },
   { id: 'dashboard', label: 'Analítica', roles: FINANCE, icon: BarChart3, group: 'Gestión' },
   { id: 'discounts', label: 'Descuentos', roles: DISCOUNT_APPROVAL, icon: Percent, group: 'Gestión' },
   { id: 'anticipos', label: 'Anticipos', roles: OPERATIONS, icon: Wallet, group: 'Operación' },
   { id: 'anticipos-admin', label: 'Corregir anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
-  { id: 'receivables', label: 'Cuentas por cobrar', roles: ['root', 'reception', 'reception_admin', 'accountant'], icon: Landmark, group: 'Gestión' },
+  { id: 'receivables', label: 'Cuentas por cobrar', roles: ['root', 'reception', 'reception_admin', 'accountant', 'owner'], icon: Landmark, group: 'Gestión' },
 ]
 
 function App() {
