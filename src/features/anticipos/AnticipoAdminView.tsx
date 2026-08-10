@@ -12,6 +12,8 @@ import { fetchPaymentMethods } from '../../services/payments'
 import { listAnticipos, modifyAnticipo } from '../../services/anticipos'
 import { Badge, Button, Card, PageHeader } from '../../components/ui'
 import { isAnticipoMethod } from '../../domain/cash/cash'
+import { canWrite } from '../../domain/auth/profile'
+import { AnticipoList } from './AnticipoList'
 import type { MixedPayment } from '../../domain/payments/mixedPayment'
 import {
   EMPTY_MIXED_PAYMENT,
@@ -73,6 +75,19 @@ export function AnticipoAdminView({ role }: { role?: UserRole | null }) {
   }, [reload])
 
   const selected = anticipos.find((a) => a.id === selectedId) ?? null
+
+  // owner entra al grupo para VER, pero corregir es escritura.
+  if (!canWrite(role)) {
+    return (
+      <div className="mx-auto max-w-3xl p-6">
+        <PageHeader
+          title="Corregir anticipos"
+          subtitle="Solo lectura: para corregir un anticipo, pedíselo al administrador"
+        />
+        <AnticipoList />
+      </div>
+    )
+  }
 
   if (!ANTICIPOS_ADMIN.includes(role as UserRole)) {
     return (

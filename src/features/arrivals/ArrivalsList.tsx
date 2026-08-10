@@ -13,6 +13,7 @@ import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
+import { canWrite } from '../../domain/auth/profile'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -488,6 +489,8 @@ function ReservationActionModal({
 }
 
 export function ArrivalsList({ role }: { role?: UserRole | null }) {
+  // owner consulta las llegadas del día pero no hace check-in ni cancela.
+  const readOnly = !canWrite(role)
   const [arrivals, setArrivals] = useState<Arrival[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -618,6 +621,9 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
                   </td>
                   <td className="p-3">
                     <div className="flex flex-wrap justify-end gap-1">
+                      {readOnly && <span className="text-xs text-slate-400">—</span>}
+                      {!readOnly && (
+                       <>
                       <button
                         type="button"
                         onClick={() => setSelected(a)}
@@ -639,6 +645,8 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
                       >
                         Cancelar
                       </button>
+                       </>
+                      )}
                     </div>
                   </td>
                 </tr>

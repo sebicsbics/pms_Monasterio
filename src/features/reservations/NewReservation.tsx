@@ -4,6 +4,7 @@ import { RESERVATION_METHODS } from '../../domain/reservations/availability'
 import { searchAvailableRooms, createReservation } from '../../services/reservations'
 import { fetchPendingForReservation } from '../../services/rateDiscountRequestsService'
 import { BulkReservation, type BulkReservationPrefill } from './BulkReservation'
+import { canWrite, type UserRole } from '../../domain/auth/profile'
 
 // Precarga que llega desde la grilla de Disponibilidad: fecha (1 noche) y
 // habitación a preseleccionar.
@@ -24,6 +25,29 @@ const METHOD_LABELS: Record<ReservationMethod, string> = {
 const METHODS = RESERVATION_METHODS.map((value) => ({ value, label: METHOD_LABELS[value] }))
 
 export function NewReservation({
+  prefill,
+  bulkPrefill,
+  role,
+}: {
+  prefill?: ReservationPrefill | null
+  bulkPrefill?: BulkReservationPrefill | null
+  role?: UserRole | null
+}) {
+  // Crear una reserva es escritura: owner consulta disponibilidad en la
+  // pestaña Disponibilidad, no acá.
+  if (!canWrite(role)) {
+    return (
+      <div className="mx-auto max-w-4xl p-6">
+        <p className="text-sm text-slate-500">
+          Solo lectura: no podés crear reservas. Pedíselo al administrador.
+        </p>
+      </div>
+    )
+  }
+  return <NewReservationForm prefill={prefill} bulkPrefill={bulkPrefill} />
+}
+
+function NewReservationForm({
   prefill,
   bulkPrefill,
 }: {

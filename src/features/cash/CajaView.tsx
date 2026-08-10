@@ -27,7 +27,7 @@ import {
   type MovementKind,
 } from '../../domain/cash/cash'
 import { Button, Card, PageHeader } from '../../components/ui'
-import type { UserRole } from '../../domain/auth/profile'
+import { canWrite, type UserRole } from '../../domain/auth/profile'
 import { CashHistory } from './CashHistory'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
@@ -52,6 +52,7 @@ export function CajaView({ role }: { role?: UserRole | null }) {
 
   // Arqueo: root, administrador de recepción y contadora. reception a
   // secas maneja su turno pero no audita los de los demás.
+  const readOnly = !canWrite(role)
   const isMgmt =
     role === 'root' || role === 'accountant' || role === 'reception_admin'
 
@@ -201,6 +202,26 @@ export function CajaView({ role }: { role?: UserRole | null }) {
   }
 
   if (loading) return <p className="p-8 text-slate-500">Cargando caja…</p>
+
+  // owner ve el estado de la caja y el historial, pero no opera.
+  if (readOnly) {
+    return (
+      <div className="mx-auto max-w-5xl p-6">
+        <PageHeader title="Caja chica" subtitle="Ingresos, egresos y cierre de caja" />
+        {session ? (
+          <Card className="p-4">
+            <p className="text-sm text-slate-600">
+              Caja abierta desde {fmtDateTime(session.openedAt)} · fondo inicial{' '}
+              <span className="tabular font-medium">{fmtBs(session.openingBalanceBs)}</span>
+            </p>
+          </Card>
+        ) : (
+          <p className="text-sm text-slate-500">No hay caja abierta.</p>
+        )}
+        <CashHistory />
+      </div>
+    )
+  }
 
   const categories = kind === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
   const countedDiff = Number(counted) - expected

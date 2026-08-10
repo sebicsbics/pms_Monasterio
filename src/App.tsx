@@ -26,7 +26,7 @@ import {
 import { supabase } from './services/supabase'
 import { getProfile, signOut } from './services/auth'
 import type { Profile, UserRole } from './domain/auth/profile'
-import { ROLE_LABEL } from './domain/auth/profile'
+import { canWrite, ROLE_LABEL } from './domain/auth/profile'
 import { ANTICIPOS_ADMIN, DISCOUNT_APPROVAL, FINANCE, HOUSEKEEPING, OPERATIONS, SHARED } from './domain/auth/roleGroups'
 import { Login } from './features/auth/Login'
 import { ChangePassword } from './features/auth/ChangePassword'
@@ -248,11 +248,20 @@ function App() {
 
       {/* Contenido */}
       <main ref={mainRef} className="lg:pl-60">
+        {/* El rol owner ve todo el PMS pero no puede escribir nada. Se
+            avisa una sola vez acá en vez de repetirlo en cada pantalla. */}
+        {!canWrite(role) && (
+          <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-900">
+            <span className="font-medium">Modo solo lectura.</span> Podés ver toda la
+            información del hotel, pero no modificarla. Para cualquier cambio o reserva,
+            pedíselo al administrador.
+          </div>
+        )}
         {activeTab === 'board' && <RoomBoard role={role} />}
         {activeTab === 'arrivals' && <ArrivalsList role={role} />}
         {activeTab === 'inhouse' && <InHouseList />}
         {activeTab === 'reservation' && (
-          <NewReservation prefill={reservationPrefill} bulkPrefill={bulkPrefill} />
+          <NewReservation prefill={reservationPrefill} bulkPrefill={bulkPrefill} role={role} />
         )}
         {activeTab === 'availability' && (
           <AvailabilityGrid
@@ -279,7 +288,7 @@ function App() {
         {activeTab === 'events' && <EventsView />}
         {activeTab === 'access' && <AccessLogView />}
         {activeTab === 'discounts' && <DiscountApprovalQueueView role={role} />}
-        {activeTab === 'anticipos' && <RecordAnticipoView />}
+        {activeTab === 'anticipos' && <RecordAnticipoView role={role} />}
         {activeTab === 'anticipos-admin' && <AnticipoAdminView role={role} />}
         {activeTab === 'dashboard' && (
           <Suspense fallback={<p className="p-8 text-slate-500">Cargando analíticas…</p>}>

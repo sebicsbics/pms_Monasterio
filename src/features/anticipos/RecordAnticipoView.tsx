@@ -7,6 +7,7 @@ import { listReservationsBrief, type ReservationBrief } from '../../services/res
 import { Button, Card, PageHeader } from '../../components/ui'
 import { AnticipoList } from './AnticipoList'
 import { isAnticipoMethod } from '../../domain/cash/cash'
+import { canWrite, type UserRole } from '../../domain/auth/profile'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import {
   EMPTY_PAYMENT_PROOF,
@@ -30,7 +31,23 @@ function fmtBs(n: number) {
 // Vista de recepción para registrar anticipos (adelantos de huésped) contra
 // una reserva. Reception y reception_admin pueden registrar (OPERATIONS) —
 // reembolsar/modificar viven en AnticipoAdminView (reception_admin only).
-export function RecordAnticipoView() {
+export function RecordAnticipoView({ role }: { role?: UserRole | null }) {
+  // owner consulta los anticipos registrados pero no cobra ninguno.
+  if (!canWrite(role)) {
+    return (
+      <div className="mx-auto max-w-3xl p-6">
+        <PageHeader
+          title="Anticipos"
+          subtitle="Solo lectura: para registrar un anticipo, pedíselo al administrador"
+        />
+        <AnticipoList />
+      </div>
+    )
+  }
+  return <RecordAnticipoForm />
+}
+
+function RecordAnticipoForm() {
   const [reservationId, setReservationId] = useState('')
   const [reservations, setReservations] = useState<ReservationBrief[]>([])
   const [amount, setAmount] = useState('')

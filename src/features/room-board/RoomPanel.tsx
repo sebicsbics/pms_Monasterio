@@ -20,6 +20,7 @@ import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
+import { canWrite } from '../../domain/auth/profile'
 import type { CompanionGuest } from '../../services/arrivals'
 import { CompanionFields } from '../checkin/CompanionFields'
 import type { StayGuest } from '../../domain/stays/stayGuest'
@@ -167,6 +168,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [staff, setStaff] = useState<AssignableStaff[]>([])
   const [staffId, setStaffId] = useState('')
 
+  // owner ve el folio y los huéspedes, pero ninguna acción.
+  const readOnly = !canWrite(role)
   const isOccupied = room.operationalStatus === 'occupied'
   const isDirty = room.operationalStatus === 'dirty'
 
@@ -535,7 +538,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         )}
 
         {/* DISPONIBLE → check-in */}
-        {room.operationalStatus === 'available' && (
+        {room.operationalStatus === 'available' && !readOnly && (
           <div className="space-y-3">
             <h3 className="font-semibold text-slate-700">Check-in (walk-in)</h3>
 
@@ -761,7 +764,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 <h3 className="font-semibold text-slate-700">
                   Huéspedes {stayGuests.length > 0 && `(${stayGuests.length})`}
                 </h3>
-                {!addGuestOpen && (
+                {!addGuestOpen && !readOnly && (
                   <button
                     type="button"
                     onClick={() => {
@@ -946,7 +949,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 <p className="text-sm text-slate-400">Cargando folio…</p>
               )}
 
-              {canEditRate && folio && (
+              {canEditRate && folio && !readOnly && (
                 <div className="mt-2">
                   {!rateEditOpen ? (
                     <button
@@ -1013,7 +1016,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
             <div className="space-y-2 border-t border-slate-200 pt-3">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-medium text-slate-600">Estadía</h4>
-                {stayAction === null && (
+                {stayAction === null && !readOnly && (
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -1217,6 +1220,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               )}
             </div>
 
+            {!readOnly && (
+              <>
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-slate-600">
                 Agregar consumo
@@ -1316,11 +1321,13 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
             >
               {busy ? 'Procesando…' : 'Check-out'}
             </button>
+              </>
+            )}
           </div>
         )}
 
         {/* POR LIMPIAR → asignar mucama + marcar limpia */}
-        {isDirty && (
+        {isDirty && !readOnly && (
           <div className="space-y-3">
             <div className="space-y-2">
               <h3 className="font-semibold text-slate-700">Asignar limpieza</h3>
@@ -1358,7 +1365,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         )}
 
         {/* MANTENIMIENTO → volver a disponible */}
-        {room.operationalStatus === 'maintenance' && (
+        {room.operationalStatus === 'maintenance' && !readOnly && (
           <button
             type="button"
             disabled={busy}
