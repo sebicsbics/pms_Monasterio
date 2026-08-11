@@ -232,7 +232,35 @@ Ambas salen de **Supabase → Project Settings → API**. La `anon key` es públ
 por diseño: lo que protege los datos es la RLS. **Nunca** pongas la
 `service_role` en el frontend — viajaría en el bundle del navegador.
 
-Aplicá el esquema y levantá la app:
+### Opción A — entorno local completo (recomendada)
+
+Necesitás Docker. Levanta Postgres, Auth y Storage en tu máquina, aplica las 82
+migraciones y carga datos de prueba:
+
+```bash
+npx supabase start
+npx supabase db reset     # migraciones + seed
+npm run dev
+```
+
+Apuntá `.env.local` a la URL y la `anon key` que imprime `supabase start`.
+
+El seed deja el sistema **usable de entrada**: un usuario por rol (contraseña
+`local1234`), 8 huéspedes ficticios, 3 estadías en curso, llegadas pendientes,
+un turno de caja abierto con movimientos y bitácora de relevo.
+
+| Usuario | Rol |
+|---|---|
+| `root` | Administrador |
+| `admin` | Recepción admin |
+| `recepcion` | Recepción |
+| `contadora` | Contaduría |
+| `duenio` | Propietario (solo lectura) |
+
+`db reset` reconstruye el esquema desde cero, así que también sirve de prueba:
+si una migración dependiera de un estado que sólo existe en producción, falla acá.
+
+### Opción B — contra un proyecto de Supabase
 
 ```bash
 npx supabase link --project-ref <tu-project-ref>
@@ -240,8 +268,8 @@ npx supabase db push     # aplica las 82 migraciones
 npm run dev
 ```
 
-> Al crear el primer usuario desde el dashboard de Supabase, su perfil nace con
-> rol `pending` (sin acceso). Asignale `root` desde el editor SQL para empezar.
+> El primer usuario se crea desde el dashboard de Supabase. Su perfil nace con
+> rol `pending` (sin acceso): asignale `root` desde el editor SQL para empezar.
 
 ---
 
@@ -282,6 +310,9 @@ ocurrencias borró un parámetro de una llamada RPC. TypeScript no lo vio —el
 payload de `supabase.rpc()` es un objeto sin tipar— y el error apareció recién en
 producción. Ahora hay un test que afirma el payload completo, y se verificó que
 falla al quitar la clave.
+
+El entorno local (`npx supabase db reset`) es la otra red de seguridad: replica
+las 82 migraciones desde cero y valida que el esquema sea reconstruible.
 
 **Límite conocido:** la lógica en plpgsql no tiene tests automatizados. Se
 verifica con transacciones revertidas contra la base real. Migrar eso a pgTAP es
