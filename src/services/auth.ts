@@ -15,13 +15,26 @@ export async function signIn(username: string, password: string): Promise<void> 
     password,
   })
   if (error) {
-    // No enmascarar errores del servidor (5xx) como "credenciales
-    // inválidas": eso ocultó un 500 de GoTrue durante todo un diagnóstico.
-    // Solo el 400 (credenciales inválidas) usa el mensaje genérico.
-    console.error('signInWithPassword error:', error.status, error.message)
+    // No enmascarar problemas de configuración ni del servidor como
+    // "credenciales inválidas". Ya pasó dos veces que un mensaje genérico
+    // mandara el diagnóstico al lado equivocado: un 500 de GoTrue por
+    // columnas de token en NULL, y un 422 cuando se apagó el proveedor de
+    // email entero al querer cerrar sólo el registro público.
+    console.error('signInWithPassword error:', error.status, error.code, error.message)
+
     if (error.status && error.status >= 500) {
       throw new Error(
         'Error del servidor de autenticación. Intentá de nuevo en unos minutos.',
+      )
+    }
+    // 422: el login por correo está deshabilitado en el proyecto. No es un
+    // problema de quien entra, y nadie va a poder entrar hasta que se
+    // reactive, así que el mensaje tiene que decir exactamente eso.
+    if (error.status === 422 || error.code === 'email_provider_disabled') {
+      throw new Error(
+        'El inicio de sesión está deshabilitado en la configuración del ' +
+          'sistema. Avisá al administrador: hay que reactivar el proveedor ' +
+          'de correo en Supabase (Authentication → Providers → Email).',
       )
     }
     throw new Error('Usuario o contraseña incorrectos')
