@@ -223,7 +223,16 @@ insert into public.tasks (task_type, notes, assigned_to_name, status, created_by
    '33333333-3333-3333-3333-333333333333');
 
 -- ---------------------------------------------------------------------
--- 8) ANTICIPO — sobre una reserva que todavía no llegó.
+-- 8) FICHAJE — un turno abierto y dos cerrados, para ver el historial y
+--    poder probar el cierre forzado por root.
+-- ---------------------------------------------------------------------
+insert into public.time_entries (user_id, clock_in, clock_out) values
+  ('33333333-3333-3333-3333-333333333333', now() - interval '6 hours', null),
+  ('33333333-3333-3333-3333-333333333333', now() - interval '2 days',  now() - interval '2 days' + interval '8 hours'),
+  ('22222222-2222-2222-2222-222222222222', now() - interval '1 day',   now() - interval '1 day' + interval '9 hours');
+
+-- ---------------------------------------------------------------------
+-- 9) ANTICIPO — sobre una reserva que todavía no llegó.
 -- ---------------------------------------------------------------------
 insert into public.anticipos (reservation_id, amount_bs, payment_method, notes, received_by, received_at)
 select r.id, 400.00, 'QR', 'Adelanto por WhatsApp',

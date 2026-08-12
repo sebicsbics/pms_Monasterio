@@ -48,8 +48,8 @@ reemplaza ese conjunto de papeles por un sistema que:
 | Tablas / vistas | 47 / 15 |
 | Funciones de base de datos | 66 |
 | Políticas RLS | 95 |
-| Migraciones versionadas | 82 |
-| Tests automatizados | 184 |
+| Migraciones versionadas | 83 |
+| Tests automatizados | 184 unitarios + 49 de base de datos |
 | Código de aplicación | ~16.000 líneas TS/TSX |
 | Código de base de datos | ~19.000 líneas SQL |
 
@@ -234,7 +234,7 @@ por diseño: lo que protege los datos es la RLS. **Nunca** pongas la
 
 ### Opción A — entorno local completo (recomendada)
 
-Necesitás Docker. Levanta Postgres, Auth y Storage en tu máquina, aplica las 82
+Necesitás Docker. Levanta Postgres, Auth y Storage en tu máquina, aplica las 83
 migraciones y carga datos de prueba:
 
 ```bash
@@ -264,7 +264,7 @@ si una migración dependiera de un estado que sólo existe en producción, falla
 
 ```bash
 npx supabase link --project-ref <tu-project-ref>
-npx supabase db push     # aplica las 82 migraciones
+npx supabase db push     # aplica las 83 migraciones
 npm run dev
 ```
 
@@ -311,12 +311,31 @@ payload de `supabase.rpc()` es un objeto sin tipar— y el error apareció reci�
 producción. Ahora hay un test que afirma el payload completo, y se verificó que
 falla al quitar la clave.
 
-El entorno local (`npx supabase db reset`) es la otra red de seguridad: replica
-las 82 migraciones desde cero y valida que el esquema sea reconstruible.
+### Tests de base de datos (pgTAP)
 
-**Límite conocido:** la lógica en plpgsql no tiene tests automatizados. Se
-verifica con transacciones revertidas contra la base real. Migrar eso a pgTAP es
-el siguiente paso natural.
+La lógica que mueve dinero vive en PostgreSQL, así que se testea ahí:
+
+```bash
+npx supabase start
+npm run test:db      # 49 tests sobre el entorno local
+npm run test:all     # unitarios + base
+```
+
+Cubren las reglas de pago (respaldo obligatorio, qué medios entran a caja,
+desglose del pago mixto), los tramos de estadía verificando el **total
+resultante** —no sólo que la función no falle— y la autorización, incluidas
+regresiones de tres vulnerabilidades que estuvieron abiertas en producción.
+
+pgTAP se instala dentro de la transacción del test y se revierte con ella: la
+extensión no llega nunca al proyecto de la nube, y ningún test deja rastro.
+
+> Al escribir tests de permisos, tené en cuenta que `pg_prove` corre como
+> `postgres` y un superusuario **ignora los GRANT y la RLS**. Para probar esas
+> capas hay que `set local role authenticated`; si no, todo "pasa" por el motivo
+> equivocado.
+
+El `db reset` es la otra red de seguridad: replica las 83 migraciones desde cero
+y valida que el esquema sea reconstruible.
 
 ---
 

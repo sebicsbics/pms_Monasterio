@@ -9,7 +9,8 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error(
     'Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY. ' +
-      'Crea un archivo .env.local con esos valores (mira .env.example).',
+      'Creá un archivo .env.local con esos valores; están documentados ' +
+      'en el README (sección "Puesta en marcha").',
   )
 }
 

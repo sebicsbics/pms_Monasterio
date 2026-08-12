@@ -9,7 +9,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:db": "supabase test db supabase/tests",
+    "test:all": "vitest run && supabase test db supabase/tests"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
