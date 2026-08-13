@@ -1,11 +1,36 @@
 import { useEffect, useState } from 'react'
-import { fetchInHouse } from '../../services/inhouse'
+import { Coffee } from 'lucide-react'
+import { fetchBreakfastGuests, fetchInHouse } from '../../services/inhouse'
 import type { InHouseStay } from '../../domain/stays/in-house'
+import {
+  buildBreakfastSheet,
+  nextBreakfastDate,
+  type BreakfastRoom,
+} from '../../domain/stays/breakfast'
+import { formatDate } from '../../lib/date'
+import { BreakfastSheet } from './BreakfastSheet'
 
 export function InHouseList() {
   const [stays, setStays] = useState<InHouseStay[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [breakfast, setBreakfast] = useState<BreakfastRoom[] | null>(null)
+  const [breakfastLoading, setBreakfastLoading] = useState(false)
+
+  // La hoja se pide recién al apretar el botón: es un segundo viaje a la
+  // base que solo hace falta en el turno noche, no en cada visita a la
+  // pantalla.
+  async function generateBreakfast() {
+    setBreakfastLoading(true)
+    try {
+      const guests = await fetchBreakfastGuests()
+      setBreakfast(buildBreakfastSheet(stays, guests))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBreakfastLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchInHouse()
@@ -21,6 +46,29 @@ export function InHouseList() {
 
   return (
     <div className="mx-auto max-w-6xl p-6">
+      {/* Justo debajo del botón global de imprimir, que es fijo arriba a
+          la derecha. Solo vive en esta pantalla: la hoja se arma con los
+          huéspedes hospedados. */}
+      <button
+        type="button"
+        onClick={generateBreakfast}
+        disabled={breakfastLoading || stays.length === 0}
+        className="no-print fixed right-4 top-14 z-10 inline-flex items-center gap-1.5
+          rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium
+          text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+      >
+        <Coffee size={16} />
+        {breakfastLoading ? 'Generando…' : 'Generar lista desayuno'}
+      </button>
+
+      {breakfast && (
+        <BreakfastSheet
+          rooms={breakfast}
+          date={formatDate(nextBreakfastDate())}
+          onClose={() => setBreakfast(null)}
+        />
+      )}
+
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">
           Huéspedes hospedados (in-house)
