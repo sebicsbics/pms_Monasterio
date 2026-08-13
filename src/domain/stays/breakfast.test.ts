@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildBreakfastSheet,
   nextBreakfastDate,
+  splitIntoColumns,
   type BreakfastGuestRow,
+  type BreakfastRoom,
 } from './breakfast'
 import type { InHouseStay } from './in-house'
 
@@ -144,5 +146,59 @@ describe('nextBreakfastDate', () => {
 
   it('crosses month and year boundaries in local time', () => {
     expect(nextBreakfastDate(new Date(2026, 11, 31, 22, 0))).toBe('2027-01-01')
+  })
+})
+
+function room(roomNumber: string, guests: number): BreakfastRoom {
+  return {
+    reservationId: `res-${roomNumber}`,
+    roomNumber,
+    guests: Array.from({ length: guests }, (_, i) => ({
+      name: `Huésped ${roomNumber}-${i}`,
+      nationality: 'Bolivia',
+    })),
+  }
+}
+
+describe('splitIntoColumns', () => {
+  // Con pocas habitaciones, una sola columna: partir en dos una lista
+  // corta solo deja media hoja en blanco y se lee peor.
+  it('keeps a short list in a single column', () => {
+    const rooms = [room('1', 1), room('2', 2)]
+    expect(splitIntoColumns(rooms, 10)).toEqual([rooms])
+  })
+
+  it('splits into two balanced columns when the list is long', () => {
+    const rooms = [room('1', 1), room('2', 1), room('3', 1), room('4', 1)]
+    const [left, right] = splitIntoColumns(rooms, 2)
+    expect(left.map((r) => r.roomNumber)).toEqual(['1', '2'])
+    expect(right.map((r) => r.roomNumber)).toEqual(['3', '4'])
+  })
+
+  // Una habitación NO se puede partir entre columnas: el número va una
+  // sola vez y la mitad de abajo quedaría sin habitación.
+  it('never splits a room across the two columns', () => {
+    const rooms = [room('1', 3), room('2', 3)]
+    const columns = splitIntoColumns(rooms, 2)
+    expect(columns.every((col) => col.every((r) => r.guests.length === 3))).toBe(true)
+    expect(columns.flat()).toHaveLength(2)
+  })
+
+  it('balances by guests, not by rooms', () => {
+    // 1 habitación de 5 + 3 de 1: el corte va después de la primera.
+    const rooms = [room('1', 5), room('2', 1), room('3', 1), room('4', 1)]
+    const [left, right] = splitIntoColumns(rooms, 4)
+    expect(left.map((r) => r.roomNumber)).toEqual(['1'])
+    expect(right.map((r) => r.roomNumber)).toEqual(['2', '3', '4'])
+  })
+
+  it('keeps every room and never duplicates one', () => {
+    const rooms = [room('1', 2), room('2', 2), room('3', 2), room('4', 2)]
+    const flat = splitIntoColumns(rooms, 3).flat()
+    expect(flat.map((r) => r.roomNumber)).toEqual(['1', '2', '3', '4'])
+  })
+
+  it('handles an empty sheet', () => {
+    expect(splitIntoColumns([], 10)).toEqual([[]])
   })
 })

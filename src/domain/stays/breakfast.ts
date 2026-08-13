@@ -113,3 +113,42 @@ export function nextBreakfastDate(now: Date = new Date()): string {
   const day = String(target.getDate()).padStart(2, '0')
   return `${target.getFullYear()}-${month}-${day}`
 }
+
+/**
+ * Reparte las habitaciones en columnas para que la hoja entre en UNA
+ * página con el hotel lleno.
+ *
+ * Achicar la letra hasta que entre tiene un límite: a partir de cierto
+ * punto la camarera no puede leerla. El papel A4 en cambio tiene ancho de
+ * sobra —la tabla es angosta— así que cuando la lista pasa de
+ * `maxRowsPerColumn` se usan dos columnas en vez de encoger.
+ *
+ * Se corta por cantidad de HUÉSPEDES (que es lo que ocupa alto), nunca
+ * por el medio de una habitación: el número va una sola vez arriba, y la
+ * mitad que cayera en la otra columna quedaría huérfana.
+ */
+export function splitIntoColumns(
+  rooms: BreakfastRoom[],
+  maxRowsPerColumn: number,
+): BreakfastRoom[][] {
+  const totalRows = rooms.reduce((n, r) => n + r.guests.length, 0)
+  if (totalRows <= maxRowsPerColumn) return [rooms]
+
+  const half = totalRows / 2
+  const left: BreakfastRoom[] = []
+  const right: BreakfastRoom[] = []
+  let used = 0
+
+  for (const room of rooms) {
+    // La habitación entera va donde empieza: si al agregarla ya se pasó
+    // de la mitad, la siguiente arranca la segunda columna.
+    if (used < half) {
+      left.push(room)
+      used += room.guests.length
+    } else {
+      right.push(room)
+    }
+  }
+
+  return [left, right]
+}

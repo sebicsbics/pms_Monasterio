@@ -102,16 +102,21 @@ export function PrintButton({
   title,
   label = 'Imprimir',
   className = '',
+  fitToPage = false,
 }: {
   targetRef: RefObject<HTMLElement | null>
   title?: string
   label?: string
   className?: string
+  /** Achica el contenido para que entre en una sola hoja (ver printRegion). */
+  fitToPage?: boolean
 }) {
   return (
     <button
       type="button"
-      onClick={() => targetRef.current && printRegion(targetRef.current, title)}
+      onClick={() =>
+        targetRef.current && printRegion(targetRef.current, title, { fitToPage })
+      }
       className={
         'no-print inline-flex items-center gap-1.5 rounded-lg border border-slate-300 ' +
         'bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 ' +
