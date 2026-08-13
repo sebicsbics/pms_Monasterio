@@ -14,4 +14,6 @@ export interface InHouseStay {
   checkInDate: string
   checkOutDate: string
   roomTotalBs: number
+  /** Huéspedes realmente hospedados en la habitación (titular + acompañantes). */
+  guestCount: number
 }

@@ -17,13 +17,18 @@ export function InHouseList() {
   if (loading) return <p className="p-8 text-slate-500">Cargando…</p>
   if (error) return <p className="p-8 text-red-600">Error: {error}</p>
 
+  const totalGuests = stays.reduce((sum, s) => sum + s.guestCount, 0)
+
   return (
     <div className="mx-auto max-w-6xl p-6">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">
           Huéspedes hospedados (in-house)
         </h1>
-        <p className="text-sm text-slate-500">{stays.length} en el hotel</p>
+        <p className="text-sm text-slate-500">
+          {stays.length} habitación{stays.length === 1 ? '' : 'es'} ocupada
+          {stays.length === 1 ? '' : 's'}
+        </p>
       </header>
 
       {stays.length === 0 ? (
@@ -35,6 +40,7 @@ export function InHouseList() {
               <tr>
                 <th className="p-3">Hab.</th>
                 <th className="p-3">Huésped</th>
+                <th className="p-3 text-center">Huéspedes</th>
                 <th className="p-3">Tipo</th>
                 <th className="p-3">País</th>
                 <th className="p-3">Entrada</th>
@@ -43,6 +49,13 @@ export function InHouseList() {
               </tr>
             </thead>
             <tbody>
+              <tr className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-700">
+                <td className="p-3" colSpan={2}>
+                  Total en el hotel
+                </td>
+                <td className="p-3 text-center">{totalGuests}</td>
+                <td className="p-3" colSpan={5} />
+              </tr>
               {stays.map((s) => (
                 <tr key={s.reservationId} className="border-t border-slate-100">
                   <td className="p-3 font-semibold">{s.roomNumber}</td>
@@ -54,6 +67,7 @@ export function InHouseList() {
                       </span>
                     )}
                   </td>
+                  <td className="p-3 text-center">{s.guestCount}</td>
                   <td className="p-3">{s.roomType}</td>
                   <td className="p-3">{s.countryCode ?? '—'}</td>
                   <td className="p-3">{s.checkInDate}</td>

@@ -16,6 +16,7 @@ interface InHouseRow {
   check_in_date: string
   check_out_date: string
   room_total_bs: number
+  guest_count: number
 }
 
 // Lista de huéspedes actualmente hospedados (lee la vista in_house).
@@ -39,6 +40,7 @@ export async function fetchInHouse(): Promise<InHouseStay[]> {
       checkInDate: r.check_in_date,
       checkOutDate: r.check_out_date,
       roomTotalBs: Number(r.room_total_bs),
+      guestCount: Number(r.guest_count) || 1,
     }))
     .sort((a, b) => Number(a.roomNumber) - Number(b.roomNumber))
 }
