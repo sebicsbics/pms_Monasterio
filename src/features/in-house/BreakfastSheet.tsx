@@ -57,33 +57,32 @@ export function BreakfastSheet({
                   <th className="w-20 py-2 text-center">Bajó</th>
                 </tr>
               </thead>
-              <tbody>
-                {rooms.map((room) => (
-                  <tr
-                    key={room.reservationId}
-                    className="border-b border-slate-300 align-top"
-                  >
-                    <td className="py-2.5 pr-2 text-base font-bold">{room.roomNumber}</td>
-                    <td className="py-2.5 pr-2">
-                      {room.guests.map((g) => (
-                        <div key={g.name} className="leading-6">
-                          {g.name}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="py-2.5 pr-2 text-slate-600">
-                      {room.guests.map((g) => (
-                        <div key={g.name} className="leading-6">
-                          {g.nationality}
-                        </div>
-                      ))}
-                    </td>
-                    <td className="py-2.5 text-center">
-                      <span className="inline-block h-6 w-6 border-2 border-slate-500" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              {/* Una fila por huésped, con su propia casilla: así la
+                  camarera tickea a cada persona que baja. El número de
+                  habitación se escribe una sola vez (rowspan) para que la
+                  habitación se lea como un bloque y el borde grueso marque
+                  dónde termina. */}
+              {rooms.map((room) => (
+                <tbody key={room.reservationId} className="border-b-2 border-slate-400">
+                  {room.guests.map((g, i) => (
+                    <tr key={g.name} className="border-b border-slate-200">
+                      {i === 0 && (
+                        <td
+                          rowSpan={room.guests.length}
+                          className="py-2.5 pr-2 align-top text-base font-bold"
+                        >
+                          {room.roomNumber}
+                        </td>
+                      )}
+                      <td className="py-2.5 pr-2">{g.name}</td>
+                      <td className="py-2.5 pr-2 text-slate-600">{g.nationality}</td>
+                      <td className="py-2.5 text-center">
+                        <span className="inline-block h-6 w-6 border-2 border-slate-500" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </table>
           )}
 
