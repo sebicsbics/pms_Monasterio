@@ -1,6 +1,7 @@
 import type { CompanionGuest } from '../../services/arrivals'
 import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
+import { DocumentLookupField } from './DocumentLookupField'
 
 const INPUT = 'w-full rounded border border-slate-300 p-2 text-sm'
 
@@ -54,10 +55,21 @@ export function CompanionFields({
 
       {!g.isMinor && (
         <>
-          <input
-            placeholder="Documento / Pasaporte"
+          {/* El documento es la llave del huésped: si ya vino antes, se
+              trae su ficha en vez de tipearla de nuevo. */}
+          <DocumentLookupField
             value={g.document}
-            onChange={(e) => onChange({ document: e.target.value })}
+            onChange={(document) => onChange({ document })}
+            onFound={(p) =>
+              onChange({
+                firstName: p.firstName,
+                lastName: p.lastName,
+                birthDate: p.birthDate,
+                countryCode: p.countryCode,
+                city: p.city,
+                occupation: p.occupation,
+              })
+            }
             className={INPUT}
           />
           <div className="flex gap-2">

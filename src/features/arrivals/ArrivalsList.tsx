@@ -9,6 +9,7 @@ import {
 import { overrideReservationRate } from '../../services/checkin'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
 import { CompanionFields } from '../checkin/CompanionFields'
+import { DocumentLookupField } from '../checkin/DocumentLookupField'
 import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
 import type { UserRole } from '../../domain/auth/profile'
@@ -226,10 +227,18 @@ function CheckInModal({
 
         <div className="space-y-3">
           <p className="text-xs text-slate-500">Completá el perfil del huésped:</p>
-          <input
-            placeholder="Documento / Pasaporte"
+          {/* El titular ya tiene nombre por la reserva: la búsqueda solo
+              rellena el resto de su ficha, nunca lo renombra. */}
+          <DocumentLookupField
             value={document}
-            onChange={(e) => setDocument(e.target.value)}
+            onChange={setDocument}
+            onFound={(p) => {
+              setBirthDate(p.birthDate)
+              setCountryCode(p.countryCode)
+              setCity(p.city)
+              setOccupation(p.occupation)
+              setWantsOffers(p.wantsOffers)
+            }}
             className="w-full rounded border border-slate-300 p-2"
           />
           <div className="flex gap-2">
