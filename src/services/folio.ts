@@ -1,27 +1,40 @@
 import { supabase } from './supabase'
-import type { Folio } from '../domain/folios/folio'
+import { balanceDue, netAnticipos, type Folio } from '../domain/folios/folio'
 
 interface ChargeRow {
   id: string
   description: string
   amount_bs: number
 }
+interface AnticipoRow {
+  amount_bs: number
+  refunded_amount_bs: number
+}
 interface FolioRow {
   reservations: {
     id: string
     total_amount_bs: number
     room_types: { name: string }
+    anticipos: AnticipoRow[]
   }
   folio_charges: ChargeRow[]
 }
 
-// Trae el folio de la habitación ocupada: cargo de habitación + consumos.
+// Trae el folio de la habitación ocupada: cargo de habitación + consumos,
+// y los anticipos de la reserva.
+//
+// Los anticipos van EN el folio, no aparte: si no se ven acá, el
+// check-out cobra el total otra vez (plata que ya entró a caja cuando se
+// recibió el anticipo) y el huésped paga dos veces.
 export async function fetchFolio(roomId: string): Promise<Folio | null> {
   const { data, error } = await supabase
     .from('folios')
     .select(
       `
-      reservations!inner ( id, total_amount_bs, room_types ( name ) ),
+      reservations!inner (
+        id, total_amount_bs, room_types ( name ),
+        anticipos ( amount_bs, refunded_amount_bs )
+      ),
       folio_charges ( id, description, amount_bs )
     `,
     )
@@ -40,6 +53,13 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
   }))
   const roomChargeBs = Number(row.reservations.total_amount_bs)
   const extrasTotalBs = charges.reduce((sum, c) => sum + c.amountBs, 0)
+  const totalBs = roomChargeBs + extrasTotalBs
+  const anticipoTotalBs = netAnticipos(
+    (row.reservations.anticipos ?? []).map((a) => ({
+      amountBs: Number(a.amount_bs),
+      refundedAmountBs: Number(a.refunded_amount_bs),
+    })),
+  )
 
   return {
     reservationId: row.reservations.id,
@@ -47,7 +67,9 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
     roomChargeBs,
     charges,
     extrasTotalBs,
-    totalBs: roomChargeBs + extrasTotalBs,
+    totalBs,
+    anticipoTotalBs,
+    balanceDueBs: balanceDue(totalBs, anticipoTotalBs),
   }
 }
 
