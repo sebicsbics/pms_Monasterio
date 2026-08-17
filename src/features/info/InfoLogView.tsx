@@ -78,8 +78,11 @@ export function InfoLogView() {
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          rows={2}
-          placeholder="Ej. Se dejó una chaqueta negra en la Hab. 12 del huésped Juan Pérez."
+          rows={4}
+          placeholder={
+            'Ej. Se dejó una chaqueta negra en la Hab. 12 del huésped Juan Pérez.\n' +
+            'Podés usar varias líneas: se muestran tal cual.'
+          }
           className="w-full rounded border border-slate-300 p-2 text-sm"
         />
         <button
@@ -135,7 +138,14 @@ export function InfoLogView() {
             }`}
           >
             <div className="flex items-start justify-between gap-3">
-              <p className={`text-sm ${n.resolved ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+              {/* whitespace-pre-wrap: el turno escribe la nota con saltos de
+                  línea (una viñeta por pendiente) y sin esto el navegador
+                  los colapsa y todo sale como un párrafo corrido. */}
+              <p
+                className={`whitespace-pre-wrap text-sm ${
+                  n.resolved ? 'text-slate-500 line-through' : 'text-slate-800'
+                }`}
+              >
                 {n.content}
               </p>
               {!n.resolved && canEdit && (
