@@ -39,7 +39,7 @@ describe('DISCOUNT_APPROVAL — reception_admin-only, NOT plain reception', () =
   })
 })
 
-describe('ANTICIPOS_ADMIN — reception_admin-only refund/modify surface, NOT plain reception', () => {
+describe('ANTICIPOS_ADMIN — reception_admin-only correction surface, NOT plain reception', () => {
   it('includes root and reception_admin', () => {
     expect(ANTICIPOS_ADMIN).toContain('root')
     expect(ANTICIPOS_ADMIN).toContain('reception_admin')

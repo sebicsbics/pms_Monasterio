@@ -6,7 +6,11 @@ export const INCOME_CATEGORIES: Record<string, string> = {
   evento: 'Evento / salón',
   cobro_cuenta: 'Cobro cuenta por cobrar',
   adelanto: 'Adelanto / seña',
-  reembolso: 'Reembolso recibido',
+  // Sin categoría de reembolso: el hotel NO reembolsa (ver
+  // domain/anticipos). Ofrecerla en el desplegable invitaba a registrar
+  // un movimiento que la operación no tiene. `categoryLabel` igual sabe
+  // mostrar un código desconocido tal cual, así que un movimiento
+  // histórico con esa categoría se seguiría viendo.
   otro_ingreso: 'Otro ingreso',
 }
 

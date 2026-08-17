@@ -1,18 +1,15 @@
 import { supabase } from './supabase'
 import { balanceDue, netAnticipos, type Folio } from '../domain/folios/folio'
+import type { AnticipoStatus } from '../domain/anticipos/anticipos'
 
 interface ChargeRow {
   id: string
   description: string
   amount_bs: number
 }
-// Los reembolsos NO son una columna del anticipo: viven en la bitácora
-// append-only `anticipo_corrections` (action='refund'). Se traen anidados
-// para calcular el neto sin un segundo viaje a la base.
 interface AnticipoRow {
   amount_bs: number
   status: string
-  anticipo_corrections: { action: string; refund_amount_bs: number | null }[] | null
 }
 interface FolioRow {
   reservations: {
@@ -37,10 +34,7 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
       `
       reservations!inner (
         id, total_amount_bs, room_types ( name ),
-        anticipos (
-          amount_bs, status,
-          anticipo_corrections ( action, refund_amount_bs )
-        )
+        anticipos ( amount_bs, status )
       ),
       folio_charges ( id, description, amount_bs )
     `,
@@ -64,10 +58,7 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
   const anticipoTotalBs = netAnticipos(
     (row.reservations.anticipos ?? []).map((a) => ({
       amountBs: Number(a.amount_bs),
-      status: a.status,
-      refundedBs: (a.anticipo_corrections ?? [])
-        .filter((c) => c.action === 'refund')
-        .reduce((sum, c) => sum + Number(c.refund_amount_bs ?? 0), 0),
+      status: a.status as AnticipoStatus,
     })),
   )
 

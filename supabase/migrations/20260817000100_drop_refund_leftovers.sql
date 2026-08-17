@@ -1,0 +1,183 @@
+-- =====================================================================
+-- Eliminar los restos de la implementación de reembolsos.
+-- (change: drop-refund-leftovers)
+--
+-- REGLA DE NEGOCIO: el hotel NO reembolsa. Si el huésped no viene, la
+-- reserva se reprograma o se cancela y el anticipo queda 'forfeited'
+-- (ver src/domain/anticipos/anticipos.ts y 20260727000100_refunds_to_
+-- cancel_reschedule.sql, que ya había sacado `refund_anticipo`).
+--
+-- Esa limpieza quedó a medias y dejó estructura muerta que volvió a
+-- confundir: al implementar el descuento de anticipos en el check-out se
+-- escribió lógica de reembolso contra columnas que ya nadie escribe.
+-- Estructura muerta no es inocente — se lee como si fuera la verdad.
+--
+-- Lo que se elimina (todo verificado SIN datos antes de tocarlo):
+--   1. check_out_room: la subconsulta que restaba reembolsos. Era código
+--      inalcanzable — anticipo_corrections.action solo admite 'modify'.
+--   2. anticipo_corrections.refund_amount_bs (+ su check) y
+--      cash_movement_id: columnas del reembolso. 0 filas en la tabla.
+--   3. reservations.payment_status: se saca 'refunded' del check. Ninguna
+--      reserva lo usa, y ninguna ruta del código lo escribe.
+--
+-- Se CONSERVA anticipo_corrections.action: hoy vale siempre 'modify',
+-- pero es la etiqueta de qué corrección fue y la bitácora puede crecer a
+-- otras que no sean reembolsos.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 1) check_out_room sin rastro de reembolsos: los anticipos ACTIVOS se
+--    descuentan enteros. Un 'forfeited' no acredita nada.
+-- ---------------------------------------------------------------------
+create or replace function public.check_out_room(
+  p_room_id               uuid,
+  p_payment_method        text default 'EFECTIVO',
+  p_receipt_path          text default null,
+  p_payment_reference     text default null,
+  p_receivable_account_id uuid default null,
+  p_cash_bs               numeric default null,
+  p_non_cash_bs           numeric default null,
+  p_non_cash_method       text default null
+) returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_reservation_id uuid;
+  v_room_total     numeric(10,2);
+  v_extras         numeric(10,2);
+  v_total          numeric(10,2);
+  v_anticipos      numeric(10,2);
+  v_due            numeric(10,2);
+  v_status         varchar(15);
+  v_room_number    text;
+begin
+  if public.current_user_role() not in ('root', 'reception', 'reception_admin', 'accountant') then
+    raise exception 'No autorizado para hacer check-out';
+  end if;
+
+  if not exists (
+    select 1 from public.payment_methods where code = p_payment_method and is_active
+  ) then
+    raise exception 'Forma de pago inválida: %', p_payment_method;
+  end if;
+
+  if p_payment_method <> 'MIXTO' then
+    perform public.assert_payment_proof(p_payment_method, p_payment_reference, p_receipt_path);
+  end if;
+
+  select operational_status, room_number into v_status, v_room_number
+  from public.rooms where id = p_room_id for update;
+  if v_status <> 'occupied' then
+    raise exception 'La habitación no está ocupada (estado actual: %)', coalesce(v_status, 'inexistente');
+  end if;
+
+  select id, total_amount_bs into v_reservation_id, v_room_total
+  from public.reservations
+  where room_id = p_room_id and status = 'checked_in'
+  order by check_in_date desc
+  limit 1;
+
+  if v_reservation_id is null then
+    raise exception 'No hay una reserva activa para esta habitación';
+  end if;
+
+  select coalesce(sum(fc.amount_bs), 0) into v_extras
+  from public.folio_charges fc
+  join public.folios f on f.id = fc.folio_id
+  where f.reservation_id = v_reservation_id;
+
+  v_total := coalesce(v_room_total, 0) + v_extras;
+
+  -- Anticipos a favor del huésped: los ACTIVOS, enteros. No hay monto
+  -- reembolsado que restar porque el hotel no reembolsa; un anticipo o
+  -- está vigente, o quedó 'forfeited' y ya es plata del hotel.
+  select coalesce(sum(a.amount_bs), 0) into v_anticipos
+  from public.anticipos a
+  where a.reservation_id = v_reservation_id
+    and a.status = 'active';
+
+  v_due := greatest(v_total - v_anticipos, 0);
+
+  update public.reservations
+    set payment_method = p_payment_method,
+        receipt_path = p_receipt_path,
+        payment_reference = nullif(trim(p_payment_reference), '')
+    where id = v_reservation_id;
+
+  if p_payment_method = 'CTAS_POR_COBRAR' then
+    if p_receivable_account_id is null then
+      raise exception 'Elegí la cuenta por cobrar a la que se factura';
+    end if;
+    if not exists (select 1 from public.receivable_accounts where id = p_receivable_account_id and is_active) then
+      raise exception 'Cuenta por cobrar inválida o inactiva';
+    end if;
+
+    update public.reservations set payment_status = 'pending' where id = v_reservation_id;
+
+    -- Se factura el SALDO: el anticipo ya está cobrado, no se le debe.
+    if v_due > 0 then
+      insert into public.receivables (account_id, reservation_id, amount_bs, concept)
+      values (p_receivable_account_id, v_reservation_id, v_due,
+              'Hospedaje Hab. ' || coalesce(v_room_number, '?'));
+    end if;
+  else
+    update public.reservations set payment_status = 'paid' where id = v_reservation_id;
+
+    if p_payment_method = 'MIXTO' and v_due > 0 then
+      perform public.record_mixed_income(
+        v_due, p_cash_bs, p_non_cash_bs, p_non_cash_method,
+        'cobro_habitacion', 'Check-out Hab. ' || coalesce(v_room_number, '?'),
+        p_receipt_path, p_payment_reference
+      );
+    elsif public.payment_records_income(p_payment_method) and v_due > 0
+       and (public.current_user_role() <> 'root'
+            or exists (select 1 from public.cash_sessions where status = 'open')) then
+      perform public.add_cash_movement(
+        'income', 'cobro_habitacion', v_due,
+        'Check-out Hab. ' || coalesce(v_room_number, '?'),
+        p_receipt_path, p_payment_method, p_payment_reference
+      );
+    end if;
+  end if;
+
+  update public.reservations set status = 'checked_out' where id = v_reservation_id;
+  update public.folios set closed_at = now() where reservation_id = v_reservation_id;
+  update public.rooms set operational_status = 'dirty' where id = p_room_id;
+
+  return v_due;
+end;
+$$;
+
+grant execute on function public.check_out_room(
+  uuid, text, text, text, uuid, numeric, numeric, text
+) to authenticated;
+
+comment on function public.check_out_room(uuid, text, text, text, uuid, numeric, numeric, text) is
+  'Cierra la estadía y cobra el SALDO (total del folio menos los anticipos activos). '
+  'Devuelve el saldo cobrado, no el total del folio.';
+
+-- ---------------------------------------------------------------------
+-- 2) anticipo_corrections: fuera las columnas del reembolso.
+-- ---------------------------------------------------------------------
+alter table public.anticipo_corrections
+  drop constraint if exists anticipo_corrections_refund_amount_bs_check;
+
+alter table public.anticipo_corrections
+  drop column if exists refund_amount_bs,
+  drop column if exists cash_movement_id;
+
+comment on table public.anticipo_corrections is
+  'Bitácora append-only de correcciones de anticipos. Solo action=''modify'': '
+  'el hotel no reembolsa.';
+
+-- ---------------------------------------------------------------------
+-- 3) reservations.payment_status: fuera 'refunded'.
+-- ---------------------------------------------------------------------
+alter table public.reservations
+  drop constraint if exists reservations_payment_status_check;
+
+alter table public.reservations
+  add constraint reservations_payment_status_check
+  check (payment_status::text = any (array['pending', 'paid', 'failed']));
