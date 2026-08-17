@@ -1,4 +1,5 @@
 import { COUNTRIES } from '../../shared/data/countries'
+import type { AssignmentKind } from '../housekeeping/assignment'
 import type { InHouseStay } from './in-house'
 
 // Un huésped tal como llega de la vista `stay_guests` para armar la hoja
@@ -18,10 +19,15 @@ export interface BreakfastGuest {
 }
 
 // Una habitación en la hoja: todos los que desayunan, en una línea.
+//
+// `cleaningKind` es el trabajo de housekeeping del día: la camarera usa
+// ESTA misma hoja para saber qué habitación limpiar y cuál habilitar, así
+// que la columna va acá y no en una segunda hoja que se le pierde.
 export interface BreakfastRoom {
   reservationId: string
   roomNumber: string
   guests: BreakfastGuest[]
+  cleaningKind: AssignmentKind | null
 }
 
 const COUNTRY_NAMES = new Map(COUNTRIES.map((c) => [c.code, c.name]))
@@ -46,10 +52,16 @@ function fullName(first: string, last: string): string {
  * fichas de los acompañantes, la habitación igual sale en la hoja con el
  * titular. Una habitación que falta en esta hoja es una habitación que se
  * queda sin desayuno.
+ *
+ * `cleaningByRoomId` trae el tablero de housekeeping del día (limpieza o
+ * habilitar). Si una habitación no tiene asignación, la columna sale
+ * vacía en vez de suponer un tipo de limpieza: inventarlo mandaría a la
+ * camarera a hacer el trabajo equivocado.
  */
 export function buildBreakfastSheet(
   stays: InHouseStay[],
   guests: BreakfastGuestRow[],
+  cleaningByRoomId: ReadonlyMap<string, AssignmentKind> = new Map(),
 ): BreakfastRoom[] {
   const byReservation = new Map<string, BreakfastGuestRow[]>()
   for (const g of guests) {
@@ -83,7 +95,12 @@ export function buildBreakfastSheet(
               },
             ]
 
-      return { reservationId: stay.reservationId, roomNumber: stay.roomNumber, guests }
+      return {
+        reservationId: stay.reservationId,
+        roomNumber: stay.roomNumber,
+        guests,
+        cleaningKind: cleaningByRoomId.get(stay.roomId) ?? null,
+      }
     })
     .sort((a, b) => Number(a.roomNumber) - Number(b.roomNumber))
 }

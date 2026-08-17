@@ -97,6 +97,24 @@ describe('buildBreakfastSheet', () => {
     expect(rooms[0].guests).toEqual([{ name: 'Ana Pérez', nationality: 'Bolivia' }])
   })
 
+  // La camarera trabaja con esta hoja: la columna de limpieza le dice si
+  // la habitación sigue ocupada (limpiar) o si se desocupa (habilitar).
+  it('trae el tipo de limpieza del tablero de housekeeping', () => {
+    const rooms = buildBreakfastSheet(
+      [stay({ roomId: 'room-1' })],
+      [guest()],
+      new Map([['room-1', 'turnover' as const]]),
+    )
+    expect(rooms[0].cleaningKind).toBe('turnover')
+  })
+
+  // Inventar un tipo de limpieza manda a la camarera a hacer el trabajo
+  // equivocado: mejor la columna vacía y que pregunte.
+  it('deja la limpieza vacía cuando la habitación no está en el tablero', () => {
+    const rooms = buildBreakfastSheet([stay({ roomId: 'room-9' })], [guest()], new Map())
+    expect(rooms[0].cleaningKind).toBeNull()
+  })
+
   it('ignores guest rows whose room is no longer in house', () => {
     const rooms = buildBreakfastSheet([stay()], [guest({ reservationId: 'gone' })])
     expect(rooms.map((r) => r.roomNumber)).toEqual(['101'])
@@ -157,6 +175,7 @@ function room(roomNumber: string, guests: number): BreakfastRoom {
       name: `Huésped ${roomNumber}-${i}`,
       nationality: 'Bolivia',
     })),
+    cleaningKind: null,
   }
 }
 

@@ -23,6 +23,7 @@ import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 import { canWrite } from '../../domain/auth/profile'
 import type { CompanionGuest } from '../../services/arrivals'
 import { CompanionFields } from '../checkin/CompanionFields'
+import { DocumentLookupField } from '../checkin/DocumentLookupField'
 import type { StayGuest } from '../../domain/stays/stayGuest'
 import { guestFullName } from '../../domain/stays/stayGuest'
 import { fetchStayGuests, addGuestsToStay } from '../../services/stayGuests'
@@ -150,7 +151,10 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [receivableAccountId, setReceivableAccountId] = useState('')
   const [proof, setProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
   const [mixed, setMixed] = useState<MixedPayment>(EMPTY_MIXED_PAYMENT)
-  const checkOutTotal = folio?.totalBs ?? 0
+  // Lo que se cobra en el check-out es el SALDO, no el total del folio:
+  // el anticipo ya se cobró. El desglose de un pago mixto tiene que sumar
+  // ese saldo, no el total.
+  const checkOutTotal = folio?.balanceDueBs ?? 0
   // En MIXTO el respaldo pertenece a la parte electrónica, así que el
   // error se evalúa contra ese medio, no contra 'MIXTO'.
   const proofError = isMixed(paymentMethod)
@@ -473,6 +477,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     setError(null)
     try {
       const mixedOn = isMixed(paymentMethod)
+      const anticipoBs = folio?.anticipoTotalBs ?? 0
       const total = await checkOutRoom(
         room.id,
         paymentMethod,
@@ -493,7 +498,10 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
           ? `Check-out realizado. ${Number(mixed.cashBs).toFixed(2)} Bs en efectivo y ` +
             `${Number(mixed.nonCashBs).toFixed(2)} Bs por ${mixed.nonCashMethod.toLowerCase()}, ` +
             'ambos registrados en caja.'
-          : `Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`,
+          : anticipoBs > 0
+            ? `Check-out realizado. Saldo cobrado: ${total.toFixed(2)} Bs ` +
+              `(${anticipoBs.toFixed(2)} Bs ya estaban pagados como anticipo).`
+            : `Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`,
       )
       setProof(EMPTY_PAYMENT_PROOF)
       setMixed(EMPTY_MIXED_PAYMENT)
@@ -571,10 +579,22 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               onChange={(e) => setLastName(e.target.value)}
               className="w-full rounded border border-slate-300 p-2"
             />
-            <input
-              placeholder="Documento / Pasaporte"
+            {/* El walk-in es donde más se repite un huésped conocido
+                (el viajante que vuelve cada mes): la búsqueda por
+                documento trae su ficha entera. */}
+            <DocumentLookupField
               value={document}
-              onChange={(e) => setDocument(e.target.value)}
+              onChange={setDocument}
+              onFound={(p) => {
+                setFirstName(p.firstName)
+                setLastName(p.lastName)
+                setEmail(p.email)
+                setBirthDate(p.birthDate)
+                setCountryCode(p.countryCode)
+                setCity(p.city)
+                setOccupation(p.occupation)
+                setWantsOffers(p.wantsOffers)
+              }}
               className="w-full rounded border border-slate-300 p-2"
             />
             <input
@@ -940,10 +960,25 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                       <span>{c.amountBs.toFixed(2)} Bs</span>
                     </div>
                   ))}
-                  <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-bold text-slate-800">
+                  <div className="mt-2 flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-800">
                     <span>Total</span>
                     <span>{folio.totalBs.toFixed(2)} Bs</span>
                   </div>
+                  {/* El anticipo ya entró a caja cuando se recibió: acá se
+                      descuenta para que el check-out cobre solo el saldo y
+                      no lo registre como ingreso una segunda vez. */}
+                  {folio.anticipoTotalBs > 0 && (
+                    <>
+                      <div className="flex justify-between text-green-700">
+                        <span>Anticipo recibido</span>
+                        <span>− {folio.anticipoTotalBs.toFixed(2)} Bs</span>
+                      </div>
+                      <div className="mt-1 flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-800">
+                        <span>Saldo a cobrar</span>
+                        <span>{folio.balanceDueBs.toFixed(2)} Bs</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-slate-400">Cargando folio…</p>

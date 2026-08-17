@@ -7,6 +7,7 @@ import {
   nextBreakfastDate,
   type BreakfastRoom,
 } from '../../domain/stays/breakfast'
+import { fetchAssignments, generateAssignments } from '../../services/housekeeping'
 import { formatDate } from '../../lib/date'
 import { BreakfastSheet } from './BreakfastSheet'
 
@@ -15,16 +16,37 @@ export function InHouseList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [breakfast, setBreakfast] = useState<BreakfastRoom[] | null>(null)
+  // La fecha se congela al generar la hoja: si la reimprimen justo cuando
+  // cruza el corte de las 10:00, el papel tiene que seguir diciendo el
+  // mismo día que el tablero de housekeeping que se generó con él.
+  const [breakfastDate, setBreakfastDate] = useState('')
   const [breakfastLoading, setBreakfastLoading] = useState(false)
 
   // La hoja se pide recién al apretar el botón: es un segundo viaje a la
   // base que solo hace falta en el turno noche, no en cada visita a la
   // pantalla.
+  //
+  // De paso se GENERA el tablero de housekeeping del día de la hoja. Son
+  // el mismo acto operativo: recepción arma de noche lo que las camareras
+  // van a usar a la mañana, y la hoja de desayuno es el papel que llevan
+  // encima. Generar el tablero por separado se olvidaba, y entonces la
+  // columna de limpieza salía vacía.
+  //
+  // `generate_housekeeping_assignments` es idempotente (INSERT ... ON
+  // CONFLICT DO NOTHING): reimprimir la hoja no pisa el trabajo ya
+  // marcado como hecho ni la mucama asignada.
   async function generateBreakfast() {
     setBreakfastLoading(true)
     try {
-      const guests = await fetchBreakfastGuests()
-      setBreakfast(buildBreakfastSheet(stays, guests))
+      const date = nextBreakfastDate()
+      await generateAssignments(date)
+      const [guests, assignments] = await Promise.all([
+        fetchBreakfastGuests(),
+        fetchAssignments(date),
+      ])
+      const cleaningByRoomId = new Map(assignments.map((a) => [a.roomId, a.kind]))
+      setBreakfast(buildBreakfastSheet(stays, guests, cleaningByRoomId))
+      setBreakfastDate(date)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -58,13 +80,13 @@ export function InHouseList() {
           text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50"
       >
         <Coffee size={16} />
-        {breakfastLoading ? 'Generando…' : 'Generar lista desayuno'}
+        {breakfastLoading ? 'Generando…' : 'Generar desayuno + limpieza'}
       </button>
 
       {breakfast && (
         <BreakfastSheet
           rooms={breakfast}
-          date={formatDate(nextBreakfastDate())}
+          date={formatDate(breakfastDate)}
           onClose={() => setBreakfast(null)}
         />
       )}

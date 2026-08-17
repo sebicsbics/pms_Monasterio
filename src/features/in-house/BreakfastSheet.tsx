@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { Button, PrintButton } from '../../components/ui'
 import { splitIntoColumns, type BreakfastRoom } from '../../domain/stays/breakfast'
+import { ASSIGNMENT_KIND_LABEL } from '../../domain/housekeeping/assignment'
 
 // Cuántas filas entran cómodas en una columna de A4 con esta tipografía.
 // Pasado ese punto la hoja se parte en dos columnas en vez de encoger la
@@ -69,6 +70,10 @@ export function BreakfastSheet({
             Atención de desayuno hasta las 10:00. A las 09:00, llamar a las
             habitaciones sin tickear para avisarles.
           </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Limpieza = sigue el mismo huésped · Habilitar = se va el huésped,
+            se prepara para el próximo.
+          </p>
         </div>
       </div>
     </div>
@@ -87,6 +92,7 @@ function BreakfastColumn({ rooms }: { rooms: BreakfastRoom[] }) {
           <th className="w-12 py-2 pr-2">Hab.</th>
           <th className="py-2 pr-2">Huéspedes</th>
           <th className="w-32 py-2 pr-2">Nacionalidad</th>
+          <th className="w-20 py-2 pr-2">Limpieza</th>
           <th className="w-14 py-2 text-center">Bajó</th>
         </tr>
       </thead>
@@ -104,6 +110,16 @@ function BreakfastColumn({ rooms }: { rooms: BreakfastRoom[] }) {
               )}
               <td className="py-1.5 pr-2">{g.name}</td>
               <td className="py-1.5 pr-2 text-slate-600">{g.nationality}</td>
+              {/* El trabajo de housekeeping es de la habitación, no de
+                  cada huésped: se escribe una vez, igual que el número. */}
+              {i === 0 && (
+                <td
+                  rowSpan={room.guests.length}
+                  className="py-1.5 pr-2 align-top font-semibold text-slate-700"
+                >
+                  {room.cleaningKind ? ASSIGNMENT_KIND_LABEL[room.cleaningKind] : '—'}
+                </td>
+              )}
               <td className="py-1.5 text-center">
                 <span className="inline-block h-5 w-5 border-2 border-slate-500" />
               </td>
