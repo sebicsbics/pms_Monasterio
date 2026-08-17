@@ -18,21 +18,31 @@ export interface Folio {
   balanceDueBs: number // lo que falta cobrar en el check-out
 }
 
-// Un anticipo tal como vive en la base: lo recibido y lo ya devuelto.
+// Un anticipo tal como vive en la base: lo recibido, su estado, y lo ya
+// devuelto (que NO es una columna del anticipo: los reembolsos viven en
+// la bitácora `anticipo_corrections`, append-only).
 export interface AnticipoAmounts {
   amountBs: number
-  refundedAmountBs: number
+  refundedBs: number
+  status: string // 'active' | 'forfeited'
 }
 
 /**
  * Anticipos NETOS de la reserva: lo que el huésped tiene a favor.
  *
- * Un anticipo reembolsado ya no es plata del hotel, así que se resta lo
- * devuelto. Nunca da negativo: `refunded_amount_bs <= amount_bs` está
- * garantizado por un check en la tabla.
+ * Dos reglas, las dos con plata de por medio:
+ *  - Solo cuentan los ACTIVOS. Un anticipo 'forfeited' es el del no-show
+ *    que perdió el adelanto: esa plata se la quedó el hotel, no es un
+ *    pago a cuenta del folio de nadie.
+ *  - Se resta lo reembolsado, porque ya salió de caja.
+ *
+ * Cada anticipo se piso en 0: un reembolso mayor al anticipo sería un
+ * dato corrupto y no puede convertirse en un cargo extra al huésped.
  */
 export function netAnticipos(anticipos: AnticipoAmounts[]): number {
-  return anticipos.reduce((sum, a) => sum + (a.amountBs - a.refundedAmountBs), 0)
+  return anticipos
+    .filter((a) => a.status === 'active')
+    .reduce((sum, a) => sum + Math.max(a.amountBs - a.refundedBs, 0), 0)
 }
 
 /**
