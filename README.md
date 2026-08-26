@@ -234,7 +234,7 @@ por diseño: lo que protege los datos es la RLS. **Nunca** pongas la
 
 ### Opción A — entorno local completo (recomendada)
 
-Necesitás Docker. Levanta Postgres, Auth y Storage en tu máquina, aplica las 83
+Necesitás Docker. Levanta Postgres, Auth y Storage en tu máquina, aplica las 91
 migraciones y carga datos de prueba:
 
 ```bash
@@ -260,11 +260,27 @@ un turno de caja abierto con movimientos y bitácora de relevo.
 `db reset` reconstruye el esquema desde cero, así que también sirve de prueba:
 si una migración dependiera de un estado que sólo existe en producción, falla acá.
 
+#### QA local rápido
+
+Para levantar el frontend contra el stack local sin tocar `.env.local` (que
+sigue apuntando a la nube), usá:
+
+```bash
+npm run dev:qa
+```
+
+Esto lee `.env.qa`, commiteado en el repo, que ya trae la URL
+(`http://127.0.0.1:54321`) y la `anon key` fija que imprime `supabase start`
+en cualquier stack local por defecto. No es un secreto: es la misma clave
+pública para todo el mundo que levanta este proyecto en su máquina — lo que
+protege los datos es la RLS, no la clave. `.env.local` (nube) no se modifica
+ni se lee en este flujo.
+
 ### Opción B — contra un proyecto de Supabase
 
 ```bash
 npx supabase link --project-ref <tu-project-ref>
-npx supabase db push     # aplica las 83 migraciones
+npx supabase db push     # aplica las 91 migraciones
 npm run dev
 ```
 
@@ -282,6 +298,34 @@ timestamp. Cada migración documenta **por qué** existe, no solo qué hace.
 npx supabase db push      # aplicar pendientes
 npx supabase migration list
 ```
+
+### Guardián de deriva de esquema
+
+```bash
+npm run schema:check-drift
+```
+
+Compara el esquema real del proyecto linkeado contra las migraciones locales
+con `supabase db diff --linked` — a diferencia de `migration list`, esto
+detecta ediciones manuales hechas directo en producción, no solo migraciones
+sin aplicar. Es local y manual: nunca corre en CI ni usa credenciales de prod
+en secrets. Pide confirmación explícita antes de tocar el proyecto linkeado
+(ver siguiente sección).
+
+### Comandos `--linked` guardados
+
+```bash
+npm run supabase:guarded -- <comando>
+```
+
+Cualquier comando de Supabase CLI que dependa de `--linked` (por ejemplo
+`supabase link` o `supabase db diff --linked`) pasa por
+`scripts/supabase-guarded.mjs`, que imprime el proyecto contra el que vas a
+operar y exige confirmación explícita (`y`/`yes`; Enter vacío o cualquier
+otra cosa aborta). En un contexto no interactivo (CI, pipe) aborta sin
+preguntar. Existe porque el estado de link vive en
+`supabase/.temp/project-ref` — no aparece en `config.toml`, es invisible en
+code review y persiste entre sesiones de terminal.
 
 Dos reglas aprendidas a los golpes, documentadas en el propio SQL:
 
@@ -334,7 +378,7 @@ extensión no llega nunca al proyecto de la nube, y ningún test deja rastro.
 > capas hay que `set local role authenticated`; si no, todo "pasa" por el motivo
 > equivocado.
 
-El `db reset` es la otra red de seguridad: replica las 83 migraciones desde cero
+El `db reset` es la otra red de seguridad: replica las 91 migraciones desde cero
 y valida que el esquema sea reconstruible.
 
 ---
