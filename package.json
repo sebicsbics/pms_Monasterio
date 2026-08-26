@@ -5,13 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:qa": "vite --mode qa",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "supabase test db supabase/tests",
-    "test:all": "vitest run && supabase test db supabase/tests"
+    "test:all": "vitest run && supabase test db supabase/tests",
+    "supabase:guarded": "node scripts/supabase-guarded.mjs",
+    "schema:check-drift": "node scripts/supabase-guarded.mjs db diff --linked"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
