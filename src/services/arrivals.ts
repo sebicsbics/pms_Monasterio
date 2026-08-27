@@ -58,6 +58,11 @@ export interface CheckInProfile {
   travelPurpose: string
   occupation: string
   transportMeans: string
+  // Agencia/empresa por la que llegó (texto libre + categoría). Ambos
+  // opcionales — se guardan en la reserva, no en el huésped, porque la
+  // misma persona puede venir por canales distintos en cada viaje.
+  agencyName?: string
+  channelCode?: string
 }
 
 // Perfil de un acompañante (huésped no titular de la habitación). Si es
@@ -117,6 +122,8 @@ export async function checkInFromReservation(
     p_occupation: profile.occupation,
     p_transport_means: profile.transportMeans,
     p_companions: companionsToPayload(companions),
+    p_agency_name: profile.agencyName ?? null,
+    p_channel_code: profile.channelCode ?? null,
   })
   if (error) throw new Error(error.message)
 }

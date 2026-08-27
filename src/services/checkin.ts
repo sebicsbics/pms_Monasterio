@@ -39,6 +39,10 @@ export interface WalkInData {
   transportMeans?: string
   // Acompañantes: perfil completo de los demás huéspedes de la habitación.
   companions?: CompanionGuest[]
+  // Agencia/empresa (texto libre + categoría). Ver CheckInProfile en
+  // arrivals.ts para la misma nota sobre por qué vive en la reserva.
+  agencyName?: string
+  channelCode?: string
 }
 
 // Check-in de walk-in: llama a la función atómica de PostgreSQL, que
@@ -67,6 +71,8 @@ export async function walkInCheckIn(data: WalkInData): Promise<string | null> {
     p_occupation: data.occupation ?? '',
     p_transport_means: data.transportMeans ?? '',
     p_companions: companionsToPayload(data.companions ?? []),
+    p_agency_name: data.agencyName ?? null,
+    p_channel_code: data.channelCode ?? null,
   })
   if (error) throw new Error(error.message)
   if (!data.rateBs) return null

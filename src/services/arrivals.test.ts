@@ -96,7 +96,37 @@ describe('checkInFromReservation', () => {
       p_occupation: 'Ingeniero',
       p_transport_means: 'Auto',
       p_companions: [],
+      p_agency_name: null,
+      p_channel_code: null,
     })
+  })
+
+  it('forwards agencyName and channelCode when present in the profile', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-5', {
+      ...profile,
+      agencyName: 'Agencia Andina',
+      channelCode: 'AGENCIA',
+    })
+    expect(rpcMock).toHaveBeenCalledWith(
+      'check_in_reservation_with_guests',
+      expect.objectContaining({
+        p_agency_name: 'Agencia Andina',
+        p_channel_code: 'AGENCIA',
+      }),
+    )
+  })
+
+  it('sends null for agency/channel when omitted from the profile', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-6', profile)
+    expect(rpcMock).toHaveBeenCalledWith(
+      'check_in_reservation_with_guests',
+      expect.objectContaining({
+        p_agency_name: null,
+        p_channel_code: null,
+      }),
+    )
   })
 
   it('maps and sends only companions that have first and last name', async () => {

@@ -148,6 +148,24 @@ describe('walkInCheckIn', () => {
       walkInCheckIn({ ...baseData, rateBs: 90, rateReason: '' }),
     ).rejects.toThrow('La justificación es obligatoria para cambiar la tarifa')
   })
+
+  it('forwards agencyName and channelCode when present', async () => {
+    rpcMock.mockClear()
+    await walkInCheckIn({ ...baseData, agencyName: 'Empresa Delta', channelCode: 'EMPRESA' })
+    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in_with_guests', expect.objectContaining({
+      p_agency_name: 'Empresa Delta',
+      p_channel_code: 'EMPRESA',
+    }))
+  })
+
+  it('sends null for agency/channel when omitted', async () => {
+    rpcMock.mockClear()
+    await walkInCheckIn(baseData)
+    expect(rpcMock).toHaveBeenCalledWith('walk_in_check_in_with_guests', expect.objectContaining({
+      p_agency_name: null,
+      p_channel_code: null,
+    }))
+  })
 })
 
 describe('overrideReservationRate', () => {
