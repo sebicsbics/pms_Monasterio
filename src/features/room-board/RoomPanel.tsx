@@ -18,6 +18,7 @@ import type { ReceivableAccount } from '../../domain/receivables/receivable'
 import { listReceivableAccounts } from '../../services/receivables'
 import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
+import { CHANNELS, DEFAULT_CHANNEL_CODE } from '../../shared/data/channels'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 import { canWrite } from '../../domain/auth/profile'
@@ -66,6 +67,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [birthDate, setBirthDate] = useState('')
   const [countryCode, setCountryCode] = useState('')
   const [city, setCity] = useState('')
+  const [agencyName, setAgencyName] = useState('')
+  const [channelCode, setChannelCode] = useState(DEFAULT_CHANNEL_CODE)
   const [wantsOffers, setWantsOffers] = useState(false)
   const [originCity, setOriginCity] = useState('')
   const [travelPurpose, setTravelPurpose] = useState('')
@@ -460,6 +463,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         occupation: occupation.trim(),
         transportMeans: transportMeans.trim(),
         companions,
+        agencyName: agencyName.trim(),
+        channelCode,
       }),
     )
   }
@@ -623,6 +628,25 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 onChange={(e) => setCity(e.target.value)}
                 className="w-1/2 rounded border border-slate-300 p-2"
               />
+            </div>
+            <div className="flex gap-2">
+              <input
+                placeholder="Agencia / empresa (opcional)"
+                value={agencyName}
+                onChange={(e) => setAgencyName(e.target.value)}
+                className="w-1/2 rounded border border-slate-300 p-2"
+              />
+              <select
+                value={channelCode}
+                onChange={(e) => setChannelCode(e.target.value)}
+                className="w-1/2 rounded border border-slate-300 p-2 text-slate-700"
+              >
+                {CHANNELS.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
             </div>
             <label className="block text-sm">
               <span className="text-slate-600">Fecha de nacimiento</span>
