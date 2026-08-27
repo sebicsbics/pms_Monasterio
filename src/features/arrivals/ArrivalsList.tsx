@@ -12,6 +12,7 @@ import { CompanionFields } from '../checkin/CompanionFields'
 import { DocumentLookupField } from '../checkin/DocumentLookupField'
 import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
+import { CHANNELS, DEFAULT_CHANNEL_CODE } from '../../shared/data/channels'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 import { canWrite } from '../../domain/auth/profile'
@@ -35,6 +36,8 @@ function CheckInModal({
   const [city, setCity] = useState('')
   const [wantsOffers, setWantsOffers] = useState(false)
   const [originCity, setOriginCity] = useState('')
+  const [agencyName, setAgencyName] = useState('')
+  const [channelCode, setChannelCode] = useState(DEFAULT_CHANNEL_CODE)
   const [travelPurpose, setTravelPurpose] = useState('')
   const [occupation, setOccupation] = useState('')
   const [transportMeans, setTransportMeans] = useState('')
@@ -121,6 +124,8 @@ function CheckInModal({
           travelPurpose: travelPurpose.trim(),
           occupation: occupation.trim(),
           transportMeans: transportMeans.trim(),
+          agencyName: agencyName.trim(),
+          channelCode,
         },
         companions,
       )
@@ -260,6 +265,25 @@ function CheckInModal({
               onChange={(e) => setCity(e.target.value)}
               className="w-1/2 rounded border border-slate-300 p-2"
             />
+          </div>
+          <div className="flex gap-2">
+            <input
+              placeholder="Agencia / empresa (opcional)"
+              value={agencyName}
+              onChange={(e) => setAgencyName(e.target.value)}
+              className="w-1/2 rounded border border-slate-300 p-2"
+            />
+            <select
+              value={channelCode}
+              onChange={(e) => setChannelCode(e.target.value)}
+              className="w-1/2 rounded border border-slate-300 p-2 text-slate-700"
+            >
+              {CHANNELS.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
           </div>
           <label className="block text-sm">
             <span className="text-slate-600">Fecha de nacimiento</span>
