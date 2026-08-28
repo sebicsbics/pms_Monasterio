@@ -1,7 +1,12 @@
 import { supabase } from './supabase'
 import type { RoomOperationalStatus } from '../domain/rooms/room'
 import { fetchPendingForReservation } from './rateDiscountRequestsService'
-import { companionsToPayload, type CompanionGuest } from './arrivals'
+import {
+  companionsToPayload,
+  type CheckInPaymentInput,
+  type CompanionGuest,
+} from './arrivals'
+import { recordAnticipo } from './anticipos'
 import { uploadReceipt } from './receipts'
 
 // Mensaje uniforme para el banner "descuento pendiente de aprobación",
@@ -51,7 +56,16 @@ export interface WalkInData {
 // hizo el check-in no es reception_admin — el check-in igual se completa,
 // facturado a precio de lista mientras tanto (ver
 // 20260722020000_discount_approval_workflow.sql).
-export async function walkInCheckIn(data: WalkInData): Promise<string | null> {
+// Resultado del walk-in. Devuelve el `reservationId` que creó la RPC
+// —antes se descartaba— porque el cobro opcional lo necesita para
+// encadenar record_anticipo. `discountMessage` es el aviso de "descuento
+// pendiente" de siempre (null si no aplica).
+export interface WalkInOutcome {
+  reservationId: string
+  discountMessage: string | null
+}
+
+export async function walkInCheckIn(data: WalkInData): Promise<WalkInOutcome> {
   const { data: reservationId, error } = await supabase.rpc('walk_in_check_in_with_guests', {
     p_room_id: data.roomId,
     p_room_type_id: data.roomTypeId,
@@ -75,9 +89,55 @@ export async function walkInCheckIn(data: WalkInData): Promise<string | null> {
     p_channel_code: data.channelCode ?? null,
   })
   if (error) throw new Error(error.message)
-  if (!data.rateBs) return null
-  const pending = await fetchPendingForReservation(reservationId as string)
-  return pending ? pendingDiscountMessage(pending.computedDiscountPct) : null
+  const id = reservationId as string
+  if (!data.rateBs) return { reservationId: id, discountMessage: null }
+  const pending = await fetchPendingForReservation(id)
+  return {
+    reservationId: id,
+    discountMessage: pending ? pendingDiscountMessage(pending.computedDiscountPct) : null,
+  }
+}
+
+// Resultado del walk-in + cobro. Extiende WalkInOutcome con el desenlace
+// del cobro, que es INDEPENDIENTE del check-in (ver abajo).
+export interface WalkInPaymentOutcome extends WalkInOutcome {
+  paymentRecorded: boolean
+  paymentError: string | null
+}
+
+// Walk-in + cobro opcional. Gemela de checkInWithOptionalPayment
+// (arrivals.ts): mismo contrato, misma decisión de negocio, para que los
+// dos puntos de entrada de check-in se comporten igual.
+//
+// Si `payment` es null, solo corre el walk-in. Si el walk-in falla, esta
+// función rechaza y NO se cobra: no tiene sentido cobrarle a un huésped
+// que no quedó in-house. Si el walk-in sale bien pero el cobro falla por
+// cualquier motivo (típicamente caja cerrada), el error se atrapa acá:
+// el check-in NO se revierte y quien llama recibe `paymentError` para
+// mostrar un aviso no bloqueante.
+export async function walkInWithOptionalPayment(
+  data: WalkInData,
+  payment: CheckInPaymentInput | null,
+): Promise<WalkInPaymentOutcome> {
+  const outcome = await walkInCheckIn(data)
+
+  if (!payment) {
+    return { ...outcome, paymentRecorded: false, paymentError: null }
+  }
+
+  try {
+    await recordAnticipo({
+      reservationId: outcome.reservationId,
+      amountBs: payment.amountBs,
+      paymentMethod: payment.paymentMethod,
+      notes: payment.notes,
+      proof: payment.proof,
+      mixed: payment.mixed,
+    })
+    return { ...outcome, paymentRecorded: true, paymentError: null }
+  } catch (e) {
+    return { ...outcome, paymentRecorded: false, paymentError: (e as Error).message }
+  }
 }
 
 export interface CheckOutReceipt {

@@ -4,7 +4,7 @@ import { PrintButton } from '../../components/ui'
 import type { Room } from '../../domain/rooms/room'
 import type { Folio } from '../../domain/folios/folio'
 import {
-  walkInCheckIn,
+  walkInWithOptionalPayment,
   checkOutRoom,
   setRoomStatus,
   overrideReservationRate,
@@ -46,6 +46,8 @@ import {
   mixedPaymentError,
 } from '../../domain/payments/mixedPayment'
 import { MixedPaymentFields } from '../payments/MixedPaymentFields'
+import { checkInPaymentBanner } from '../../domain/payments/checkInPaymentBanner'
+import { isAnticipoMethod } from '../../domain/cash/cash'
 
 interface Props {
   room: Room
@@ -108,6 +110,25 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   // casi nunca es el que se cobra. Recepción lo escribe en cada check-in.
   // El precio de lista sigue existiendo por detrás como referencia para el
   // workflow de aprobación de descuentos (>20% pide justificación).
+  // Cobro opcional al confirmar el walk-in. Prefijo checkInPay* a
+  // propósito: este panel YA tiene paymentMethod/proof/mixed, pero son
+  // los del CHECK-OUT. Son dos momentos distintos del ciclo y no deben
+  // compartir estado. Espeja a CheckInModal (ArrivalsList).
+  const [checkInPayAmount, setCheckInPayAmount] = useState('')
+  const [checkInPayMethod, setCheckInPayMethod] = useState('')
+  const [checkInPayNotes, setCheckInPayNotes] = useState('')
+  const [checkInPayProof, setCheckInPayProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
+  const [checkInPayMixed, setCheckInPayMixed] = useState<MixedPayment>(EMPTY_MIXED_PAYMENT)
+  const [checkInPayMethods, setCheckInPayMethods] = useState<PaymentMethod[]>([])
+  const checkInPayAmountNumber = Number(checkInPayAmount) || 0
+  // Monto en blanco o 0 = no se intenta ningún cobro.
+  const wantsCheckInPayment = checkInPayAmountNumber > 0
+  const checkInPayError = !wantsCheckInPayment
+    ? null
+    : isMixed(checkInPayMethod)
+      ? mixedPaymentError(checkInPayAmountNumber, checkInPayMixed, checkInPayProof)
+      : paymentProofError(checkInPayMethod, checkInPayProof)
+
   const [checkInRate, setCheckInRate] = useState('')
   const [checkInRateReason, setCheckInRateReason] = useState('')
   const checkInRateNum = Number(checkInRate)
@@ -215,6 +236,17 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         .catch((e: Error) => setError(e.message))
       listReceivableAccounts(true)
         .then(setReceivableAccounts)
+        .catch((e: Error) => setError(e.message))
+    } else {
+      // Habitación libre = se muestra el formulario de walk-in. El cobro
+      // al check-in entra por record_anticipo, que no admite todas las
+      // formas de pago del check-out (ver isAnticipoMethod).
+      fetchPaymentMethods()
+        .then((methods) => {
+          const usable = methods.filter((m) => isAnticipoMethod(m.code))
+          setCheckInPayMethods(usable)
+          setCheckInPayMethod((current) => current || (usable[0]?.code ?? ''))
+        })
         .catch((e: Error) => setError(e.message))
     }
   }, [isOccupied])
@@ -443,8 +475,16 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       )
       return
     }
-    run(() =>
-      walkInCheckIn({
+    // Si al cobro le falta el respaldo obligatorio (foto QR, referencia de
+    // tarjeta, desglose mixto), cortamos ANTES del walk-in: mejor eso que
+    // dejar al huésped adentro y el cobro rechazado por algo que la UI
+    // podía haber evitado. Mismo criterio que CheckInModal.
+    if (wantsCheckInPayment && checkInPayError) {
+      setError(checkInPayError)
+      return
+    }
+    run(async () => {
+      const outcome = await walkInWithOptionalPayment({
         roomId: room.id,
         roomTypeId: typeId,
         firstName: firstName.trim(),
@@ -465,8 +505,33 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         companions,
         agencyName: agencyName.trim(),
         channelCode,
-      }),
-    )
+      },
+        wantsCheckInPayment
+          ? {
+              amountBs: checkInPayAmountNumber,
+              paymentMethod: checkInPayMethod,
+              notes: checkInPayNotes.trim() || null,
+              proof: checkInPayProof,
+              mixed: isMixed(checkInPayMethod)
+                ? {
+                    cashBs: Number(checkInPayMixed.cashBs),
+                    nonCashBs: Number(checkInPayMixed.nonCashBs),
+                    nonCashMethod: checkInPayMixed.nonCashMethod,
+                  }
+                : null,
+            }
+          : null,
+      )
+      // Un cobro rechazado NO revierte el walk-in: sólo se avisa. Los dos
+      // avisos posibles (descuento pendiente y cobro fallido) son hechos
+      // independientes, así que se muestran JUNTOS si ocurren los dos —
+      // pisar uno con el otro le escondería a recepción media verdad.
+      const avisos = [
+        outcome.discountMessage,
+        outcome.paymentError ? checkInPaymentBanner(outcome.paymentError) : null,
+      ].filter((m): m is string => m !== null)
+      return avisos.length > 0 ? avisos.join(' ') : null
+    })
   }
 
   async function handleCheckOut() {
@@ -772,6 +837,82 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                   />
                 </div>
               ))}
+            </div>
+
+            <div className="space-y-3 border-t border-slate-200 pt-3">
+              <p className="text-xs font-medium text-slate-600">
+                Cobrar al check-in (opcional)
+              </p>
+              <p className="text-xs text-slate-400">
+                Dejá el monto en blanco si no se cobra nada ahora — el huésped
+                queda igual de in-house y se puede cobrar después desde
+                Anticipos.
+              </p>
+              <div className="flex gap-2">
+                <label className="w-1/2 text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                    Monto a cobrar (Bs)
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={checkInPayAmount}
+                    onChange={(e) => setCheckInPayAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                </label>
+                <label className="w-1/2 text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                    Forma de pago
+                  </span>
+                  <select
+                    value={checkInPayMethod}
+                    onChange={(e) => setCheckInPayMethod(e.target.value)}
+                    disabled={!wantsCheckInPayment}
+                    className="w-full rounded border border-slate-300 p-2 text-sm disabled:opacity-50"
+                  >
+                    {checkInPayMethods.map((m) => (
+                      <option key={m.code} value={m.code}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {wantsCheckInPayment &&
+                (isMixed(checkInPayMethod) ? (
+                  <MixedPaymentFields
+                    total={checkInPayAmountNumber}
+                    split={checkInPayMixed}
+                    proof={checkInPayProof}
+                    onSplitChange={(patch) =>
+                      setCheckInPayMixed((m) => ({ ...m, ...patch }))
+                    }
+                    onProofChange={(patch) =>
+                      setCheckInPayProof((pr) => ({ ...pr, ...patch }))
+                    }
+                  />
+                ) : (
+                  <PaymentProofFields
+                    method={checkInPayMethod}
+                    proof={checkInPayProof}
+                    onChange={(patch) => setCheckInPayProof((pr) => ({ ...pr, ...patch }))}
+                  />
+                ))}
+              {wantsCheckInPayment && (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                    Notas del cobro (opcional)
+                  </span>
+                  <input
+                    value={checkInPayNotes}
+                    onChange={(e) => setCheckInPayNotes(e.target.value)}
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                </label>
+              )}
             </div>
 
             <button
