@@ -92,6 +92,10 @@ export function RoomBoard({ role }: { role?: UserRole | null }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Aviso que sube RoomPanel al terminar una acción. Vive acá y no en el
+  // panel porque la acción cierra el panel: pintado allá, se desmontaría
+  // antes de que nadie lo lea. Mismo patrón que ArrivalsList.
+  const [notice, setNotice] = useState<string | null>(null)
 
   const reload = useCallback(() => {
     return fetchRooms()
@@ -123,6 +127,19 @@ export function RoomBoard({ role }: { role?: UserRole | null }) {
 
       <Legend />
 
+      {notice && (
+        <p className="mb-4 rounded bg-amber-50 p-3 text-sm text-amber-800">
+          {notice}
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            className="ml-2 font-medium underline"
+          >
+            Entendido
+          </button>
+        </p>
+      )}
+
       {floors.map((floor) => (
         <section key={floor} className="mb-8">
           <h2 className="mb-3 border-b border-slate-200 pb-1 text-lg font-semibold text-slate-700">
@@ -150,9 +167,10 @@ export function RoomBoard({ role }: { role?: UserRole | null }) {
           room={selectedRoom}
           role={role}
           onClose={() => setSelectedId(null)}
-          onDone={() => {
+          onDone={(msg) => {
             void reload()
             setSelectedId(null)
+            if (msg) setNotice(msg)
           }}
         />
       )}

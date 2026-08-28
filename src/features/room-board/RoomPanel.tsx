@@ -53,7 +53,10 @@ interface Props {
   room: Room
   role?: UserRole | null
   onClose: () => void
-  onDone: () => void // recargar el tablero tras una acción
+  // Recargar el tablero tras una acción. El aviso opcional se SUBE al
+  // padre en vez de mostrarse acá: onDone desmonta este panel, así que
+  // un mensaje pintado localmente no llegaría a verse nunca.
+  onDone: (notice?: string) => void
 }
 
 export function RoomPanel({ room, role, onClose, onDone }: Props) {
@@ -323,16 +326,15 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         isExtending ? rate : null,
         stayReason,
       )
-      setMessage(
-        `${isExtending ? 'Estadía extendida' : 'Salida adelantada'} al ${newCheckOut}. ` +
-          `Total: ${total.toFixed(2)} Bs`,
-      )
       setStayAction(null)
       setNewCheckOut('')
       setStayRate('')
       setStayReason('')
       await reloadFolio()
-      onDone()
+      onDone(
+        `${isExtending ? 'Estadía extendida' : 'Salida adelantada'} al ${newCheckOut}. ` +
+          `Total: ${total.toFixed(2)} Bs`,
+      )
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -362,9 +364,8 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         fromDate: moveFrom || null,
         reason: stayReason,
       })
-      setMessage(`Huésped mudado. Total de la estadía: ${total.toFixed(2)} Bs`)
       setStayAction(null)
-      onDone()
+      onDone(`Huésped mudado. Total de la estadía: ${total.toFixed(2)} Bs`)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -451,8 +452,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     setMessage(null)
     try {
       const result = await action()
-      if (typeof result === 'string') setMessage(result)
-      onDone()
+      onDone(typeof result === 'string' ? result : undefined)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -563,7 +563,9 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
             }
           : null,
       )
-      setMessage(
+      setProof(EMPTY_PAYMENT_PROOF)
+      setMixed(EMPTY_MIXED_PAYMENT)
+      onDone(
         mixedOn
           ? `Check-out realizado. ${Number(mixed.cashBs).toFixed(2)} Bs en efectivo y ` +
             `${Number(mixed.nonCashBs).toFixed(2)} Bs por ${mixed.nonCashMethod.toLowerCase()}, ` +
@@ -573,9 +575,6 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
               `(${anticipoBs.toFixed(2)} Bs ya estaban pagados como anticipo).`
             : `Check-out realizado. Total cobrado: ${total.toFixed(2)} Bs`,
       )
-      setProof(EMPTY_PAYMENT_PROOF)
-      setMixed(EMPTY_MIXED_PAYMENT)
-      onDone()
     } catch (e) {
       setError((e as Error).message)
     } finally {
