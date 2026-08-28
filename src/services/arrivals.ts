@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import type { Arrival } from '../domain/stays/arrival'
+import { recordAnticipo } from './anticipos'
+import type { PaymentProof } from '../domain/payments/paymentProof'
 
 interface ArrivalRow {
   reservation_id: string
@@ -126,4 +128,59 @@ export async function checkInFromReservation(
     p_channel_code: profile.channelCode ?? null,
   })
   if (error) throw new Error(error.message)
+}
+
+// Cobro opcional al momento del check-in. NO es un concepto de dinero
+// nuevo: es el mismo record_anticipo que usa RecordAnticipoView, invocado
+// como un SEGUNDO llamado, secuencial, después del check-in.
+export interface CheckInPaymentInput {
+  amountBs: number
+  paymentMethod: string
+  notes: string | null
+  proof?: PaymentProof
+  mixed?: { cashBs: number; nonCashBs: number; nonCashMethod: string } | null
+}
+
+export interface CheckInPaymentOutcome {
+  checkedIn: true
+  paymentRecorded: boolean
+  paymentError: string | null
+}
+
+// Check-in + cobro opcional, en ese orden y sin atomicidad entre los dos
+// pasos (decisión de negocio: la plata no entra sin un turno de caja que
+// la respalde, pero el check-in ya está hecho y NO se revierte por eso).
+//
+// Si `payment` es null (recepción no cargó monto), solo corre el check-in
+// — record_anticipo nunca se llama (R2.2). Si el check-in falla, esta
+// función rechaza y record_anticipo tampoco se llama: no tiene sentido
+// cobrar una reserva que no quedó in-house. Si el check-in tiene éxito
+// pero el cobro falla por CUALQUIER motivo (caja cerrada, validación,
+// red), el error se atrapa acá: quien llama nunca ve un throw por el
+// cobro, solo `paymentError` para mostrar un aviso no bloqueante.
+export async function checkInWithOptionalPayment(
+  reservationId: string,
+  profile: CheckInProfile,
+  companions: CompanionGuest[],
+  payment: CheckInPaymentInput | null,
+): Promise<CheckInPaymentOutcome> {
+  await checkInFromReservation(reservationId, profile, companions)
+
+  if (!payment) {
+    return { checkedIn: true, paymentRecorded: false, paymentError: null }
+  }
+
+  try {
+    await recordAnticipo({
+      reservationId,
+      amountBs: payment.amountBs,
+      paymentMethod: payment.paymentMethod,
+      notes: payment.notes,
+      proof: payment.proof,
+      mixed: payment.mixed,
+    })
+    return { checkedIn: true, paymentRecorded: true, paymentError: null }
+  } catch (e) {
+    return { checkedIn: true, paymentRecorded: false, paymentError: (e as Error).message }
+  }
 }
