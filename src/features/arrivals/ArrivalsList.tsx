@@ -3,7 +3,7 @@ import { X } from 'lucide-react'
 import type { Arrival } from '../../domain/stays/arrival'
 import {
   fetchArrivals,
-  checkInFromReservation,
+  checkInWithOptionalPayment,
   type CompanionGuest,
 } from '../../services/arrivals'
 import { overrideReservationRate } from '../../services/checkin'
@@ -16,8 +16,42 @@ import { CHANNELS, DEFAULT_CHANNEL_CODE } from '../../shared/data/channels'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 import { canWrite } from '../../domain/auth/profile'
+import type { PaymentMethod } from '../../domain/payments/paymentMethod'
+import { fetchPaymentMethods } from '../../services/payments'
+import { isAnticipoMethod } from '../../domain/cash/cash'
+import {
+  EMPTY_PAYMENT_PROOF,
+  paymentProofError,
+  type PaymentProof,
+} from '../../domain/payments/paymentProof'
+import { PaymentProofFields } from '../payments/PaymentProofFields'
+import {
+  EMPTY_MIXED_PAYMENT,
+  isMixed,
+  mixedPaymentError,
+  type MixedPayment,
+} from '../../domain/payments/mixedPayment'
+import { MixedPaymentFields } from '../payments/MixedPaymentFields'
 
 const TODAY = new Date().toISOString().slice(0, 10)
+
+// Aviso no bloqueante cuando el check-in se confirmó pero el cobro no se
+// pudo guardar: el check-in NO se revierte, sólo se avisa que el pago
+// quedó pendiente. Reutiliza el mismo criterio de detección de caja
+// cerrada que domain/anticipos/anticipos.ts (userFacingAnticipoError),
+// pero con el texto puntual que pide este flujo (menciona el check-in).
+function checkInPaymentBanner(serverMessage: string): string {
+  if (serverMessage.includes('No hay una caja abierta')) {
+    return (
+      'Check-in registrado. El cobro no se pudo guardar: no hay una caja ' +
+      'abierta. Abrí la caja y registrá el pago desde Anticipos.'
+    )
+  }
+  return (
+    `Check-in registrado. El cobro no se pudo guardar: ${serverMessage}. ` +
+    'Reintentalo desde Anticipos.'
+  )
+}
 
 function CheckInModal({
   arrival,
@@ -28,7 +62,7 @@ function CheckInModal({
   arrival: Arrival
   role?: UserRole | null
   onClose: () => void
-  onDone: () => void
+  onDone: (banner?: string) => void
 }) {
   const [document, setDocument] = useState('')
   const [birthDate, setBirthDate] = useState('')
@@ -87,11 +121,47 @@ function CheckInModal({
 
   const ratePending = rateEditOpen && newRate.trim() !== ''
 
+  // Cobro opcional al confirmar el check-in: reutiliza record_anticipo vía
+  // checkInWithOptionalPayment (dos llamados secuenciales, ver
+  // services/arrivals.ts). Amount vacío/0 = no se intenta ningún cobro
+  // (R2.2), es el mismo patrón de RecordAnticipoForm.
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
+  const [paymentNotes, setPaymentNotes] = useState('')
+  const [paymentProof, setPaymentProof] = useState<PaymentProof>(EMPTY_PAYMENT_PROOF)
+  const [paymentMixed, setPaymentMixed] = useState<MixedPayment>(EMPTY_MIXED_PAYMENT)
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const paymentAmountNumber = Number(paymentAmount) || 0
+  const wantsPayment = paymentAmountNumber > 0
+  const paymentError = !wantsPayment
+    ? null
+    : isMixed(paymentMethod)
+      ? mixedPaymentError(paymentAmountNumber, paymentMixed, paymentProof)
+      : paymentProofError(paymentMethod, paymentProof)
+
+  useEffect(() => {
+    fetchPaymentMethods()
+      .then((methods) => {
+        const usable = methods.filter((m) => isAnticipoMethod(m.code))
+        setPaymentMethods(usable)
+        setPaymentMethod((current) => current || (usable[0]?.code ?? ''))
+      })
+      .catch((e: Error) => setError(e.message))
+  }, [])
+
   async function handleCheckIn() {
     // Validación fail-fast de la tarifa antes de tocar nada, para no dejar
     // el check-in hecho con la tarifa a medias.
     if (ratePending && rateReason.trim() === '') {
       setError('La justificación de la tarifa es obligatoria')
+      return
+    }
+    // Idem para el cobro: si el respaldo obligatorio (foto QR, referencia
+    // de tarjeta, desglose mixto) falta, no llegamos ni a intentar el
+    // check-in — mejor cortar antes que dejar el check-in hecho y el
+    // cobro rechazado por algo que la UI podía haber evitado.
+    if (wantsPayment && paymentError) {
+      setError(paymentError)
       return
     }
 
@@ -111,8 +181,11 @@ function CheckInModal({
         )
       }
 
-      // 2) Check-in del titular + acompañantes.
-      await checkInFromReservation(
+      // 2) Check-in del titular + acompañantes, y recién si eso funciona,
+      //    el cobro opcional (segundo llamado independiente — ver
+      //    checkInWithOptionalPayment). Un cobro rechazado NO revierte
+      //    el check-in ni relanza: viaja en outcome.paymentError.
+      const outcome = await checkInWithOptionalPayment(
         arrival.reservationId,
         {
           document: document.trim(),
@@ -128,6 +201,21 @@ function CheckInModal({
           channelCode,
         },
         companions,
+        wantsPayment
+          ? {
+              amountBs: paymentAmountNumber,
+              paymentMethod,
+              notes: paymentNotes.trim() || null,
+              proof: paymentProof,
+              mixed: isMixed(paymentMethod)
+                ? {
+                    cashBs: Number(paymentMixed.cashBs),
+                    nonCashBs: Number(paymentMixed.nonCashBs),
+                    nonCashMethod: paymentMixed.nonCashMethod,
+                  }
+                : null,
+            }
+          : null,
       )
 
       // Si quedó un descuento pendiente, avisamos y no cerramos el modal
@@ -137,7 +225,7 @@ function CheckInModal({
         setBusy(false)
         return
       }
-      onDone()
+      onDone(outcome.paymentError ? checkInPaymentBanner(outcome.paymentError) : undefined)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -370,9 +458,81 @@ function CheckInModal({
             ))}
           </div>
 
+          <div className="space-y-3 border-t border-slate-200 pt-3">
+            <p className="text-xs font-medium text-slate-600">
+              Cobrar al check-in (opcional)
+            </p>
+            <p className="text-xs text-slate-400">
+              Dejá el monto en blanco si no se cobra nada ahora — la reserva
+              queda igual de en-in-house y se puede cobrar después desde
+              Anticipos.
+            </p>
+            <div className="flex gap-2">
+              <label className="w-1/2 text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Monto a cobrar (Bs)
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded border border-slate-300 p-2 text-sm"
+                />
+              </label>
+              <label className="w-1/2 text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Forma de pago
+                </span>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  disabled={!wantsPayment}
+                  className="w-full rounded border border-slate-300 p-2 text-sm disabled:opacity-50"
+                >
+                  {paymentMethods.map((m) => (
+                    <option key={m.code} value={m.code}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {wantsPayment &&
+              (isMixed(paymentMethod) ? (
+                <MixedPaymentFields
+                  total={paymentAmountNumber}
+                  split={paymentMixed}
+                  proof={paymentProof}
+                  onSplitChange={(patch) => setPaymentMixed((m) => ({ ...m, ...patch }))}
+                  onProofChange={(patch) => setPaymentProof((p) => ({ ...p, ...patch }))}
+                />
+              ) : (
+                <PaymentProofFields
+                  method={paymentMethod}
+                  proof={paymentProof}
+                  onChange={(patch) => setPaymentProof((p) => ({ ...p, ...patch }))}
+                />
+              ))}
+            {wantsPayment && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  Notas del cobro (opcional)
+                </span>
+                <input
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  className="w-full rounded border border-slate-300 p-2 text-sm"
+                />
+              </label>
+            )}
+          </div>
+
           <button
             type="button"
-            disabled={busy || (ratePending && !rateReason.trim())}
+            disabled={busy || (ratePending && !rateReason.trim()) || (wantsPayment && paymentError !== null)}
             onClick={handleCheckIn}
             className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
@@ -527,6 +687,10 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
   const [arrivals, setArrivals] = useState<Arrival[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Aviso no bloqueante: check-in confirmado pero el cobro asociado no se
+  // pudo guardar (caja cerrada u otro motivo). El check-in NO se revierte
+  // — esto solo recuerda a recepción que hay que cobrar aparte.
+  const [paymentBanner, setPaymentBanner] = useState<string | null>(null)
   const [selected, setSelected] = useState<Arrival | null>(null)
   const [action, setAction] = useState<{ arrival: Arrival; kind: 'cancel' | 'reschedule' } | null>(
     null,
@@ -610,6 +774,18 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
       </header>
 
       {error && <p className="mb-4 text-red-600">Error: {error}</p>}
+      {paymentBanner && (
+        <p className="mb-4 rounded bg-amber-50 p-3 text-sm text-amber-800">
+          {paymentBanner}
+          <button
+            type="button"
+            onClick={() => setPaymentBanner(null)}
+            className="ml-2 font-medium underline"
+          >
+            Entendido
+          </button>
+        </p>
+      )}
 
       {arrivals.length === 0 ? (
         <p className="text-slate-400">No hay llegadas pendientes.</p>
@@ -694,9 +870,10 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
           arrival={selected}
           role={role}
           onClose={() => setSelected(null)}
-          onDone={() => {
+          onDone={(banner) => {
             void reload()
             setSelected(null)
+            if (banner) setPaymentBanner(banner)
           }}
         />
       )}
