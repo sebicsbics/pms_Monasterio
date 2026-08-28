@@ -32,26 +32,9 @@ import {
   type MixedPayment,
 } from '../../domain/payments/mixedPayment'
 import { MixedPaymentFields } from '../payments/MixedPaymentFields'
+import { checkInPaymentBanner } from '../../domain/payments/checkInPaymentBanner'
 
 const TODAY = new Date().toISOString().slice(0, 10)
-
-// Aviso no bloqueante cuando el check-in se confirmó pero el cobro no se
-// pudo guardar: el check-in NO se revierte, sólo se avisa que el pago
-// quedó pendiente. Reutiliza el mismo criterio de detección de caja
-// cerrada que domain/anticipos/anticipos.ts (userFacingAnticipoError),
-// pero con el texto puntual que pide este flujo (menciona el check-in).
-function checkInPaymentBanner(serverMessage: string): string {
-  if (serverMessage.includes('No hay una caja abierta')) {
-    return (
-      'Check-in registrado. El cobro no se pudo guardar: no hay una caja ' +
-      'abierta. Abrí la caja y registrá el pago desde Anticipos.'
-    )
-  }
-  return (
-    `Check-in registrado. El cobro no se pudo guardar: ${serverMessage}. ` +
-    'Reintentalo desde Anticipos.'
-  )
-}
 
 function CheckInModal({
   arrival,
