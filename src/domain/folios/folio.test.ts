@@ -23,6 +23,31 @@ describe('netAnticipos', () => {
   })
 })
 
+// R2.11 (checkin-payment-and-agency): un pago cobrado AL CHECK-IN es un
+// anticipo más, sin marca de "cuándo se cobró". netAnticipos/balanceDue no
+// necesitan tocarse para este cambio — esta prueba es la evidencia de
+// que un anticipo registrado en el momento del check-in (en vez de en
+// otro momento de la estadía) suma igual que cualquier otro anticipo.
+describe('netAnticipos — regresión pago al check-in', () => {
+  it('un anticipo cobrado al check-in cuenta igual que uno cobrado después', () => {
+    const anticipoAlCheckIn = active(300)
+    const anticipoPosterior = active(100)
+    expect(netAnticipos([anticipoAlCheckIn, anticipoPosterior])).toBe(400)
+  })
+
+  it('check-out cobra solo el saldo cuando ya se pagó parte al check-in', () => {
+    const totalFolio = 700
+    const pagadoAlCheckIn = netAnticipos([active(500)])
+    expect(balanceDue(totalFolio, pagadoAlCheckIn)).toBe(200)
+  })
+
+  it('check-out no cobra nada si el pago al check-in cubrió todo el folio', () => {
+    const totalFolio = 700
+    const pagadoAlCheckIn = netAnticipos([active(700)])
+    expect(balanceDue(totalFolio, pagadoAlCheckIn)).toBe(0)
+  })
+})
+
 describe('balanceDue', () => {
   it('cobra el folio completo cuando no hubo anticipo', () => {
     expect(balanceDue(700, 0)).toBe(700)
