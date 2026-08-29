@@ -102,18 +102,37 @@ export interface CashSessionSummary {
   notes: string | null
 }
 
-// Esperado bajo el criterio ANTERIOR al split efectivo/otros medios, que
-// sumaba todos los movimientos sin importar la forma de pago.
+// Instante en que la caja dejó de cargar a mano los cobros por
+// QR/depósito/tarjeta y pasó a registrarlos con su `payment_method`. Cae en
+// el hueco real entre el último turno abierto bajo el criterio viejo
+// (05/08 19:04Z) y el primero abierto bajo el nuevo (06/08 04:36Z).
+export const OTHER_MEANS_CRITERION_END = Date.parse('2026-08-06T00:00:00Z')
+
+// ¿A este turno le corresponde el criterio ANTERIOR al split, que sumaba
+// todos los movimientos sin importar la forma de pago?
+//
+// Sólo a los que se arquearon así. Aplicarlo a un turno nuevo no informa
+// nada: desde el split, lo que se cuenta al cerrar son billetes y lo
+// "otro" está en el banco, así que la resta da siempre `-otros` — un
+// faltante de cinco cifras en turnos que cerraron exactos.
+export function usesOtherMeansCriterion(s: CashSessionSummary): boolean {
+  return Date.parse(s.openedAt) < OTHER_MEANS_CRITERION_END
+}
+
+// Esperado bajo el criterio ANTERIOR al split efectivo/otros medios.
 //
 // Se conserva porque los turnos cerrados antes del cambio se arquearon con
 // ese criterio: mostrar sólo el nuevo haría aparecer descuadres de cientos
 // de bolivianos en turnos que cerraron cuadrados, y en un arqueo eso señala
-// a una persona por un cambio de fórmula.
-export function expectedWithOtherMeansBs(s: CashSessionSummary): number {
+// a una persona por un cambio de fórmula. `null` en los turnos posteriores:
+// ahí el número no es un esperado de caja, es ruido.
+export function expectedWithOtherMeansBs(s: CashSessionSummary): number | null {
+  if (!usesOtherMeansCriterion(s)) return null
   return s.expectedBs + s.otherIncomeBs - s.otherExpenseBs
 }
 
 export function differenceWithOtherMeansBs(s: CashSessionSummary): number | null {
-  if (s.countedBalanceBs === null) return null
-  return s.countedBalanceBs - expectedWithOtherMeansBs(s)
+  const expected = expectedWithOtherMeansBs(s)
+  if (expected === null || s.countedBalanceBs === null) return null
+  return s.countedBalanceBs - expected
 }

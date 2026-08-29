@@ -44,11 +44,15 @@ function DiffCell({ value }: { value: number | null }) {
 // Historial de turnos de caja para el arqueo mensual (root, admin de
 // recepción y contadora).
 //
-// Se muestran DOS esperados a propósito. El criterio cambió cuando se
-// separó el efectivo de QR/depósito/tarjeta: los turnos cerrados antes de
-// ese cambio se arquearon sumando todo, y evaluarlos sólo por efectivo
-// haría aparecer descuadres de cientos de bolivianos en turnos que
-// cerraron cuadrados — señalando a una persona por un cambio de fórmula.
+// Se muestran DOS esperados a propósito, pero NO en todas las filas. El
+// criterio cambió el 6/8/2026, cuando se separó el efectivo de
+// QR/depósito/tarjeta: los turnos anteriores se arquearon sumando todo, y
+// evaluarlos sólo por efectivo haría aparecer descuadres de cientos de
+// bolivianos en turnos que cerraron cuadrados — señalando a una persona por
+// un cambio de fórmula. En los turnos posteriores pasa lo simétrico, y es
+// peor: el conteo son billetes y lo "otro" está en el banco, así que la
+// columna daba siempre `-otros`, faltantes de cinco cifras inventados.
+// `expectedWithOtherMeansBs` devuelve `null` en esos y acá se rinde '—'.
 export function CashHistory() {
   const [{ from, to }, setRange] = useState(monthRange)
   const [rows, setRows] = useState<CashSessionSummary[]>([])
@@ -174,7 +178,11 @@ export function CashHistory() {
                     <td className="tabular p-3 text-right">{fmtBs(r.openingBalanceBs)}</td>
                     <td className="tabular p-3 text-right">{fmtBs(r.expectedBs)}</td>
                     <td className="tabular p-3 text-right text-slate-500">
-                      {fmtBs(expectedWithOtherMeansBs(r))}
+                      {expectedWithOtherMeansBs(r) === null ? (
+                        <span className="text-slate-300">—</span>
+                      ) : (
+                        fmtBs(expectedWithOtherMeansBs(r) as number)
+                      )}
                     </td>
                     <td className="tabular p-3 text-right">
                       {r.countedBalanceBs == null ? '—' : fmtBs(r.countedBalanceBs)}
@@ -194,9 +202,12 @@ export function CashHistory() {
 
           <p className="mt-2 text-xs text-slate-500">
             <span className="font-medium">Dif. efectivo</span> compara lo contado contra el
-            efectivo del cajón. <span className="font-medium">Dif. total</span> incluye
-            además QR, depósito y tarjeta: es el criterio con el que se cerraron los turnos
-            anteriores al 6/8/2026, cuando esos cobros todavía se cargaban a mano en la caja.
+            efectivo del cajón: es el arqueo. <span className="font-medium">Dif. total</span>{' '}
+            incluye además QR, depósito y tarjeta, y sólo se muestra en los turnos anteriores
+            al 6/8/2026, que se cerraron con ese criterio cuando esos cobros todavía se
+            cargaban a mano en la caja. Desde entonces esa plata va al banco y no pasa por el
+            cajón, así que restarla del conteo no mediría un faltante: mediría lo cobrado por
+            otros medios.
           </p>
         </div>
       )}

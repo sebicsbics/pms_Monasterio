@@ -6,6 +6,7 @@ import {
   differenceWithOtherMeansBs,
   expectedWithOtherMeansBs,
   isCashMovement,
+  usesOtherMeansCriterion,
   type CashMovement,
   type CashSessionSummary,
 } from './cash'
@@ -129,5 +130,51 @@ describe('differenceWithOtherMeansBs', () => {
     expect(
       differenceWithOtherMeansBs(session({ countedBalanceBs: null, status: 'open' })),
     ).toBeNull()
+  })
+})
+
+describe('usesOtherMeansCriterion', () => {
+  it('applies to a shift opened before the split (Romina, 31/07)', () => {
+    expect(usesOtherMeansCriterion(session())).toBe(true)
+  })
+
+  it('applies to the last shift opened under the old rule (05/08 19:04Z)', () => {
+    expect(
+      usesOtherMeansCriterion(session({ openedAt: '2026-08-05T19:04:16.060888Z' })),
+    ).toBe(true)
+  })
+
+  it('does not apply to the first shift opened after the split (06/08 04:36Z)', () => {
+    expect(
+      usesOtherMeansCriterion(session({ openedAt: '2026-08-06T04:36:41.425198Z' })),
+    ).toBe(false)
+  })
+})
+
+describe('the other-means criterion on shifts after the split', () => {
+  // Turno real del 22/08: cuadró EXACTO en efectivo, pero el criterio viejo
+  // le restaba los 10.957 Bs cobrados por QR/depósito/tarjeta —  plata que
+  // nunca pasó por el cajón. El arqueo mostraba un faltante de cinco cifras
+  // en un turno perfecto.
+  const afterSplit = session({
+    openedAt: '2026-08-22T12:00:00Z',
+    closedAt: '2026-08-22T23:00:00Z',
+    openingBalanceBs: 0,
+    cashIncomeBs: 11497,
+    cashExpenseBs: 11447,
+    expectedBs: 50,
+    countedBalanceBs: 50,
+    differenceBs: 0,
+    otherIncomeBs: 10957,
+    otherExpenseBs: 0,
+  })
+
+  it('reports no expected total: the criterion does not apply', () => {
+    expect(expectedWithOtherMeansBs(afterSplit)).toBeNull()
+  })
+
+  it('reports no difference instead of a phantom shortfall', () => {
+    expect(differenceWithOtherMeansBs(afterSplit)).toBeNull()
+    expect(afterSplit.differenceBs).toBe(0)
   })
 })
