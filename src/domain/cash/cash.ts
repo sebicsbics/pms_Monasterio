@@ -32,8 +32,15 @@ export function categoryLabel(kind: MovementKind, code: string): string {
 
 // Formas de pago admitidas EN CAJA CHICA. El catálogo `payment_methods`
 // es global y tiene más códigos (CTAS_POR_COBRAR, MIXTO, CORTESÍA…) que
-// sí valen para el check-out o los eventos, pero no para un movimiento de
-// caja: acá solo entra plata de verdad, por uno de estos cuatro medios.
+// sí valen para el check-out, pero no para un movimiento de caja: acá solo
+// entra plata de verdad, por uno de estos cuatro medios.
+//
+// Esta lista filtra el desplegable; la que MANDA es `payment_records_income`
+// en la base, que `add_cash_movement` aplica desde
+// 20260829000000_unify_deposito_transferencia. Antes de eso la regla vivía
+// sólo acá, y la RPC aceptaba cualquier código activo del catálogo — por
+// ahí entraron seis movimientos CORTESIA. Un filtro de UI no es una regla
+// de negocio.
 export const CAJA_PAYMENT_METHODS = ['EFECTIVO', 'DEPOSITO', 'TARJETA', 'QR'] as const
 
 // Formas de pago válidas para un ANTICIPO. Son las de caja más MIXTO: un
