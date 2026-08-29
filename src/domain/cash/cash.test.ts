@@ -6,6 +6,7 @@ import {
   differenceWithOtherMeansBs,
   expectedWithOtherMeansBs,
   isCashMovement,
+  showsOtherMeansColumns,
   usesOtherMeansCriterion,
   type CashMovement,
   type CashSessionSummary,
@@ -176,5 +177,22 @@ describe('the other-means criterion on shifts after the split', () => {
   it('reports no difference instead of a phantom shortfall', () => {
     expect(differenceWithOtherMeansBs(afterSplit)).toBeNull()
     expect(afterSplit.differenceBs).toBe(0)
+  })
+})
+
+describe('showsOtherMeansColumns', () => {
+  const beforeSplit = session()
+  const afterSplit = session({ openedAt: '2026-08-22T12:00:00Z' })
+
+  it('shows the columns when at least one shift was arqueado under the old rule', () => {
+    expect(showsOtherMeansColumns([afterSplit, beforeSplit])).toBe(true)
+  })
+
+  it('hides them when every shift in the range is after the split', () => {
+    expect(showsOtherMeansColumns([afterSplit, afterSplit])).toBe(false)
+  })
+
+  it('hides them for an empty range instead of rendering empty headers', () => {
+    expect(showsOtherMeansColumns([])).toBe(false)
   })
 })

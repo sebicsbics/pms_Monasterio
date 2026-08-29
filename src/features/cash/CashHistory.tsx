@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   differenceWithOtherMeansBs,
   expectedWithOtherMeansBs,
+  showsOtherMeansColumns,
   type CashSessionSummary,
 } from '../../domain/cash/cash'
 import { fetchCashSessionHistory } from '../../services/cash'
@@ -79,6 +80,9 @@ export function CashHistory() {
   const offCount = closed.filter(
     (r) => r.differenceBs !== null && Math.abs(r.differenceBs) >= 0.01,
   ).length
+  // El par de columnas del criterio viejo sólo aparece si el rango alcanza
+  // algún turno que se haya arqueado así.
+  const showOther = showsOtherMeansColumns(rows)
 
   return (
     <div className="mt-8">
@@ -145,10 +149,10 @@ export function CashHistory() {
                   <th className="p-3">Cerró</th>
                   <th className="p-3 text-right">Fondo</th>
                   <th className="p-3 text-right">Esperado efectivo</th>
-                  <th className="p-3 text-right">Esperado + otros</th>
+                  {showOther && <th className="p-3 text-right">Esperado + otros</th>}
                   <th className="p-3 text-right">Contado</th>
                   <th className="p-3 text-right">Dif. efectivo</th>
-                  <th className="p-3 text-right">Dif. total</th>
+                  {showOther && <th className="p-3 text-right">Dif. total</th>}
                   <th className="p-3">Justificación</th>
                 </tr>
               </thead>
@@ -177,20 +181,24 @@ export function CashHistory() {
                     </td>
                     <td className="tabular p-3 text-right">{fmtBs(r.openingBalanceBs)}</td>
                     <td className="tabular p-3 text-right">{fmtBs(r.expectedBs)}</td>
-                    <td className="tabular p-3 text-right text-slate-500">
-                      {expectedWithOtherMeansBs(r) === null ? (
-                        <span className="text-slate-300">—</span>
-                      ) : (
-                        fmtBs(expectedWithOtherMeansBs(r) as number)
-                      )}
-                    </td>
+                    {showOther && (
+                      <td className="tabular p-3 text-right text-slate-500">
+                        {expectedWithOtherMeansBs(r) === null ? (
+                          <span className="text-slate-300">—</span>
+                        ) : (
+                          fmtBs(expectedWithOtherMeansBs(r) as number)
+                        )}
+                      </td>
+                    )}
                     <td className="tabular p-3 text-right">
                       {r.countedBalanceBs == null ? '—' : fmtBs(r.countedBalanceBs)}
                     </td>
                     <td className="p-3 text-right"><DiffCell value={r.differenceBs} /></td>
-                    <td className="p-3 text-right">
-                      <DiffCell value={differenceWithOtherMeansBs(r)} />
-                    </td>
+                    {showOther && (
+                      <td className="p-3 text-right">
+                        <DiffCell value={differenceWithOtherMeansBs(r)} />
+                      </td>
+                    )}
                     <td className="max-w-[16rem] p-3 text-xs text-slate-500">
                       {r.notes || <span className="text-slate-300">—</span>}
                     </td>
@@ -202,12 +210,17 @@ export function CashHistory() {
 
           <p className="mt-2 text-xs text-slate-500">
             <span className="font-medium">Dif. efectivo</span> compara lo contado contra el
-            efectivo del cajón: es el arqueo. <span className="font-medium">Dif. total</span>{' '}
-            incluye además QR, depósito y tarjeta, y sólo se muestra en los turnos anteriores
-            al 6/8/2026, que se cerraron con ese criterio cuando esos cobros todavía se
-            cargaban a mano en la caja. Desde entonces esa plata va al banco y no pasa por el
-            cajón, así que restarla del conteo no mediría un faltante: mediría lo cobrado por
-            otros medios.
+            efectivo del cajón: es el arqueo.
+            {showOther && (
+              <>
+                {' '}
+                <span className="font-medium">Dif. total</span> incluye además QR, depósito y
+                tarjeta, y sólo aparece en los turnos anteriores al 6/8/2026, que se cerraron
+                con ese criterio cuando esos cobros todavía se cargaban a mano en la caja.
+                Desde entonces esa plata va al banco y no pasa por el cajón, así que restarla
+                del conteo no mediría un faltante: mediría lo cobrado por otros medios.
+              </>
+            )}
           </p>
         </div>
       )}

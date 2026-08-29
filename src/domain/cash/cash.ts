@@ -143,3 +143,13 @@ export function differenceWithOtherMeansBs(s: CashSessionSummary): number | null
   if (expected === null || s.countedBalanceBs === null) return null
   return s.countedBalanceBs - expected
 }
+
+// ¿Vale la pena mostrar el par de columnas del criterio viejo en este rango?
+//
+// Sólo si alguna fila se arqueó así. Desde el corte, `expectedWithOtherMeansBs`
+// devuelve null en todas, y una columna vacía en todas las filas es peso
+// muerto: ocupa lugar en la tabla del arqueo y no dice nada. De septiembre en
+// adelante el rango típico ya no alcanza ningún turno viejo.
+export function showsOtherMeansColumns(rows: CashSessionSummary[]): boolean {
+  return rows.some(usesOtherMeansCriterion)
+}
