@@ -284,6 +284,47 @@ npx supabase db push     # aplica las 91 migraciones
 npm run dev
 ```
 
+## Publicar cambios de esquema
+
+**Las migraciones se aplican con `db push`, no con el MCP de Supabase.**
+
+El MCP registra en el ledger un timestamp propio en vez del del archivo, así
+que la migración queda aplicada pero el CLI la sigue viendo como pendiente.
+Con nueve de esas encima, `db push` intenta re-aplicarlas y las que no son
+idempotentes fallan (un `add column` sin `if not exists`, por ejemplo). El MCP
+queda para inspeccionar y consultar; para escribir el esquema, el CLI.
+
+Antes de publicar código a `main`:
+
+```bash
+npm run migrations:check
+```
+
+Compara el ledger remoto contra `supabase/migrations/` y sale con 1 si falta
+alguna. **Corrélo siempre antes de mergear a `main`**, sobre todo cuando el
+merge arrastra varios commits: el código y el esquema se publican juntos o no
+se publican. Revisar los commits no alcanza — una migración sin aplicar no se
+ve en el diff, se ve cuando la RPC no existe y recepción se come el error en
+pantalla con un huésped adelante.
+
+Después, con la confirmación del guardián:
+
+```bash
+npm run supabase:guarded -- db push --linked
+```
+
+Necesita una terminal interactiva: el wrapper pide confirmación explícita y
+aborta si no hay TTY. Ojo con el `--` — sin él, `npm run` se come el
+`--linked`.
+
+Si el ledger se desalineó (pendientes y huérfanas emparejadas 1:1, la misma
+migración con dos números), se arregla sin tocar el esquema:
+
+```bash
+npx supabase migration repair --status applied  <version-del-archivo> --linked
+npx supabase migration repair --status reverted <version-huerfana>    --linked
+```
+
 > El primer usuario se crea desde el dashboard de Supabase. Su perfil nace con
 > rol `pending` (sin acceso): asignale `root` desde el editor SQL para empezar.
 
