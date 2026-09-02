@@ -11,11 +11,17 @@
  * Usage:
  *   node scripts/supabase-guarded.mjs db diff --linked
  *   node scripts/supabase-guarded.mjs link --project-ref <ref>
+ *   node scripts/supabase-guarded.mjs migrations:check
  */
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
-import { parseLinkedProject, formatDriftResult } from './lib/supabase-guard.mjs'
+import {
+  parseLinkedProject,
+  formatDriftResult,
+  parseMigrationList,
+  formatMigrationCheck,
+} from './lib/supabase-guard.mjs'
 
 const REF_FILE = 'supabase/.temp/project-ref'
 const LINKED_PROJECT_JSON_FILE = 'supabase/.temp/linked-project.json'
@@ -73,6 +79,27 @@ async function runDriftCheck(linked) {
   process.exit(result.exitCode)
 }
 
+// Sólo LEE el ledger remoto, así que no pide confirmación: la barrera de
+// este wrapper existe para lo que escribe. Un chequeo que molesta se saltea,
+// y uno que se saltea no protege nada.
+async function runMigrationsCheck(linked) {
+  const label = linked.name ?? linked.ref
+  console.log(`Comparando migraciones locales contra: ${label}\n`)
+
+  let listOutput
+  try {
+    listOutput = execSync('npx supabase migration list --linked', { encoding: 'utf8' })
+  } catch (error) {
+    console.error(error.stdout ?? '')
+    console.error(error.stderr ?? String(error))
+    process.exit(1)
+  }
+
+  const result = formatMigrationCheck(parseMigrationList(listOutput))
+  console.log(result.message)
+  process.exit(result.exitCode)
+}
+
 async function runGenericLinkedCommand(args) {
   const linked = getLinkedProject()
   const label = linked ? (linked.name ?? linked.ref) : 'ningún proyecto (no estás linkeado)'
@@ -94,7 +121,18 @@ async function runGenericLinkedCommand(args) {
 
 async function main() {
   const args = process.argv.slice(2)
-  const isDriftCheck = args.join(' ') === 'db diff --linked'
+  const joined = args.join(' ')
+  const isDriftCheck = joined === 'db diff --linked'
+
+  if (joined === 'migrations:check') {
+    const linked = getLinkedProject()
+    if (!linked) {
+      console.log('No estás linkeado a ningún proyecto — no hay nada contra qué comparar.')
+      process.exit(1)
+    }
+    await runMigrationsCheck(linked)
+    return
+  }
 
   if (isDriftCheck) {
     const linked = getLinkedProject()

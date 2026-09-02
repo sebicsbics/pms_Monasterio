@@ -14,7 +14,8 @@
     "test:db": "supabase test db supabase/tests",
     "test:all": "vitest run && supabase test db supabase/tests",
     "supabase:guarded": "node scripts/supabase-guarded.mjs",
-    "schema:check-drift": "node scripts/supabase-guarded.mjs db diff --linked"
+    "schema:check-drift": "node scripts/supabase-guarded.mjs db diff --linked",
+    "migrations:check": "node scripts/supabase-guarded.mjs migrations:check"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
