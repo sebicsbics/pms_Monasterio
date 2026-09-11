@@ -180,6 +180,9 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const folioRef = useRef<HTMLDivElement>(null)
   const [chargeDesc, setChargeDesc] = useState('')
   const [chargeAmount, setChargeAmount] = useState('')
+  // A quién se le atribuye el consumo -- la RPC lo exige (PR5: extras
+  // atribuidos al huésped que los consumió, no solo a la habitación).
+  const [chargeConsumerId, setChargeConsumerId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('EFECTIVO')
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [receivableAccounts, setReceivableAccounts] = useState<ReceivableAccount[]>([])
@@ -231,6 +234,19 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     setCheckInRateReason('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeId, room.id])
+
+  // El selector de consumidor arranca en el titular; si deja de estar
+  // en la lista (cambió de habitación) se re-selecciona.
+  useEffect(() => {
+    if (stayGuests.length === 0) {
+      setChargeConsumerId('')
+      return
+    }
+    if (!stayGuests.some((g) => g.personId === chargeConsumerId)) {
+      setChargeConsumerId(stayGuests.find((g) => g.isHolder)?.personId ?? stayGuests[0].personId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stayGuests])
 
   useEffect(() => {
     if (isDirty) {
@@ -387,10 +403,14 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       setError('Descripción y monto válido son obligatorios')
       return
     }
+    if (!chargeConsumerId) {
+      setError('Debe indicar qué huésped consumió este cargo')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      await addFolioCharge(room.id, chargeDesc.trim(), amount)
+      await addFolioCharge(room.id, chargeDesc.trim(), amount, chargeConsumerId)
       setChargeDesc('')
       setChargeAmount('')
       await reloadFolio()
@@ -1490,6 +1510,20 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 onChange={(e) => setChargeDesc(e.target.value)}
                 className="w-full rounded border border-slate-300 p-2"
               />
+              <select
+                value={chargeConsumerId}
+                onChange={(e) => setChargeConsumerId(e.target.value)}
+                className="w-full rounded border border-slate-300 p-2"
+              >
+                <option value="" disabled>
+                  ¿Quién consumió?
+                </option>
+                {stayGuests.map((g) => (
+                  <option key={g.personId} value={g.personId}>
+                    {guestFullName(g)}{g.isHolder ? ' (titular)' : ''}
+                  </option>
+                ))}
+              </select>
               <div className="flex gap-2">
                 <input
                   type="number"

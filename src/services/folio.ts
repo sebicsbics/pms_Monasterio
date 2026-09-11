@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { balanceDue, netAnticipos, type Folio } from '../domain/folios/folio'
 import type { AnticipoStatus } from '../domain/anticipos/anticipos'
+import { toUserMessage } from './dbErrors'
 
 interface ChargeRow {
   id: string
@@ -75,17 +76,22 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
 }
 
 // Agrega un consumo LIBRE al folio (servicios sin inventario: spa, lavandería).
+// consumerPersonId es obligatorio: la RPC rechaza el cargo si el huésped
+// indicado no está alojado en esta estadía (trigger
+// folio_charges_consumer_is_occupant, PR5).
 export async function addFolioCharge(
   roomId: string,
   description: string,
   amount: number,
+  consumerPersonId: string,
 ): Promise<void> {
   const { error } = await supabase.rpc('add_folio_charge', {
     p_room_id: roomId,
     p_description: description,
     p_amount: amount,
+    p_consumer_person_id: consumerPersonId,
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
 }
 
 // Carga un PRODUCTO del inventario (minibar): descuenta stock y cobra venta.
@@ -93,11 +99,13 @@ export async function addFolioProductCharge(
   roomId: string,
   productId: string,
   quantity: number,
+  consumerPersonId: string,
 ): Promise<void> {
   const { error } = await supabase.rpc('add_folio_product_charge', {
     p_room_id: roomId,
     p_product_id: productId,
     p_quantity: quantity,
+    p_consumer_person_id: consumerPersonId,
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
 }
