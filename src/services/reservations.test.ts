@@ -11,7 +11,12 @@ vi.mock('./supabase', () => ({
   },
 }))
 
-import { cancelReservation, createReservation, rescheduleReservation } from './reservations'
+import {
+  cancelReservation,
+  createBulkReservation,
+  createReservation,
+  rescheduleReservation,
+} from './reservations'
 
 describe('cancelReservation', () => {
   it('rejects a missing justification before calling the RPC', async () => {
@@ -88,7 +93,7 @@ describe('rescheduleReservation', () => {
 // function ... in the schema cache". El payload se afirma completo: si
 // alguien vuelve a quitar una clave, el test cae acá y no en producción.
 describe('createReservation', () => {
-  it('sends every parameter the create_reservation RPC declares', async () => {
+  it('sends every parameter the create_reservation RPC declares, defaulting p_contact_stays to true', async () => {
     rpcMock.mockClear()
     rpcMock.mockResolvedValueOnce({ data: 'res-1', error: null })
     await createReservation({
@@ -116,6 +121,87 @@ describe('createReservation', () => {
       p_method: 'phone',
       p_rate_bs: null,
       p_reason: null,
+      p_contact_stays: true,
     })
+  })
+
+  it('forwards contactStays: false when the caller says the contact will not stay', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: 'res-2', error: null })
+    await createReservation({
+      roomId: 'room-1',
+      roomTypeId: 'type-1',
+      firstName: 'Ana',
+      lastName: 'Pérez',
+      phone: '555',
+      email: 'ana@example.com',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-07',
+      numGuests: 2,
+      method: 'phone',
+      contactStays: false,
+    })
+    expect(rpcMock).toHaveBeenCalledWith(
+      'create_reservation',
+      expect.objectContaining({ p_contact_stays: false }),
+    )
+  })
+})
+
+describe('createBulkReservation', () => {
+  it('omits occupants for rooms that have none preloaded', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: { created: [], failed: [] }, error: null })
+    await createBulkReservation({
+      rooms: [{ roomId: 'room-1', roomTypeId: 'type-1', numGuests: 2 }],
+      firstName: 'Org',
+      lastName: 'Anizador',
+      phone: '555',
+      email: '',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-07',
+      method: 'phone',
+    })
+    const payload = rpcMock.mock.calls[0][1] as { p_rooms: Record<string, unknown>[] }
+    expect(payload.p_rooms).toEqual([
+      { room_id: 'room-1', room_type_id: 'type-1', num_guests: 2, occupants: [] },
+    ])
+  })
+
+  it('sends preloaded occupants per room, holder first then companions', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: { created: [], failed: [] }, error: null })
+    await createBulkReservation({
+      rooms: [
+        {
+          roomId: 'room-1',
+          roomTypeId: 'type-1',
+          numGuests: 2,
+          occupants: [
+            { firstName: 'Juan', lastName: 'Titular', document: '123' },
+            { firstName: 'Mari', lastName: 'Acompañante' },
+          ],
+        },
+      ],
+      firstName: 'Org',
+      lastName: 'Anizador',
+      phone: '555',
+      email: '',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-07',
+      method: 'phone',
+    })
+    const payload = rpcMock.mock.calls[0][1] as { p_rooms: Record<string, unknown>[] }
+    expect(payload.p_rooms).toEqual([
+      {
+        room_id: 'room-1',
+        room_type_id: 'type-1',
+        num_guests: 2,
+        occupants: [
+          { first_name: 'Juan', last_name: 'Titular', document: '123' },
+          { first_name: 'Mari', last_name: 'Acompañante', document: null },
+        ],
+      },
+    ])
   })
 })

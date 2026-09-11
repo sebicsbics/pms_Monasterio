@@ -79,6 +79,10 @@ export interface ReservationInput {
   // pendiente de aprobación (ver rateDiscountRequestsService).
   rateBs?: number | null
   reason?: string | null
+  // Si el contacto se hospeda en la habitación (titular desde el alta) o
+  // no (queda sin titular hasta el check-in). Default: true — la mayoría
+  // de las reservas individuales las toma quien se va a hospedar.
+  contactStays?: boolean
 }
 
 // Devuelve el id de la reserva creada (necesario para poder chequear, del
@@ -97,6 +101,7 @@ export async function createReservation(data: ReservationInput): Promise<string>
     p_method: data.method,
     p_rate_bs: data.rateBs ?? null,
     p_reason: data.reason ?? null,
+    p_contact_stays: data.contactStays ?? true,
   })
   if (error) throw new Error(error.message)
   return reservationId as string
@@ -126,11 +131,29 @@ export async function listReservationsBrief(): Promise<ReservationBrief[]> {
   }))
 }
 
+// Huésped precargado para una habitación del grupo. El primero de la lista
+// es el titular de esa habitación; el resto son acompañantes. El
+// organizador del grupo (contacto) NUNCA se inserta automáticamente como
+// titular de ninguna habitación — si va a hospedarse, debe cargarse acá
+// como cualquier otro ocupante.
+export interface RoomOccupantInput {
+  firstName: string
+  lastName: string
+  document?: string
+}
+
 export interface BulkReservationInput {
   // La ocupación es POR habitación: en un grupo de 9 entran 4 en una
   // cuádruple, 3 en una triple y 2 en una matrimonial. Puede exceder la
   // capacidad del tipo — el hotel habilita camas extras cuando se llena.
-  rooms: { roomId: string; roomTypeId: string; numGuests: number }[]
+  // `occupants` es opcional: si no se precarga nadie, la habitación queda
+  // sin titular hasta el check-in.
+  rooms: {
+    roomId: string
+    roomTypeId: string
+    numGuests: number
+    occupants?: RoomOccupantInput[]
+  }[]
   firstName: string
   lastName: string
   phone: string
@@ -158,6 +181,11 @@ export async function createBulkReservation(
       room_id: r.roomId,
       room_type_id: r.roomTypeId,
       num_guests: r.numGuests,
+      occupants: (r.occupants ?? []).map((o) => ({
+        first_name: o.firstName,
+        last_name: o.lastName,
+        document: o.document ?? null,
+      })),
     })),
     p_first_name: data.firstName,
     p_last_name: data.lastName,

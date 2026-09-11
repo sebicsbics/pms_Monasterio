@@ -65,6 +65,8 @@ describe('fetchArrivals', () => {
           max_occupancy: 3,
           method: 'web',
           anticipo_total_bs: '150.00',
+          holder_first_name: null,
+          holder_last_name: null,
         },
       ],
       error: null,
@@ -75,6 +77,37 @@ describe('fetchArrivals', () => {
     expect(arrival.numGuests).toBe(2)
     expect(arrival.maxOccupancy).toBe(3)
     expect(arrival.anticipoTotalBs).toBe(150)
+    expect(arrival.holderFirstName).toBeNull()
+    expect(arrival.holderLastName).toBeNull()
+  })
+
+  it('maps a non-null holder name when the room was preloaded with occupants', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          reservation_id: 'res-2',
+          room_id: 'room-2',
+          room_number: '102',
+          room_type: 'Matrimonial',
+          first_name: 'Org',
+          last_name: 'Anizador',
+          phone: '555',
+          email: null,
+          check_in_date: '2026-07-27',
+          check_out_date: '2026-07-29',
+          num_guests: 2,
+          max_occupancy: 3,
+          method: 'web',
+          anticipo_total_bs: null,
+          holder_first_name: 'Juan',
+          holder_last_name: 'Titular',
+        },
+      ],
+      error: null,
+    })
+    const [arrival] = await fetchArrivals('2026-07-27', '2026-07-27')
+    expect(arrival.holderFirstName).toBe('Juan')
+    expect(arrival.holderLastName).toBe('Titular')
   })
 
   it('surfaces the RPC error message unchanged', async () => {
