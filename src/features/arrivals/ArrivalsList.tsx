@@ -16,7 +16,7 @@ import {
   type PreloadedOccupant,
 } from '../../domain/reservations/holderSelection'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
-import { needsOccupancyReason } from '../../domain/reservations/occupancyReason'
+import { needsOccupancyReason, occupancyReasonParam } from '../../domain/reservations/occupancyReason'
 import { CompanionFields } from '../checkin/CompanionFields'
 import { DocumentLookupField } from '../checkin/DocumentLookupField'
 import { COUNTRIES } from '../../shared/data/countries'
@@ -239,7 +239,7 @@ function CheckInModal({
           agencyName: agencyName.trim(),
           channelCode,
           ...holderRpcParams(needsHolder, holderSelection),
-          ...(overOccupancy ? { occupancyReason: occupancyReason.trim() } : {}),
+          ...occupancyReasonParam(resultingOccupancy, arrival.maxOccupancy, occupancyReason),
         },
         companions,
         wantsPayment

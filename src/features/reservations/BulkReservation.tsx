@@ -8,7 +8,7 @@ import {
   type RoomOccupantInput,
 } from '../../services/reservations'
 import { occupantCountWarning } from '../../domain/reservations/occupants'
-import { needsOccupancyReason } from '../../domain/reservations/occupancyReason'
+import { occupancyReasonParam } from '../../domain/reservations/occupancyReason'
 
 // Precarga desde la grilla de Disponibilidad: fechas del bloque + números
 // de habitación a preseleccionar.
@@ -207,12 +207,11 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
           occupants: (occupantsByRoom[r.roomId] ?? []).filter(
             (o) => o.firstName.trim() !== '' && o.lastName.trim() !== '',
           ),
-          ...(needsOccupancyReason(
+          ...occupancyReasonParam(
             guestsByRoom[r.roomId] ?? 1,
             r.suitableTypes[0]?.maxOccupancy ?? null,
-          )
-            ? { occupancyReason: (occupancyReasonByRoom[r.roomId] ?? '').trim() }
-            : {}),
+            occupancyReasonByRoom[r.roomId] ?? '',
+          ),
         })),
         firstName: firstName.trim(),
         lastName: lastName.trim(),

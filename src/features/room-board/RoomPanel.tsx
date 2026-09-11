@@ -33,7 +33,7 @@ import { segmentNights, segmentTotalBs } from '../../domain/stays/staySegment'
 import { fetchStaySegments, modifyStayDates, changeRoom } from '../../services/staySegments'
 import { fetchRooms } from '../../services/rooms'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
-import { needsOccupancyReason } from '../../domain/reservations/occupancyReason'
+import { needsOccupancyReason, occupancyReasonParam } from '../../domain/reservations/occupancyReason'
 import {
   EMPTY_PAYMENT_PROOF,
   paymentProofError,
@@ -452,7 +452,11 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         newGuests,
         extra,
         extraChargeDesc,
-        addGuestsOverOccupancy ? addGuestsOccupancyReason.trim() : undefined,
+        occupancyReasonParam(
+          addGuestsResultingOccupancy,
+          room.defaultType?.maxOccupancy ?? null,
+          addGuestsOccupancyReason,
+        ).occupancyReason,
       )
       setMessage(
         extra > 0
@@ -556,7 +560,11 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         companions,
         agencyName: agencyName.trim(),
         channelCode,
-        ...(walkInOverOccupancy ? { occupancyReason: walkInOccupancyReason.trim() } : {}),
+        ...occupancyReasonParam(
+          walkInResultingOccupancy,
+          selectedType?.maxOccupancy ?? null,
+          walkInOccupancyReason,
+        ),
       },
         wantsCheckInPayment
           ? {
