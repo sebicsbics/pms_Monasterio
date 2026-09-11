@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { toUserMessage } from './dbErrors'
 import type { StaySegment } from '../domain/stays/staySegment'
 
 interface SegmentRow {
@@ -19,7 +20,7 @@ export async function fetchStaySegments(reservationId: string): Promise<StaySegm
     .select('id, room_id, rate_bs, start_date, end_date, reason, rooms ( room_number ), room_types ( name )')
     .eq('reservation_id', reservationId)
     .order('start_date', { ascending: true })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
 
   return (data as unknown as SegmentRow[]).map((r) => ({
     id: r.id,
@@ -48,7 +49,7 @@ export async function modifyStayDates(
     p_rate_bs: rateBs,
     p_reason: reason.trim() || null,
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
   return Number(data)
 }
 
@@ -70,6 +71,6 @@ export async function changeRoom(input: {
     p_from: input.fromDate,
     p_reason: input.reason.trim() || null,
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
   return Number(data)
 }
