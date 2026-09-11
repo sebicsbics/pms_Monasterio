@@ -15,7 +15,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(22);
 
 select set_config('request.jwt.claims',
   '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
@@ -55,6 +55,7 @@ declare
 begin
   select o.room_id, o.room_type_id into v_room_id, v_room_type_id
   from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
   join public.rooms r on r.id = o.room_id
   where not exists (
     select 1 from public.reservations x
@@ -107,6 +108,7 @@ declare
 begin
   select o.room_id, o.room_type_id into v_room_id, v_room_type_id
   from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
   where not exists (
     select 1 from public.reservations x
     where x.room_id = o.room_id
@@ -159,6 +161,7 @@ declare
 begin
   select o.room_id, o.room_type_id into v_room1, v_type1
   from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
   where not exists (
     select 1 from public.reservations x where x.room_id = o.room_id
       and x.status in ('confirmed','checked_in')
@@ -167,6 +170,7 @@ begin
 
   select o.room_id, o.room_type_id into v_room2, v_type2
   from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
   where o.room_id <> v_room1
     and not exists (
       select 1 from public.reservations x where x.room_id = o.room_id
@@ -176,6 +180,7 @@ begin
 
   select o.room_id, o.room_type_id into v_room3, v_type3
   from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
   where o.room_id not in (v_room1, v_room2)
     and not exists (
       select 1 from public.reservations x where x.room_id = o.room_id
@@ -308,6 +313,7 @@ declare
 begin
   select o.room_id, o.room_type_id into v_room_id, v_room_type_id
   from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
   where not exists (
     select 1 from public.reservations x where x.room_id = o.room_id
       and x.status in ('confirmed','checked_in')
@@ -387,15 +393,9 @@ select ok(not has_function_privilege('anon', 'public._run_booking_backfill()', '
 select ok(not has_function_privilege('authenticated', 'public._run_booking_backfill()', 'execute'),
   'authenticated tampoco puede ejecutar _run_booking_backfill (interna)');
 
-select ok(not has_function_privilege('anon', 'public._create_booking_for_new_reservation()', 'execute'),
-  'anon no puede ejecutar _create_booking_for_new_reservation (interna)');
-select ok(not has_function_privilege('authenticated', 'public._create_booking_for_new_reservation()', 'execute'),
-  'authenticated tampoco puede ejecutar _create_booking_for_new_reservation (interna)');
-
-select ok(not has_function_privilege('anon', 'public._create_holder_for_new_reservation()', 'execute'),
-  'anon no puede ejecutar _create_holder_for_new_reservation (interna)');
-select ok(not has_function_privilege('authenticated', 'public._create_holder_for_new_reservation()', 'execute'),
-  'authenticated tampoco puede ejecutar _create_holder_for_new_reservation (interna)');
+-- _create_booking_for_new_reservation / _create_holder_for_new_reservation
+-- (triggers de respaldo de PR1) se dropearon en 20260911020000: toda ruta
+-- de alta arma booking+holder a mano ahora. Ver supabase/tests/10_*.sql.
 
 -- ---------------------------------------------------------------------
 -- 7) Privilegios de tabla sobre bookings (verificado manualmente por el

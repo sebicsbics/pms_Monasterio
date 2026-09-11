@@ -16,7 +16,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(12);
 
 -- Datos que el test necesita, tomados ANTES de bajar de privilegios.
 create temp table datos on commit drop as
@@ -46,6 +46,10 @@ select ok(not has_function_privilege('anon',
     'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid)',
     'execute'),
   'anon no puede ejecutar check_in_reservation_with_guests (PR2b-db: titular obligatorio)');
+select ok(not has_function_privilege('anon',
+    'public.walk_in_check_in(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text)',
+    'execute'),
+  'anon no puede ejecutar walk_in_check_in (PR2b-db: booking+holder explícitos)');
 -- Se afirma CUÁLES son, no cuántas: si mañana aparece otra, el test dice
 -- exactamente cuál y hay que justificarla.
 select is(

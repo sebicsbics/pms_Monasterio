@@ -71,8 +71,10 @@ select throws_matching(
 -- 3) Fixtures para re-ejercitar el backfill: clusters limpio y corrupto.
 -- ---------------------------------------------------------------------
 alter table public.reservations alter column booking_id drop not null;
-alter table public.reservations disable trigger reservations_create_booking;
-alter table public.reservations disable trigger reservations_create_holder;
+-- Desde 20260911020000 los triggers de respaldo reservations_create_booking
+-- / reservations_create_holder ya no existen (toda ruta de alta arma
+-- booking+holder a mano): estos fixtures insertan booking_id = NULL
+-- explícito, que es justo el estado que se quiere simular.
 
 do $$
 declare
@@ -125,9 +127,6 @@ begin
      '2030-02-01', '2030-02-05', 'checked_in', 500, null)
   returning id into v_res_corrupt_2;
 end $$;
-
-alter table public.reservations enable trigger reservations_create_booking;
-alter table public.reservations enable trigger reservations_create_holder;
 
 select public._run_booking_backfill();
 

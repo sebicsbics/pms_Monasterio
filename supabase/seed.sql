@@ -141,31 +141,54 @@ values
 -- El trigger sync_single_stay_segment crea el tramo de cada reserva sola,
 -- así que el folio muestra el desglose correcto sin sembrarlo a mano.
 -- ---------------------------------------------------------------------
-with hab as (
-  select rm.id as room_id, rm.room_number,
-         (select o.room_type_id from public.room_type_options o
-           where o.room_id = rm.id order by o.room_type_id limit 1) as type_id,
-         row_number() over (order by rm.room_number::int) as n
-  from public.rooms rm
-)
-insert into public.reservations (
-  guest_id, room_id, room_type_id, check_in_date, check_out_date,
-  reservation_method, payment_status, total_amount_bs, status, num_guests
-)
-select d.guest_id, h.room_id, h.type_id, d.ci, d.co, d.metodo, d.pago, d.total, d.estado, d.pax
-from (values
-  -- Dentro del hotel
-  ('a0000001-0000-4000-8000-000000000001'::uuid, 1, current_date - 2, current_date + 1, 'walk-in',  'pending', 1050.00, 'checked_in', 1),
-  ('a0000002-0000-4000-8000-000000000002'::uuid, 2, current_date - 1, current_date + 2, 'phone',    'pending', 1500.00, 'checked_in', 2),
-  ('a0000003-0000-4000-8000-000000000003'::uuid, 3, current_date - 3, current_date + 1, 'web',      'pending',  960.00, 'checked_in', 1),
-  -- Llegadas pendientes de check-in
-  ('a0000004-0000-4000-8000-000000000004'::uuid, 4, current_date,     current_date + 2, 'whatsapp', 'pending',  700.00, 'confirmed',  1),
-  ('a0000005-0000-4000-8000-000000000005'::uuid, 5, current_date,     current_date + 3, 'email',    'pending', 1350.00, 'confirmed',  2),
-  ('a0000006-0000-4000-8000-000000000006'::uuid, 6, current_date + 1, current_date + 4, 'web',      'pending', 1800.00, 'confirmed',  2),
-  -- Ya se fue: sirve para ver el historial y la analítica
-  ('a0000007-0000-4000-8000-000000000007'::uuid, 7, current_date - 5, current_date - 2, 'phone',    'paid',     900.00, 'checked_out',1)
-) as d(guest_id, n, ci, co, metodo, pago, total, estado, pax)
-join hab h on h.n = d.n;
+-- Cada reserva trae su propia booking (contacto = titular, igual que las
+-- rutas de alta reales) y su fila de titular en reservation_guests. Desde
+-- 20260911020000 ya no hay trigger de respaldo que lo resuelva -- db
+-- reset corre las migraciones ANTES de este seed, así que booking_id NOT
+-- NULL exige armarlo a mano acá también.
+do $$
+declare
+  v_room_id  uuid;
+  v_type_id  uuid;
+  v_booking  uuid;
+  v_res      uuid;
+  d          record;
+begin
+  for d in
+    select * from (values
+      -- Dentro del hotel
+      ('a0000001-0000-4000-8000-000000000001'::uuid, 1, current_date - 2, current_date + 1, 'walk-in',  'pending', 1050.00, 'checked_in', 1),
+      ('a0000002-0000-4000-8000-000000000002'::uuid, 2, current_date - 1, current_date + 2, 'phone',    'pending', 1500.00, 'checked_in', 2),
+      ('a0000003-0000-4000-8000-000000000003'::uuid, 3, current_date - 3, current_date + 1, 'web',      'pending',  960.00, 'checked_in', 1),
+      -- Llegadas pendientes de check-in
+      ('a0000004-0000-4000-8000-000000000004'::uuid, 4, current_date,     current_date + 2, 'whatsapp', 'pending',  700.00, 'confirmed',  1),
+      ('a0000005-0000-4000-8000-000000000005'::uuid, 5, current_date,     current_date + 3, 'email',    'pending', 1350.00, 'confirmed',  2),
+      ('a0000006-0000-4000-8000-000000000006'::uuid, 6, current_date + 1, current_date + 4, 'web',      'pending', 1800.00, 'confirmed',  2),
+      -- Ya se fue: sirve para ver el historial y la analítica
+      ('a0000007-0000-4000-8000-000000000007'::uuid, 7, current_date - 5, current_date - 2, 'phone',    'paid',     900.00, 'checked_out',1)
+    ) as t(guest_id, n, ci, co, metodo, pago, total, estado, pax)
+  loop
+    select rm.id into v_room_id from public.rooms rm order by rm.room_number::int limit 1 offset d.n - 1;
+    select o.room_type_id into v_type_id from public.room_type_options o
+      where o.room_id = v_room_id order by o.room_type_id limit 1;
+
+    insert into public.bookings (contact_person_id) values (d.guest_id)
+      returning id into v_booking;
+
+    insert into public.reservations (
+      guest_id, room_id, room_type_id, check_in_date, check_out_date,
+      reservation_method, payment_status, total_amount_bs, status, num_guests, booking_id
+    ) values (
+      d.guest_id, v_room_id, v_type_id, d.ci, d.co, d.metodo, d.pago, d.total, d.estado, d.pax, v_booking
+    ) returning id into v_res;
+
+    insert into public.reservation_guests (reservation_id, person_id, role, confirmed_at)
+    values (
+      v_res, d.guest_id, 'holder',
+      case when d.estado in ('checked_in', 'checked_out') then now() else null end
+    );
+  end loop;
+end $$;
 
 -- Folio de cada estadía activa o cerrada.
 insert into public.folios (reservation_id, closed_at)
