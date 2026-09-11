@@ -74,11 +74,11 @@ select ok(
 -- 3) Higiene de grants (funciones tocadas en esta migración).
 -- ---------------------------------------------------------------------
 select ok(not has_function_privilege('anon',
-    'public.walk_in_check_in_with_guests(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text,text,text,text,text,jsonb,text,text)',
+    'public.walk_in_check_in_with_guests(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text,text,text,text,text,jsonb,text,text,text)',
     'execute'),
   'anon no puede ejecutar walk_in_check_in_with_guests');
 select ok(has_function_privilege('authenticated',
-    'public.walk_in_check_in_with_guests(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text,text,text,text,text,jsonb,text,text)',
+    'public.walk_in_check_in_with_guests(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text,text,text,text,text,jsonb,text,text,text)',
     'execute'),
   'authenticated sí puede ejecutar walk_in_check_in_with_guests');
 

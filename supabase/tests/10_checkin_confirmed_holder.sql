@@ -322,11 +322,11 @@ select is(
 -- 10) Higiene de grants (funciones tocadas en esta migración).
 -- ---------------------------------------------------------------------
 select ok(not has_function_privilege('anon',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
     'execute'),
   'anon no puede ejecutar check_in_reservation_with_guests');
 select ok(has_function_privilege('authenticated',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
     'execute'),
   'authenticated sí puede ejecutar check_in_reservation_with_guests');
 
@@ -335,9 +335,9 @@ select ok(not has_function_privilege('anon', 'public.add_reservation_companions(
 select ok(not has_function_privilege('authenticated', 'public.add_reservation_companions(uuid,jsonb)', 'execute'),
   'add_reservation_companions es interna: tampoco la ejecuta authenticated directo');
 
-select ok(not has_function_privilege('anon', 'public.add_guests_to_stay(uuid,jsonb,numeric,text)', 'execute'),
+select ok(not has_function_privilege('anon', 'public.add_guests_to_stay(uuid,jsonb,numeric,text,text)', 'execute'),
   'anon no puede ejecutar add_guests_to_stay');
-select ok(has_function_privilege('authenticated', 'public.add_guests_to_stay(uuid,jsonb,numeric,text)', 'execute'),
+select ok(has_function_privilege('authenticated', 'public.add_guests_to_stay(uuid,jsonb,numeric,text,text)', 'execute'),
   'authenticated sí puede ejecutar add_guests_to_stay');
 
 

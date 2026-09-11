@@ -43,7 +43,7 @@ select ok(not has_function_privilege('anon','public.open_cash_session(numeric)',
 select ok(not has_function_privilege('anon','public.list_anticipos(boolean,integer)','execute'),
   'anon no puede ejecutar list_anticipos');
 select ok(not has_function_privilege('anon',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
     'execute'),
   'anon no puede ejecutar check_in_reservation_with_guests (PR2b-db: titular obligatorio)');
 select ok(not has_function_privilege('anon',

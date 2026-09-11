@@ -171,13 +171,13 @@ select is(
 );
 select ok(
   has_function_privilege('authenticated',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
     'execute'),
   'authenticated conserva EXECUTE sobre check_in_reservation_with_guests tras el drop+create'
 );
 select ok(
   has_function_privilege('authenticated',
-    'public.walk_in_check_in_with_guests(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text,text,text,text,text,jsonb,text,text)',
+    'public.walk_in_check_in_with_guests(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text,text,text,text,text,jsonb,text,text,text)',
     'execute'),
   'authenticated conserva EXECUTE sobre walk_in_check_in_with_guests tras el drop+create'
 );
