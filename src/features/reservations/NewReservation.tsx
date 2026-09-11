@@ -72,6 +72,9 @@ function NewReservationForm({
   const [method, setMethod] = useState('phone')
   const [rateBs, setRateBs] = useState('')
   const [rateReason, setRateReason] = useState('')
+  // El contacto se hospeda por defecto (caso más común). Si se apaga, la
+  // habitación queda sin titular hasta que se registre en el check-in.
+  const [contactStays, setContactStays] = useState(true)
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -130,6 +133,7 @@ function NewReservationForm({
     setMethod('phone')
     setRateBs('')
     setRateReason('')
+    setContactStays(true)
     setError(null)
     setSuccess(null)
     setPendingBanner(null)
@@ -188,6 +192,7 @@ function NewReservationForm({
         method,
         rateBs: rateBs.trim() ? Number(rateBs) : null,
         reason: rateReason.trim() || null,
+        contactStays,
       })
       setSuccess(
         `Reserva creada para la habitación ${selected.roomNumber} (${checkIn} → ${checkOut}).`,
@@ -210,6 +215,7 @@ function NewReservationForm({
       setEmail('')
       setRateBs('')
       setRateReason('')
+      setContactStays(true)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -401,6 +407,19 @@ function NewReservationForm({
               Contacto (al menos uno). El resto del perfil se completa en el
               check-in.
             </p>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={contactStays}
+                onChange={(e) => setContactStays(e.target.checked)}
+              />
+              El contacto se hospeda en la habitación
+            </label>
+            {!contactStays && (
+              <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">
+                El titular de la habitación se registrará en el check-in.
+              </p>
+            )}
             <div className="flex gap-2">
               <label className="w-1/2 text-sm">
                 <span className="text-slate-600">Tarifa (Bs/noche, opcional)</span>

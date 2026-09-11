@@ -778,8 +778,8 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
             <thead className="bg-slate-100 text-slate-600">
               <tr>
                 <th className="p-3">Hab.</th>
-                <th className="p-3">Huésped</th>
                 <th className="p-3">Contacto</th>
+                <th className="p-3">Titular</th>
                 <th className="p-3">Tipo</th>
                 <th className="p-3">Entrada</th>
                 <th className="p-3">Salida</th>
@@ -794,9 +794,18 @@ export function ArrivalsList({ role }: { role?: UserRole | null }) {
                   <td className="p-3 font-semibold">{a.roomNumber}</td>
                   <td className="p-3">
                     {a.firstName} {a.lastName}
+                    <span className="block text-xs text-slate-400">
+                      {a.phone ?? a.email ?? '—'}
+                    </span>
                   </td>
-                  <td className="p-3 text-slate-500">
-                    {a.phone ?? a.email ?? '—'}
+                  <td className="p-3">
+                    {a.holderFirstName && a.holderLastName ? (
+                      `${a.holderFirstName} ${a.holderLastName}`
+                    ) : (
+                      <span className="text-xs text-slate-400">
+                        Titular: pendiente (se registra en el check-in)
+                      </span>
+                    )}
                   </td>
                   <td className="p-3">{a.roomType}</td>
                   <td className="p-3">{a.checkInDate}</td>

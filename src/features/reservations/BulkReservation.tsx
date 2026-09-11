@@ -5,7 +5,9 @@ import {
   searchAvailableRooms,
   createBulkReservation,
   type BulkReservationResult,
+  type RoomOccupantInput,
 } from '../../services/reservations'
+import { occupantCountWarning } from '../../domain/reservations/occupants'
 
 // Precarga desde la grilla de Disponibilidad: fechas del bloque + números
 // de habitación a preseleccionar.
@@ -35,6 +37,10 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
   // capacidad del tipo al seleccionar, pero se puede exceder: cuando el
   // hotel se llena se habilitan camas extras.
   const [guestsByRoom, setGuestsByRoom] = useState<Record<string, number>>({})
+  // Huéspedes precargados por habitación (opcional). El primero cargado es
+  // el titular; el resto son acompañantes. El organizador (contacto del
+  // grupo, más abajo) NUNCA se agrega acá automáticamente.
+  const [occupantsByRoom, setOccupantsByRoom] = useState<Record<string, RoomOccupantInput[]>>({})
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -123,6 +129,27 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
 
   const totalPax = [...selected].reduce((sum, id) => sum + (guestsByRoom[id] ?? 1), 0)
 
+  function addOccupant(roomId: string) {
+    setOccupantsByRoom((prev) => ({
+      ...prev,
+      [roomId]: [...(prev[roomId] ?? []), { firstName: '', lastName: '', document: '' }],
+    }))
+  }
+
+  function updateOccupant(roomId: string, index: number, patch: Partial<RoomOccupantInput>) {
+    setOccupantsByRoom((prev) => ({
+      ...prev,
+      [roomId]: (prev[roomId] ?? []).map((o, i) => (i === index ? { ...o, ...patch } : o)),
+    }))
+  }
+
+  function removeOccupant(roomId: string, index: number) {
+    setOccupantsByRoom((prev) => ({
+      ...prev,
+      [roomId]: (prev[roomId] ?? []).filter((_, i) => i !== index),
+    }))
+  }
+
   // Vuelve la pantalla a cero: hasta ahora, elegida una fecha, la única
   // forma de empezar de nuevo era recargar el navegador entero.
   function handleReset() {
@@ -131,6 +158,7 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
     setResults(null)
     setSelected(new Set())
     setGuestsByRoom({})
+    setOccupantsByRoom({})
     setFirstName('')
     setLastName('')
     setPhone('')
@@ -170,6 +198,9 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
           roomId: r.roomId,
           roomTypeId: r.suitableTypes[0]?.id ?? '',
           numGuests: guestsByRoom[r.roomId] ?? 1,
+          occupants: (occupantsByRoom[r.roomId] ?? []).filter(
+            (o) => o.firstName.trim() !== '' && o.lastName.trim() !== '',
+          ),
         })),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -281,35 +312,82 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
                 const capacity = type?.maxOccupancy ?? 1
                 const guests = guestsByRoom[room.roomId] ?? capacity
                 const overCapacity = on && guests > capacity
+                const occupants = occupantsByRoom[room.roomId] ?? []
+                const countWarning = on ? occupantCountWarning(guests, occupants.length) : null
                 return (
                   <div key={room.roomId}
-                    className={`flex items-center gap-2 rounded border p-2 text-sm ${
+                    className={`rounded border p-2 text-sm ${
                       on ? 'border-blue-500 bg-blue-50' : 'border-slate-300'
                     }`}>
-                    <button type="button" onClick={() => toggle(room.roomId)}
-                      className="flex flex-1 items-start gap-2 text-left">
-                      <input type="checkbox" checked={on} readOnly className="mt-1" />
-                      <span>
-                        <span className="font-bold">Hab. {room.roomNumber}</span>
-                        <span className="block text-xs text-slate-500">
-                          {type ? `${type.name} · hasta ${capacity}` : 'Sin tipo'}
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => toggle(room.roomId)}
+                        className="flex flex-1 items-start gap-2 text-left">
+                        <input type="checkbox" checked={on} readOnly className="mt-1" />
+                        <span>
+                          <span className="font-bold">Hab. {room.roomNumber}</span>
+                          <span className="block text-xs text-slate-500">
+                            {type ? `${type.name} · hasta ${capacity}` : 'Sin tipo'}
+                          </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                      {on && (
+                        <label className="shrink-0 text-right text-xs text-slate-500">
+                          Personas
+                          <input type="number" min={1} value={guests}
+                            onChange={(e) =>
+                              setGuestsByRoom((g) => ({
+                                ...g,
+                                [room.roomId]: Math.max(1, Number(e.target.value)),
+                              }))
+                            }
+                            className={`mt-1 block w-16 rounded border p-1 text-center text-sm ${
+                              overCapacity ? 'border-amber-400 bg-amber-50' : 'border-slate-300'
+                            }`} />
+                        </label>
+                      )}
+                    </div>
                     {on && (
-                      <label className="shrink-0 text-right text-xs text-slate-500">
-                        Personas
-                        <input type="number" min={1} value={guests}
-                          onChange={(e) =>
-                            setGuestsByRoom((g) => ({
-                              ...g,
-                              [room.roomId]: Math.max(1, Number(e.target.value)),
-                            }))
-                          }
-                          className={`mt-1 block w-16 rounded border p-1 text-center text-sm ${
-                            overCapacity ? 'border-amber-400 bg-amber-50' : 'border-slate-300'
-                          }`} />
-                      </label>
+                      <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium text-slate-500">
+                            Cargar huéspedes (opcional) — el primero es el titular
+                          </span>
+                          <button type="button" onClick={() => addOccupant(room.roomId)}
+                            className="text-xs font-medium text-brand-700 hover:underline">
+                            + Agregar huésped
+                          </button>
+                        </div>
+                        {occupants.map((o, i) => (
+                          <div key={i} className="flex items-center gap-1">
+                            <span className="w-4 shrink-0 text-xs text-slate-400">
+                              {i === 0 ? 'T' : i + 1}
+                            </span>
+                            <input placeholder="Nombre" value={o.firstName}
+                              onChange={(e) => updateOccupant(room.roomId, i, { firstName: e.target.value })}
+                              className="w-1/3 rounded border border-slate-300 p-1 text-xs" />
+                            <input placeholder="Apellido" value={o.lastName}
+                              onChange={(e) => updateOccupant(room.roomId, i, { lastName: e.target.value })}
+                              className="w-1/3 rounded border border-slate-300 p-1 text-xs" />
+                            <input placeholder="Doc. (opcional)" value={o.document ?? ''}
+                              onChange={(e) => updateOccupant(room.roomId, i, { document: e.target.value })}
+                              className="w-1/4 rounded border border-slate-300 p-1 text-xs" />
+                            <button type="button" onClick={() => removeOccupant(room.roomId, i)}
+                              className="shrink-0 text-xs text-slate-400 hover:text-red-600">
+                              Quitar
+                            </button>
+                          </div>
+                        ))}
+                        {occupants.length === 0 && (
+                          <p className="text-xs text-slate-400">
+                            Sin huéspedes precargados: el titular se registra en el check-in.
+                          </p>
+                        )}
+                        {countWarning && (
+                          <p className="rounded bg-amber-50 p-1 text-xs text-amber-800">
+                            {countWarning}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 )
@@ -328,6 +406,11 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
       {results && results.length > 0 && (
         <section className="rounded border border-slate-200 p-4">
           <h2 className="mb-3 font-semibold text-slate-700">3 · Contacto del grupo</h2>
+          <p className="mb-3 text-xs text-slate-500">
+            El organizador es el contacto del grupo (a quién avisar), no un
+            huésped: si también se hospeda, cargalo como huésped en alguna
+            habitación en el paso 2.
+          </p>
           <div className="space-y-3">
             <div className="flex gap-2">
               <input placeholder="Nombre" value={firstName} onChange={(e) => setFirstName(e.target.value)}
