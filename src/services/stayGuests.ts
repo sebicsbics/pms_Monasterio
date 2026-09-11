@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { StayGuest } from '../domain/stays/stayGuest'
 import { companionsToPayload, type CompanionGuest } from './arrivals'
+import { toUserMessage } from './dbErrors'
 
 interface StayGuestRow {
   person_id: string
@@ -39,6 +40,10 @@ export async function addGuestsToStay(
   companions: CompanionGuest[],
   extraChargeBs: number,
   chargeDescription: string,
+  // Motivo obligatorio SOLO cuando la ocupación resultante supera el
+  // max_occupancy del tipo de la habitación — ver
+  // domain/reservations/occupancyReason.ts.
+  occupancyReason?: string,
 ): Promise<number> {
   const payload = companionsToPayload(companions)
   if (payload.length === 0) {
@@ -49,7 +54,8 @@ export async function addGuestsToStay(
     p_companions: payload,
     p_extra_charge_bs: extraChargeBs,
     p_charge_description: chargeDescription.trim() || null,
+    ...(occupancyReason ? { p_occupancy_reason: occupancyReason } : {}),
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
   return Number(data)
 }

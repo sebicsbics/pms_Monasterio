@@ -16,6 +16,7 @@ import {
   type PreloadedOccupant,
 } from '../../domain/reservations/holderSelection'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
+import { needsOccupancyReason } from '../../domain/reservations/occupancyReason'
 import { CompanionFields } from '../checkin/CompanionFields'
 import { DocumentLookupField } from '../checkin/DocumentLookupField'
 import { COUNTRIES } from '../../shared/data/countries'
@@ -92,7 +93,13 @@ function CheckInModal({
   const [companions, setCompanions] = useState<CompanionGuest[]>(() =>
     Array.from({ length: companionSlots }, emptyCompanion),
   )
+  // Ya no es un tope duro: se puede exceder max_occupancy con motivo (ver
+  // domain/reservations/occupancyReason.ts). maxCompanions solo decide
+  // cuándo aparece el campo de motivo obligatorio.
   const maxCompanions = Math.max(0, (arrival.maxOccupancy ?? 1) - 1)
+  const [occupancyReason, setOccupancyReason] = useState('')
+  const resultingOccupancy = companions.length + 1
+  const overOccupancy = needsOccupancyReason(resultingOccupancy, arrival.maxOccupancy)
   function updateCompanion(index: number, patch: Partial<CompanionGuest>) {
     setCompanions((prev) =>
       prev.map((g, i) => (i === index ? { ...g, ...patch } : g)),
@@ -192,6 +199,10 @@ function CheckInModal({
       setError('Elegí quién es el titular de la habitación')
       return
     }
+    if (overOccupancy && occupancyReason.trim() === '') {
+      setError('Indicá un motivo para exceder la capacidad de la habitación')
+      return
+    }
 
     setBusy(true)
     setError(null)
@@ -228,6 +239,7 @@ function CheckInModal({
           agencyName: agencyName.trim(),
           channelCode,
           ...holderRpcParams(needsHolder, holderSelection),
+          ...(overOccupancy ? { occupancyReason: occupancyReason.trim() } : {}),
         },
         companions,
         wantsPayment
@@ -512,16 +524,28 @@ function CheckInModal({
               <span className="text-xs font-medium text-slate-600">
                 Acompañantes {companions.length > 0 && `(${companions.length})`}
               </span>
-              {companions.length < maxCompanions && (
-                <button
-                  type="button"
-                  onClick={() => setCompanions((prev) => [...prev, emptyCompanion()])}
-                  className="text-xs font-medium text-brand-700 hover:underline"
-                >
-                  + Agregar huésped
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setCompanions((prev) => [...prev, emptyCompanion()])}
+                className="text-xs font-medium text-brand-700 hover:underline"
+              >
+                + Agregar huésped
+              </button>
             </div>
+            {overOccupancy && (
+              <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                <p className="mb-2 text-xs font-medium text-amber-800">
+                  La habitación admite {maxCompanions + 1} huésped(es); estás
+                  registrando {resultingOccupancy}. Indicá un motivo para exceder el límite.
+                </p>
+                <input
+                  placeholder="Motivo (ej. cuna adicional, colchón extra)"
+                  value={occupancyReason}
+                  onChange={(e) => setOccupancyReason(e.target.value)}
+                  className="w-full rounded border border-slate-300 p-2 text-sm"
+                />
+              </div>
+            )}
             {companions.map((g, i) => (
               <div key={i} className="space-y-2 rounded border border-slate-200 p-3">
                 <div className="flex items-center justify-between">

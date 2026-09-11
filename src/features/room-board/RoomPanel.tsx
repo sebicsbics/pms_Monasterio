@@ -33,6 +33,7 @@ import { segmentNights, segmentTotalBs } from '../../domain/stays/staySegment'
 import { fetchStaySegments, modifyStayDates, changeRoom } from '../../services/staySegments'
 import { fetchRooms } from '../../services/rooms'
 import type { PaymentProof } from '../../domain/payments/paymentProof'
+import { needsOccupancyReason } from '../../domain/reservations/occupancyReason'
 import {
   EMPTY_PAYMENT_PROOF,
   paymentProofError,
@@ -107,6 +108,12 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   // obligatoria cuando difiere de la tarifa del tipo elegido — misma
   // regla que "Editar tarifa" post-check-in (ver más abajo).
   const selectedType = room.typeOptions.find((t) => t.id === typeId) ?? room.defaultType
+  const [walkInOccupancyReason, setWalkInOccupancyReason] = useState('')
+  const walkInResultingOccupancy = companions.length + 1
+  const walkInOverOccupancy = needsOccupancyReason(
+    walkInResultingOccupancy,
+    selectedType?.maxOccupancy ?? null,
+  )
   const defaultRateBs = selectedType?.basePriceBs ?? 0
   // La tarifa NO se precarga ni se muestra el precio de lista: en temporada
   // baja se vende más barato y en alta más caro, así que el precio del tipo
@@ -151,6 +158,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const [stayGuests, setStayGuests] = useState<StayGuest[]>([])
   const [addGuestOpen, setAddGuestOpen] = useState(false)
   const [newGuests, setNewGuests] = useState<CompanionGuest[]>([])
+  const [addGuestsOccupancyReason, setAddGuestsOccupancyReason] = useState('')
   const [extraCharge, setExtraCharge] = useState('')
   const [extraChargeDesc, setExtraChargeDesc] = useState('')
 
@@ -397,17 +405,35 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
     setNewGuests((prev) => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)))
   }
 
+  const addGuestsResultingOccupancy =
+    stayGuests.length +
+    newGuests.filter((g) => g.firstName.trim() !== '' && g.lastName.trim() !== '').length
+  const addGuestsOverOccupancy = needsOccupancyReason(
+    addGuestsResultingOccupancy,
+    room.defaultType?.maxOccupancy ?? null,
+  )
+
   async function handleAddGuests() {
     const extra = Number(extraCharge || 0)
     if (!(extra >= 0)) {
       setError('El incremento debe ser un monto válido')
       return
     }
+    if (addGuestsOverOccupancy && addGuestsOccupancyReason.trim() === '') {
+      setError('Indicá un motivo para exceder la capacidad de la habitación')
+      return
+    }
     setBusy(true)
     setError(null)
     setMessage(null)
     try {
-      const total = await addGuestsToStay(room.id, newGuests, extra, extraChargeDesc)
+      const total = await addGuestsToStay(
+        room.id,
+        newGuests,
+        extra,
+        extraChargeDesc,
+        addGuestsOverOccupancy ? addGuestsOccupancyReason.trim() : undefined,
+      )
       setMessage(
         extra > 0
           ? `Huésped(es) agregado(s). Ocupación: ${total}. Se cargó ${extra.toFixed(2)} Bs al folio.`
@@ -416,6 +442,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       setNewGuests([])
       setExtraCharge('')
       setExtraChargeDesc('')
+      setAddGuestsOccupancyReason('')
       setAddGuestOpen(false)
       setStayGuests(await fetchStayGuests(room.id))
       await reloadFolio()
@@ -483,6 +510,10 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
       setError(checkInPayError)
       return
     }
+    if (walkInOverOccupancy && walkInOccupancyReason.trim() === '') {
+      setError('Indicá un motivo para exceder la capacidad de la habitación')
+      return
+    }
     run(async () => {
       const outcome = await walkInWithOptionalPayment({
         roomId: room.id,
@@ -505,6 +536,7 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         companions,
         agencyName: agencyName.trim(),
         channelCode,
+        ...(walkInOverOccupancy ? { occupancyReason: walkInOccupancyReason.trim() } : {}),
       },
         wantsCheckInPayment
           ? {
@@ -808,16 +840,28 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 <span className="text-xs font-medium text-slate-600">
                   Acompañantes {companions.length > 0 && `(${companions.length})`}
                 </span>
-                {companions.length < (selectedType?.maxOccupancy ?? 1) - 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setCompanions((prev) => [...prev, emptyCompanion()])}
-                    className="text-xs font-medium text-brand-700 hover:underline"
-                  >
-                    + Agregar huésped
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setCompanions((prev) => [...prev, emptyCompanion()])}
+                  className="text-xs font-medium text-brand-700 hover:underline"
+                >
+                  + Agregar huésped
+                </button>
               </div>
+              {walkInOverOccupancy && (
+                <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                  <p className="mb-2 text-xs font-medium text-amber-800">
+                    La habitación admite {selectedType?.maxOccupancy ?? 1} huésped(es); estás
+                    registrando {walkInResultingOccupancy}. Indicá un motivo para exceder el límite.
+                  </p>
+                  <input
+                    placeholder="Motivo (ej. cuna adicional, colchón extra)"
+                    value={walkInOccupancyReason}
+                    onChange={(e) => setWalkInOccupancyReason(e.target.value)}
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                  />
+                </div>
+              )}
               {companions.map((g, i) => (
                 <div key={i} className="space-y-2 rounded border border-slate-200 p-3">
                   <div className="flex items-center justify-between">
@@ -1019,6 +1063,21 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                   >
                     + Otro huésped
                   </button>
+
+                  {addGuestsOverOccupancy && (
+                    <div className="rounded border border-amber-200 bg-amber-50 p-3">
+                      <p className="mb-2 text-xs font-medium text-amber-800">
+                        La habitación admite {room.defaultType?.maxOccupancy ?? 1} huésped(es);
+                        quedarían {addGuestsResultingOccupancy}. Indicá un motivo para exceder el límite.
+                      </p>
+                      <input
+                        placeholder="Motivo (ej. cuna adicional, colchón extra)"
+                        value={addGuestsOccupancyReason}
+                        onChange={(e) => setAddGuestsOccupancyReason(e.target.value)}
+                        className="w-full rounded border border-slate-300 p-2 text-sm"
+                      />
+                    </div>
+                  )}
 
                   <label className="block text-sm">
                     <span className="mb-1 block text-xs font-medium text-slate-500">

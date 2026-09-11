@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import type { AvailableRoom } from '../domain/reservations/availability'
 import type { RoomType } from '../domain/rooms/room'
 import type { OccupancySpan } from '../domain/availability/occupancy'
+import { toUserMessage } from './dbErrors'
 
 interface AvailableRoomRow {
   room_id: string
@@ -103,7 +104,7 @@ export async function createReservation(data: ReservationInput): Promise<string>
     p_reason: data.reason ?? null,
     p_contact_stays: data.contactStays ?? true,
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
   return reservationId as string
 }
 
@@ -145,14 +146,18 @@ export interface RoomOccupantInput {
 export interface BulkReservationInput {
   // La ocupación es POR habitación: en un grupo de 9 entran 4 en una
   // cuádruple, 3 en una triple y 2 en una matrimonial. Puede exceder la
-  // capacidad del tipo — el hotel habilita camas extras cuando se llena.
-  // `occupants` es opcional: si no se precarga nadie, la habitación queda
-  // sin titular hasta el check-in.
+  // capacidad del tipo — el hotel habilita camas extras cuando se llena,
+  // pero SIEMPRE con un motivo (occupancyReason, por habitación: ver
+  // domain/reservations/occupancyReason.ts). Sin motivo esa habitación
+  // puntual queda en `failed`, el resto de la reserva grupal no se ve
+  // afectada. `occupants` es opcional: si no se precarga nadie, la
+  // habitación queda sin titular hasta el check-in.
   rooms: {
     roomId: string
     roomTypeId: string
     numGuests: number
     occupants?: RoomOccupantInput[]
+    occupancyReason?: string
   }[]
   firstName: string
   lastName: string
@@ -186,6 +191,7 @@ export async function createBulkReservation(
         last_name: o.lastName,
         document: o.document ?? null,
       })),
+      ...(r.occupancyReason ? { occupancy_reason: r.occupancyReason } : {}),
     })),
     p_first_name: data.firstName,
     p_last_name: data.lastName,
@@ -197,7 +203,7 @@ export async function createBulkReservation(
     p_rate_bs: data.rateBs ?? null,
     p_reason: data.reason ?? null,
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
   const r = res as { created: string[]; failed: { room_id: string; error: string }[] }
   return {
     created: r.created ?? [],

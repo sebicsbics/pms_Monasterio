@@ -8,6 +8,7 @@ import {
 } from './arrivals'
 import { recordAnticipo } from './anticipos'
 import { uploadReceipt } from './receipts'
+import { toUserMessage } from './dbErrors'
 
 // Mensaje uniforme para el banner "descuento pendiente de aprobación",
 // reusado en los 3 puntos de entrada de tarifa (create_reservation,
@@ -48,6 +49,9 @@ export interface WalkInData {
   // arrivals.ts para la misma nota sobre por qué vive en la reserva.
   agencyName?: string
   channelCode?: string
+  // Motivo obligatorio SOLO cuando titular + acompañantes superan el
+  // max_occupancy del tipo elegido — ver domain/reservations/occupancyReason.ts.
+  occupancyReason?: string
 }
 
 // Check-in de walk-in: llama a la función atómica de PostgreSQL, que
@@ -87,8 +91,9 @@ export async function walkInCheckIn(data: WalkInData): Promise<WalkInOutcome> {
     p_companions: companionsToPayload(data.companions ?? []),
     p_agency_name: data.agencyName ?? null,
     p_channel_code: data.channelCode ?? null,
+    ...(data.occupancyReason ? { p_occupancy_reason: data.occupancyReason } : {}),
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
   const id = reservationId as string
   if (!data.rateBs) return { reservationId: id, discountMessage: null }
   const pending = await fetchPendingForReservation(id)

@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import type { Arrival } from '../domain/stays/arrival'
 import { recordAnticipo } from './anticipos'
 import type { PaymentProof } from '../domain/payments/paymentProof'
+import { toUserMessage } from './dbErrors'
 
 interface ArrivalRow {
   reservation_id: string
@@ -78,6 +79,10 @@ export interface CheckInProfile {
   holderPersonId?: string
   holderFirstName?: string
   holderLastName?: string
+  // Motivo obligatorio SOLO cuando la ocupación resultante supera
+  // arrival.maxOccupancy — ver domain/reservations/occupancyReason.ts. Se
+  // omite del payload cuando no aplica (dentro del máximo).
+  occupancyReason?: string
 }
 
 // Perfil de un acompañante (huésped no titular de la habitación). Si es
@@ -142,8 +147,9 @@ export async function checkInFromReservation(
     ...(profile.holderPersonId ? { p_holder_person_id: profile.holderPersonId } : {}),
     ...(profile.holderFirstName ? { p_holder_first_name: profile.holderFirstName } : {}),
     ...(profile.holderLastName ? { p_holder_last_name: profile.holderLastName } : {}),
+    ...(profile.occupancyReason ? { p_occupancy_reason: profile.occupancyReason } : {}),
   })
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(toUserMessage(error))
 }
 
 // Cobro opcional al momento del check-in. NO es un concepto de dinero

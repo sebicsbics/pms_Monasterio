@@ -8,6 +8,7 @@ import {
   type RoomOccupantInput,
 } from '../../services/reservations'
 import { occupantCountWarning } from '../../domain/reservations/occupants'
+import { needsOccupancyReason } from '../../domain/reservations/occupancyReason'
 
 // Precarga desde la grilla de Disponibilidad: fechas del bloque + números
 // de habitación a preseleccionar.
@@ -41,6 +42,11 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
   // el titular; el resto son acompañantes. El organizador (contacto del
   // grupo, más abajo) NUNCA se agrega acá automáticamente.
   const [occupantsByRoom, setOccupantsByRoom] = useState<Record<string, RoomOccupantInput[]>>({})
+  // Motivo obligatorio POR habitación cuando guestsByRoom supera el
+  // max_occupancy del tipo — ver domain/reservations/occupancyReason.ts.
+  // Sin motivo, esa habitación puntual queda en `failed` (el resto de la
+  // reserva grupal no se ve afectada).
+  const [occupancyReasonByRoom, setOccupancyReasonByRoom] = useState<Record<string, string>>({})
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -201,6 +207,12 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
           occupants: (occupantsByRoom[r.roomId] ?? []).filter(
             (o) => o.firstName.trim() !== '' && o.lastName.trim() !== '',
           ),
+          ...(needsOccupancyReason(
+            guestsByRoom[r.roomId] ?? 1,
+            r.suitableTypes[0]?.maxOccupancy ?? null,
+          )
+            ? { occupancyReason: (occupancyReasonByRoom[r.roomId] ?? '').trim() }
+            : {}),
         })),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -386,6 +398,25 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
                           <p className="rounded bg-amber-50 p-1 text-xs text-amber-800">
                             {countWarning}
                           </p>
+                        )}
+                        {overCapacity && (
+                          <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-2">
+                            <p className="text-xs font-medium text-amber-800">
+                              Supera la capacidad ({capacity}). Indicá un motivo para exceder el
+                              límite — sin motivo esta habitación no se creará.
+                            </p>
+                            <input
+                              placeholder="Motivo (ej. cuna adicional)"
+                              value={occupancyReasonByRoom[room.roomId] ?? ''}
+                              onChange={(e) =>
+                                setOccupancyReasonByRoom((r) => ({
+                                  ...r,
+                                  [room.roomId]: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded border border-slate-300 p-1 text-xs"
+                            />
+                          </div>
                         )}
                       </div>
                     )}
