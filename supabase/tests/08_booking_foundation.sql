@@ -23,7 +23,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(22);
 
 -- ---------------------------------------------------------------------
 -- 0) Forma del esquema.
@@ -128,6 +128,24 @@ begin
   returning id into v_res_corrupt_2;
 end $$;
 
+-- Snapshot del estado REAL de las estadías checked_in/checked_out
+-- preexistentes (seed + backfill de la migración real) ANTES de este
+-- segundo _run_booking_backfill() de fixtures -- excluye a las 2 reservas
+-- corruptas recién insertadas (esas SÍ deben quedar sin holder, ya
+-- probado arriba). Si el backfill llegara a tocar una fila in-house
+-- preexistente (reasignar guest_id o el person_id de su holder), esta
+-- snapshot lo detecta por diferencia real de datos, no por una fórmula
+-- que se cancela sola.
+create temp table _in_house_before as
+select r.id as reservation_id, r.guest_id,
+       (select rg.person_id from public.reservation_guests rg
+          where rg.reservation_id = r.id and rg.role = 'holder') as holder_person_id
+from public.reservations r
+where r.status in ('checked_in', 'checked_out')
+  and r.id not in (
+    'bbbbbbbb-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000003'
+  );
+
 select public._run_booking_backfill();
 
 -- El cluster limpio: 1 booking, 1 holder.
@@ -195,15 +213,30 @@ select is(
 -- ---------------------------------------------------------------------
 -- 6) In-house / stay_guests no se alteran por este cambio (19 estadías
 --    en producción; en el seed local se verifica que sigan consistentes).
+--    Comparación real dato-a-dato contra la snapshot de arriba -- NO una
+--    fórmula que se cancela sola (esa versión pasaba aunque el backfill
+--    corrompiera los datos).
 -- ---------------------------------------------------------------------
 select is(
-  (select count(*) from public.reservations where status = 'checked_in')
-    - (select count(*) from public.reservations
-         where status = 'checked_in' and id in (
-           'bbbbbbbb-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000003'
-         )),
-  (select count(*) from public.reservations where status = 'checked_in') - 2,
-  'las estadías in-house preexistentes no fueron tocadas por el backfill de fixtures'
+  (select count(*) from _in_house_before),
+  (select count(*) from public.reservations
+     where status in ('checked_in', 'checked_out')
+       and id not in (
+         'bbbbbbbb-0000-0000-0000-000000000002', 'bbbbbbbb-0000-0000-0000-000000000003'
+       )),
+  'las estadías in-house/checked_out preexistentes siguen siendo las mismas filas (ni una se perdió ni se agregó)'
+);
+select ok(
+  not exists (
+    select 1
+    from _in_house_before b
+    join public.reservations r on r.id = b.reservation_id
+    left join public.reservation_guests rg
+      on rg.reservation_id = r.id and rg.role = 'holder'
+    where r.guest_id is distinct from b.guest_id
+       or rg.person_id is distinct from b.holder_person_id
+  ),
+  'ninguna estadía in-house/checked_out preexistente cambió su guest_id ni el person_id de su holder tras el backfill de fixtures'
 );
 
 select * from finish();
