@@ -5,7 +5,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(17);
 
 select set_config('request.jwt.claims',
   '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
@@ -316,6 +316,95 @@ select is(
   0::bigint,
   'invariante permanente: ninguna reserva checked_in tiene guest_id NULL'
 );
+
+
+-- ---------------------------------------------------------------------
+-- 8) Huésped que regresa: su documento ya existe en public.guests (se
+--    hospedó antes). Recepción lo tipea como titular NUEVO (nombre +
+--    documento) en otra reserva -> debe reutilizarse la misma persona,
+--    NUNCA rechazarse ni duplicarse. (change: reservation-booker-vs-guest,
+--    PR6 fix 1, ver 20260911070000_returning_guest_holder_dedupe.sql).
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_room_id       uuid;
+  v_room_type_id  uuid;
+  v_res_id        uuid;
+  v_prev_room     uuid;
+  v_prev_type     uuid;
+  v_prev_res      uuid;
+  v_returning_pid uuid;
+  v_guest_id      uuid;
+  v_people_count  int;
+  v_guests_count  int;
+begin
+  -- 8a) Estadía previa, ya cerrada, del huésped que "regresa".
+  select o.room_id, o.room_type_id into v_prev_room, v_prev_type
+  from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
+  where not exists (
+    select 1 from public.reservations x where x.room_id = o.room_id
+      and x.status in ('confirmed','checked_in')
+      and x.check_in_date < '2032-05-05' and '2032-05-01' < x.check_out_date
+  ) limit 1;
+
+  v_prev_res := public.create_reservation(
+    v_prev_room, v_prev_type, 'Regresa', 'Antes',
+    '70000015', null, '2032-05-01', '2032-05-05', 1, 'phone',
+    null, null, false
+  );
+  perform public.check_in_reservation_with_guests(
+    p_reservation_id => v_prev_res, p_document => 'RETORNA-001', p_birth_date => null::date,
+    p_country_code => 'BO', p_city => 'La Paz', p_wants_offers => false,
+    p_holder_first_name => 'Regresa', p_holder_last_name => 'Antes'
+  );
+  select guest_id into v_returning_pid from public.reservations where id = v_prev_res;
+  update public.reservations set status = 'checked_out' where id = v_prev_res;
+
+  select count(*) into v_people_count from public.people where id = v_returning_pid;
+  select count(*) into v_guests_count from public.guests where person_id = v_returning_pid;
+  if v_people_count <> 1 or v_guests_count <> 1 then
+    raise exception 'precondición rota: el huésped que regresa debía existir como 1 people + 1 guests row';
+  end if;
+
+  -- 8b) Nueva reserva, distinta habitación/fechas, recepción tipea el
+  --     MISMO documento como titular nuevo -> debe reutilizar la persona,
+  --     no rechazar.
+  select o.room_id, o.room_type_id into v_room_id, v_room_type_id
+  from public.room_type_options o
+  join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
+  where not exists (
+    select 1 from public.reservations x where x.room_id = o.room_id
+      and x.status in ('confirmed','checked_in')
+      and x.check_in_date < '2032-06-05' and '2032-06-01' < x.check_out_date
+  ) limit 1;
+
+  v_res_id := public.create_reservation(
+    v_room_id, v_room_type_id, 'OtraVez', 'Pendiente',
+    '70000016', null, '2032-06-01', '2032-06-05', 1, 'phone',
+    null, null, false
+  );
+
+  perform public.check_in_reservation_with_guests(
+    p_reservation_id => v_res_id, p_document => 'RETORNA-001', p_birth_date => null::date,
+    p_country_code => 'BO', p_city => 'La Paz', p_wants_offers => false,
+    p_holder_first_name => 'Regresa', p_holder_last_name => 'Antes'
+  );
+
+  select guest_id into v_guest_id from public.reservations where id = v_res_id;
+  if v_guest_id is distinct from v_returning_pid then
+    raise exception 'el huésped que regresa debía reutilizar el mismo person_id (%), se obtuvo %',
+      v_returning_pid, v_guest_id;
+  end if;
+
+  select count(*) into v_people_count from public.people where id = v_returning_pid;
+  select count(*) into v_guests_count from public.guests where person_id = v_returning_pid;
+  if v_people_count <> 1 or v_guests_count <> 1 then
+    raise exception 'el huésped que regresa NO debía duplicarse (people=%, guests=%)',
+      v_people_count, v_guests_count;
+  end if;
+end $$;
+select pass('huésped que regresa (documento ya existente) se reutiliza como titular, sin duplicarse ni rechazarse');
 
 
 -- ---------------------------------------------------------------------
