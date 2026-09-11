@@ -76,8 +76,9 @@ select throws_ok(
   'el dueño no abre caja'
 );
 select throws_ok(
-  format($$ select public.add_folio_charge(%L, 'x', 1) $$,
-         (select id from public.rooms limit 1)),
+  format($$ select public.add_folio_charge(%L, 'x', 1, %L) $$,
+         (select id from public.rooms limit 1),
+         (select guest_id from public.reservations where status = 'checked_in' limit 1)),
   'P0001', null,
   'el dueño no carga consumos'
 );
@@ -106,8 +107,9 @@ reset role;
 select set_config('request.jwt.claims',
   '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
 select lives_ok(
-  format($$ select public.add_folio_charge(%L, 'Restaurante', 50) $$,
-         (select room_id from public.reservations where status='checked_in' limit 1)),
+  format($$ select public.add_folio_charge(%L, 'Restaurante', 50, %L) $$,
+         (select room_id from public.reservations where status='checked_in' limit 1),
+         (select guest_id from public.reservations where status='checked_in' limit 1)),
   'recepción sí carga consumos'
 );
 select lives_ok(

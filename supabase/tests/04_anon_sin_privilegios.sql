@@ -16,7 +16,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(13);
 
 -- Datos que el test necesita, tomados ANTES de bajar de privilegios.
 create temp table datos on commit drop as
@@ -34,8 +34,10 @@ select ok(not public.current_user_role() in ('root','reception','reception_admin
   'y los guards escritos en positivo también lo excluyen');
 
 -- ---------- La barrera de permisos ----------
-select ok(not has_function_privilege('anon','public.add_folio_charge(uuid,text,numeric)','execute'),
+select ok(not has_function_privilege('anon','public.add_folio_charge(uuid,text,numeric,uuid)','execute'),
   'anon no puede ejecutar add_folio_charge');
+select ok(not has_function_privilege('anon','public.add_folio_product_charge(uuid,uuid,numeric,uuid)','execute'),
+  'anon no puede ejecutar add_folio_product_charge');
 select ok(not has_function_privilege('anon','public.check_out_room(uuid,text,text,text,uuid,numeric,numeric,text)','execute'),
   'anon no puede ejecutar check_out_room');
 select ok(not has_function_privilege('anon','public.open_cash_session(numeric)','execute'),
