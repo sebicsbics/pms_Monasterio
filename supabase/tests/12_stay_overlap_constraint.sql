@@ -42,12 +42,23 @@ select ok(
 -- ---------------------------------------------------------------------
 -- Fixture: dos habitaciones libres + dos personas.
 -- ---------------------------------------------------------------------
+-- DISTINCT ON (room_id), no GROUP BY: una habitación puede tener varios
+-- room_type_id en room_type_options (varios tipos posibles para la misma
+-- físicamente), y `group by room_id, room_type_id` + `order by room_id
+-- limit 2` podía, quedando dos filas empatadas en room_id, devolver DOS
+-- FILAS DE LA MISMA HABITACIÓN (mismo room_id, distinto room_type_id) en
+-- vez de dos habitaciones distintas -- exactamente el bug que hacía
+-- fallar 3.2 (modify_stay_dates) ~1 de cada 3 `db reset` (v_room_a y
+-- v_room_b terminaban siendo la MISMA habitación física, así que
+-- "extenderla hasta solaparse con la otra" no solapaba con nada ajeno).
+-- DISTINCT ON + su propio ORDER BY (room_id, room_type_id) garantiza
+-- UNA fila por room_id, siempre la de menor room_type_id -- determinista
+-- entre resets.
 create temp table rooms2 on commit drop as
-select o.room_id, o.room_type_id
+select distinct on (o.room_id) o.room_id, o.room_type_id
 from public.room_type_options o
 join public.rooms r on r.id = o.room_id and r.operational_status = 'available'
-group by o.room_id, o.room_type_id
-order by o.room_id
+order by o.room_id, o.room_type_id
 limit 2;
 
 do $$
