@@ -69,6 +69,15 @@ export interface CheckInProfile {
   // misma persona puede venir por canales distintos en cada viaje.
   agencyName?: string
   channelCode?: string
+  // Titular a resolver cuando la reserva llega al check-in sin uno
+  // (guest_id null — ver Arrival.holderFirstName/LastName). Se omiten del
+  // payload cuando no aplican, para que el flujo de contacto-titular de
+  // siempre mande exactamente lo mismo que manda hoy. Ver
+  // src/domain/reservations/holderSelection.ts para la decisión de cuál
+  // usar.
+  holderPersonId?: string
+  holderFirstName?: string
+  holderLastName?: string
 }
 
 // Perfil de un acompañante (huésped no titular de la habitación). Si es
@@ -130,6 +139,9 @@ export async function checkInFromReservation(
     p_companions: companionsToPayload(companions),
     p_agency_name: profile.agencyName ?? null,
     p_channel_code: profile.channelCode ?? null,
+    ...(profile.holderPersonId ? { p_holder_person_id: profile.holderPersonId } : {}),
+    ...(profile.holderFirstName ? { p_holder_first_name: profile.holderFirstName } : {}),
+    ...(profile.holderLastName ? { p_holder_last_name: profile.holderLastName } : {}),
   })
   if (error) throw new Error(error.message)
 }

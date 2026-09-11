@@ -229,6 +229,37 @@ describe('checkInFromReservation', () => {
     })
     await expect(checkInFromReservation('res-3', profile)).rejects.toThrow('La reserva admite 2')
   })
+
+  it('omits the holder params when the stay already has a holder (unchanged payload)', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-7', profile)
+    const payload = rpcMock.mock.calls[0][1] as Record<string, unknown>
+    expect(Object.keys(payload)).not.toContain('p_holder_person_id')
+    expect(Object.keys(payload)).not.toContain('p_holder_first_name')
+    expect(Object.keys(payload)).not.toContain('p_holder_last_name')
+  })
+
+  it('sends p_holder_person_id when an existing preloaded occupant was chosen as holder', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-8', { ...profile, holderPersonId: 'p-1' })
+    expect(rpcMock).toHaveBeenCalledWith(
+      'check_in_reservation_with_guests',
+      expect.objectContaining({ p_holder_person_id: 'p-1' }),
+    )
+  })
+
+  it('sends p_holder_first_name/p_holder_last_name when a new holder name was typed', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-9', {
+      ...profile,
+      holderFirstName: 'Ana',
+      holderLastName: 'Pérez',
+    })
+    expect(rpcMock).toHaveBeenCalledWith(
+      'check_in_reservation_with_guests',
+      expect.objectContaining({ p_holder_first_name: 'Ana', p_holder_last_name: 'Pérez' }),
+    )
+  })
 })
 
 describe('checkInWithOptionalPayment', () => {

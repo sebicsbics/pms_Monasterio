@@ -1,0 +1,72 @@
+// Decisión de "quién es el titular" al hacer check-in de una reserva sin
+// titular resuelto (guest_id null — ver arrival.holderFirstName/LastName).
+// Recepción elige entre un ocupante ya precargado (bulk/contacto-no-titular)
+// o escribe un nombre nuevo. Esta lógica es PURA: separa la decisión de la
+// llamada a la RPC (check_in_reservation_with_guests, p_holder_*).
+
+export type HolderSelection =
+  | { kind: 'existing'; personId: string }
+  | { kind: 'new'; firstName: string; lastName: string }
+  | { kind: 'none' }
+
+export interface HolderRpcParams {
+  holderPersonId?: string
+  holderFirstName?: string
+  holderLastName?: string
+}
+
+// needsHolder = true cuando la reserva llega al check-in sin titular
+// (arrival.holderFirstName/LastName null). Si ya tiene titular, no hay
+// nada que resolver: la selección de la UI se ignora.
+export function holderRpcParams(
+  needsHolder: boolean,
+  selection: HolderSelection,
+): HolderRpcParams {
+  if (!needsHolder) return {}
+  if (selection.kind === 'existing') return { holderPersonId: selection.personId }
+  if (selection.kind === 'new') {
+    const firstName = selection.firstName.trim()
+    const lastName = selection.lastName.trim()
+    if (!firstName || !lastName) return {}
+    return { holderFirstName: firstName, holderLastName: lastName }
+  }
+  return {}
+}
+
+export function isHolderSelectionComplete(
+  needsHolder: boolean,
+  selection: HolderSelection,
+): boolean {
+  if (!needsHolder) return true
+  if (selection.kind === 'existing') return true
+  if (selection.kind === 'new') {
+    return selection.firstName.trim() !== '' && selection.lastName.trim() !== ''
+  }
+  return false
+}
+
+export interface PreloadedOccupant {
+  personId: string
+  firstName: string
+  lastName: string
+  document: string | null
+  role: 'holder' | 'companion'
+  confirmedAt: string | null
+}
+
+export interface CompanionDraft {
+  firstName: string
+  lastName: string
+}
+
+// Ocupantes precargados que NO se eligieron como titular pasan a la lista
+// de acompañantes a confirmar (solo nombre — el documento/perfil completo
+// se completa en el propio formulario, por persona, igual que hoy).
+export function companionsFromOccupants(
+  occupants: PreloadedOccupant[],
+  excludeHolderPersonId: string | null,
+): CompanionDraft[] {
+  return occupants
+    .filter((o) => o.personId !== excludeHolderPersonId)
+    .map((o) => ({ firstName: o.firstName, lastName: o.lastName }))
+}

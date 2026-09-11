@@ -7,6 +7,14 @@ import {
   type CompanionGuest,
 } from '../../services/arrivals'
 import { overrideReservationRate } from '../../services/checkin'
+import { fetchPreloadedOccupants } from '../../services/reservationGuests'
+import {
+  companionsFromOccupants,
+  holderRpcParams,
+  isHolderSelectionComplete,
+  type HolderSelection,
+  type PreloadedOccupant,
+} from '../../domain/reservations/holderSelection'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
 import { CompanionFields } from '../checkin/CompanionFields'
 import { DocumentLookupField } from '../checkin/DocumentLookupField'
@@ -91,6 +99,39 @@ function CheckInModal({
     )
   }
 
+  // Titular sin resolver (reserva creada con "el contacto no se hospeda" o
+  // bulk sin ocupante precargado — ver Arrival.holderFirstName/LastName).
+  // Recepción tiene que elegir entre un ocupante ya precargado o cargar un
+  // nombre nuevo ANTES de poder confirmar el check-in. Ver
+  // domain/reservations/holderSelection.ts.
+  const needsHolder = !arrival.holderFirstName || !arrival.holderLastName
+  const [occupants, setOccupants] = useState<PreloadedOccupant[]>([])
+  const [holderSelection, setHolderSelection] = useState<HolderSelection>({ kind: 'none' })
+
+  useEffect(() => {
+    if (!needsHolder) return
+    fetchPreloadedOccupants(arrival.reservationId)
+      .then(setOccupants)
+      .catch((e: Error) => setError(e.message))
+    // Solo al montar: la reserva no cambia durante la vida del modal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Los ocupantes precargados que NO se eligieron como titular pasan a la
+  // lista de acompañantes a confirmar (prellenados por nombre; el
+  // documento se completa por persona, igual que siempre).
+  useEffect(() => {
+    if (!needsHolder) return
+    const excludeId = holderSelection.kind === 'existing' ? holderSelection.personId : null
+    setCompanions(
+      companionsFromOccupants(occupants, excludeId).map((d) => ({
+        ...emptyCompanion(),
+        ...d,
+      })),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [occupants, holderSelection])
+
   // Edición de tarifa al cargar la reserva (root/reception), con
   // justificación obligatoria. La tarifa se aplica DENTRO del mismo submit
   // del check-in (no hay botón "Guardar" aparte): antes existían dos
@@ -147,6 +188,10 @@ function CheckInModal({
       setError(paymentError)
       return
     }
+    if (needsHolder && !isHolderSelectionComplete(needsHolder, holderSelection)) {
+      setError('Elegí quién es el titular de la habitación')
+      return
+    }
 
     setBusy(true)
     setError(null)
@@ -182,6 +227,7 @@ function CheckInModal({
           transportMeans: transportMeans.trim(),
           agencyName: agencyName.trim(),
           channelCode,
+          ...holderRpcParams(needsHolder, holderSelection),
         },
         companions,
         wantsPayment
@@ -243,6 +289,61 @@ function CheckInModal({
           <p className="mb-3 rounded bg-red-50 p-2 text-sm text-red-700">
             {error}
           </p>
+        )}
+
+        {needsHolder && (
+          <div className="mb-4 space-y-2 rounded border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-medium text-amber-800">
+              Esta reserva no tiene titular definido. Elegí quién se aloja en
+              la habitación (los datos de abajo son del titular):
+            </p>
+            {occupants.map((o) => (
+              <label key={o.personId} className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="radio"
+                  name="holder-selection"
+                  checked={
+                    holderSelection.kind === 'existing' && holderSelection.personId === o.personId
+                  }
+                  onChange={() => setHolderSelection({ kind: 'existing', personId: o.personId })}
+                />
+                {o.firstName} {o.lastName}
+              </label>
+            ))}
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="holder-selection"
+                checked={holderSelection.kind === 'new'}
+                onChange={() => setHolderSelection({ kind: 'new', firstName: '', lastName: '' })}
+              />
+              Nuevo huésped
+            </label>
+            {holderSelection.kind === 'new' && (
+              <div className="flex gap-2 pl-6">
+                <input
+                  placeholder="Nombre"
+                  value={holderSelection.firstName}
+                  onChange={(e) =>
+                    setHolderSelection((prev) =>
+                      prev.kind === 'new' ? { ...prev, firstName: e.target.value } : prev,
+                    )
+                  }
+                  className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                />
+                <input
+                  placeholder="Apellido"
+                  value={holderSelection.lastName}
+                  onChange={(e) =>
+                    setHolderSelection((prev) =>
+                      prev.kind === 'new' ? { ...prev, lastName: e.target.value } : prev,
+                    )
+                  }
+                  className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {canEditRate && (
@@ -515,7 +616,12 @@ function CheckInModal({
 
           <button
             type="button"
-            disabled={busy || (ratePending && !rateReason.trim()) || (wantsPayment && paymentError !== null)}
+            disabled={
+              busy ||
+              (ratePending && !rateReason.trim()) ||
+              (wantsPayment && paymentError !== null) ||
+              (needsHolder && !isHolderSelectionComplete(needsHolder, holderSelection))
+            }
             onClick={handleCheckIn}
             className="w-full rounded bg-brand-700 py-2 font-medium text-white hover:bg-brand-800 disabled:opacity-50"
           >
