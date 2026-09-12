@@ -10,18 +10,26 @@ interface ReservationGuestRow {
     last_name: string
     email: string | null
     birth_date: string | null
-    guests:
-      | {
-          passport_number: string | null
-          country_code: string | null
-          city: string | null
-          origin_city: string | null
-          travel_purpose: string | null
-          occupation: string | null
-          transport_means: string | null
-        }[]
-      | null
+    // PostgREST devuelve este embed como OBJETO, no como lista: la relación
+    // people→guests es 1:1 (guests.person_id es FK y PK a la vez). Se acepta
+    // la lista igual por robustez ante un cambio de forma del servidor.
+    guests: GuestEmbed | GuestEmbed[] | null
   }
+}
+
+interface GuestEmbed {
+  passport_number: string | null
+  country_code: string | null
+  city: string | null
+  origin_city: string | null
+  travel_purpose: string | null
+  occupation: string | null
+  transport_means: string | null
+}
+
+function firstGuest(embed: GuestEmbed | GuestEmbed[] | null): GuestEmbed | undefined {
+  if (!embed) return undefined
+  return Array.isArray(embed) ? embed[0] : embed
 }
 
 // Ocupantes precargados de una reserva confirmada (aún sin check-in):
@@ -41,7 +49,7 @@ export async function fetchPreloadedOccupants(
   if (error) throw new Error(error.message)
 
   return (data as unknown as ReservationGuestRow[]).map((r) => {
-    const guest = r.people.guests?.[0]
+    const guest = firstGuest(r.people.guests)
     return {
       personId: r.people.id,
       firstName: r.people.first_name,

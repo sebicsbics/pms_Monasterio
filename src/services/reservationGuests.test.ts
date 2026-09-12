@@ -107,6 +107,45 @@ describe('fetchPreloadedOccupants', () => {
     ])
   })
 
+  // PostgREST devuelve el embed uno-a-uno `guests` como OBJETO, no como
+  // lista: people.id es la PK y guests.person_id es a la vez FK y PK, así
+  // que la relación es 1:1. El fixture de arriba (lista) era una suposición
+  // y por eso el test pasaba en verde mientras el check-in mostraba el
+  // documento vacío en la app real. Este caso replica la respuesta textual
+  // del servidor local:
+  //   {"people":{"guests":{"passport_number":"5666468"}, ...}}
+  it('maps the one-to-one guests embed when it comes back as an object', async () => {
+    eqMock.mockResolvedValueOnce({
+      data: [
+        {
+          role: 'holder',
+          confirmed_at: null,
+          people: {
+            id: 'p-1',
+            first_name: 'sebastian',
+            last_name: 'davalos',
+            email: 'sebas@gmail.com',
+            birth_date: null,
+            guests: {
+              passport_number: '5666468',
+              country_code: 'BOL',
+              city: 'Sucre',
+              origin_city: null,
+              travel_purpose: null,
+              occupation: null,
+              transport_means: null,
+            },
+          },
+        },
+      ],
+      error: null,
+    })
+    const [holder] = await fetchPreloadedOccupants('res-1')
+    expect(holder.document).toBe('5666468')
+    expect(holder.countryCode).toBe('BOL')
+    expect(holder.city).toBe('Sucre')
+  })
+
   it('surfaces the query error unchanged', async () => {
     eqMock.mockResolvedValueOnce({ data: null, error: { message: 'boom' } })
     await expect(fetchPreloadedOccupants('res-1')).rejects.toThrow('boom')
