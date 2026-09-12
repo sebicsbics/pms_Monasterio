@@ -165,6 +165,7 @@ export function BulkReservation({ prefill }: { prefill?: BulkReservationPrefill 
     setSelected(new Set())
     setGuestsByRoom({})
     setOccupantsByRoom({})
+    setOccupancyReasonByRoom({})
     setFirstName('')
     setLastName('')
     setPhone('')

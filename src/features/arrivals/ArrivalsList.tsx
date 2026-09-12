@@ -7,6 +7,7 @@ import {
   type CompanionGuest,
 } from '../../services/arrivals'
 import { overrideReservationRate } from '../../services/checkin'
+import { fetchReservationRate, type ReservationRateInfo } from '../../services/reservationRate'
 import { fetchPreloadedOccupants } from '../../services/reservationGuests'
 import {
   companionsFromOccupants,
@@ -139,6 +140,16 @@ function CheckInModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [occupants, holderSelection])
 
+  // Si el titular elegido es un ocupante YA precargado (con documento
+  // cargado al reservar), el check-in es CONFIRMAR ese dato, no pedirlo de
+  // nuevo vacío (issue 5 del smoke test manual, PR7).
+  useEffect(() => {
+    if (holderSelection.kind !== 'existing') return
+    const holder = occupants.find((o) => o.personId === holderSelection.personId)
+    if (holder?.document) setDocument(holder.document)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holderSelection, occupants])
+
   // Edición de tarifa al cargar la reserva (root/reception), con
   // justificación obligatoria. La tarifa se aplica DENTRO del mismo submit
   // del check-in (no hay botón "Guardar" aparte): antes existían dos
@@ -149,6 +160,17 @@ function CheckInModal({
   const [newRate, setNewRate] = useState('')
   const [rateReason, setRateReason] = useState('')
   const canEditRate = canEditRateGate(role)
+  // Tarifa vigente, para saber si hace falta cambiarla ANTES de mostrar el
+  // botón "Editar tarifa" (issue 1 del smoke test manual): sin esto, no
+  // había forma de saber qué tarifa tenía la reserva.
+  const [rateInfo, setRateInfo] = useState<ReservationRateInfo | null>(null)
+  useEffect(() => {
+    if (!canEditRate) return
+    fetchReservationRate(arrival.reservationId)
+      .then(setRateInfo)
+      .catch((e: Error) => setError(e.message))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canEditRate])
 
   const ratePending = rateEditOpen && newRate.trim() !== ''
 
@@ -360,6 +382,16 @@ function CheckInModal({
 
         {canEditRate && (
           <div className="mb-4">
+            {rateInfo && (
+              <p className="mb-1 text-xs text-slate-500">
+                Tarifa actual: Bs {rateInfo.currentRateBs?.toFixed(2) ?? '—'} / noche
+                {rateInfo.baseRateBs != null &&
+                  rateInfo.currentRateBs != null &&
+                  rateInfo.baseRateBs !== rateInfo.currentRateBs && (
+                    <> (precio de lista del tipo: Bs {rateInfo.baseRateBs.toFixed(2)})</>
+                  )}
+              </p>
+            )}
             {!rateEditOpen ? (
               <button
                 type="button"

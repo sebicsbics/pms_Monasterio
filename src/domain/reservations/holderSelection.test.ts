@@ -78,10 +78,18 @@ describe('companionsFromOccupants', () => {
     },
   ]
 
-  it('prefills a companion draft (name only) for every occupant not chosen as holder', () => {
+  it('prefills a companion draft for every occupant not chosen as holder, carrying the stored document (confirming preloaded data at check-in)', () => {
     const result = companionsFromOccupants(occupants, 'p-1')
     expect(result).toHaveLength(1)
-    expect(result[0]).toMatchObject({ firstName: 'Luis', lastName: 'Gómez' })
+    expect(result[0]).toMatchObject({ firstName: 'Luis', lastName: 'Gómez', document: '' })
+  })
+
+  it('carries the stored document through when the preloaded occupant has one', () => {
+    const withDoc: PreloadedOccupant[] = [
+      { personId: 'p-3', firstName: 'Rosa', lastName: 'Díaz', document: '999', role: 'companion', confirmedAt: null },
+    ]
+    const result = companionsFromOccupants(withDoc, null)
+    expect(result[0]).toMatchObject({ firstName: 'Rosa', lastName: 'Díaz', document: '999' })
   })
 
   it('prefills everyone when no holder has been chosen yet', () => {

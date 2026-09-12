@@ -57,16 +57,19 @@ export interface PreloadedOccupant {
 export interface CompanionDraft {
   firstName: string
   lastName: string
+  document: string
 }
 
 // Ocupantes precargados que NO se eligieron como titular pasan a la lista
-// de acompañantes a confirmar (solo nombre — el documento/perfil completo
-// se completa en el propio formulario, por persona, igual que hoy).
+// de acompañantes a confirmar. Check-in = CONFIRMAR datos ya cargados: si
+// se cargó documento al reservar (bulk/individual), viaja acá para que el
+// formulario de check-in no lo pida de nuevo vacío (issue 5 del smoke test
+// manual, change reservation-booker-vs-guest PR7).
 export function companionsFromOccupants(
   occupants: PreloadedOccupant[],
   excludeHolderPersonId: string | null,
 ): CompanionDraft[] {
   return occupants
     .filter((o) => o.personId !== excludeHolderPersonId)
-    .map((o) => ({ firstName: o.firstName, lastName: o.lastName }))
+    .map((o) => ({ firstName: o.firstName, lastName: o.lastName, document: o.document ?? '' }))
 }
