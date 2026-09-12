@@ -12,6 +12,8 @@ import { fetchPreloadedOccupants } from '../../services/reservationGuests'
 import {
   companionsFromOccupants,
   holderRpcParams,
+  holderUiShape,
+  initialHolderSelection,
   isHolderSelectionComplete,
   type HolderSelection,
   type PreloadedOccupant,
@@ -119,7 +121,13 @@ function CheckInModal({
   useEffect(() => {
     if (!needsHolder) return
     fetchPreloadedOccupants(arrival.reservationId)
-      .then(setOccupants)
+      .then((loaded) => {
+        setOccupants(loaded)
+        // Sin ocupantes precargados la única opción real es cargar un
+        // nombre nuevo: arrancamos ahí directo, sin pedir un click en un
+        // radio que no representa ninguna elección (bug del smoke test).
+        setHolderSelection(initialHolderSelection(loaded))
+      })
       .catch((e: Error) => setError(e.message))
     // Solo al montar: la reserva no cambia durante la vida del modal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -325,7 +333,45 @@ function CheckInModal({
           </p>
         )}
 
-        {needsHolder && (
+        {needsHolder && holderUiShape(occupants) === 'direct-new' && (
+          <div className="mb-4 space-y-2 rounded border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-medium text-amber-800">
+              Esta reserva no tiene titular definido. Cargá los datos de
+              quien se aloja en la habitación:
+            </p>
+            <div className="flex gap-2">
+              <input
+                placeholder="Nombre"
+                value={holderSelection.kind === 'new' ? holderSelection.firstName : ''}
+                onChange={(e) =>
+                  setHolderSelection((prev) =>
+                    prev.kind === 'new'
+                      ? { ...prev, firstName: e.target.value }
+                      : { kind: 'new', firstName: e.target.value, lastName: '' },
+                  )
+                }
+                className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+              />
+              <input
+                placeholder="Apellido"
+                value={holderSelection.kind === 'new' ? holderSelection.lastName : ''}
+                onChange={(e) =>
+                  setHolderSelection((prev) =>
+                    prev.kind === 'new'
+                      ? { ...prev, lastName: e.target.value }
+                      : { kind: 'new', firstName: '', lastName: e.target.value },
+                  )
+                }
+                className="w-1/2 rounded border border-slate-300 p-2 text-sm"
+              />
+            </div>
+            {!isHolderSelectionComplete(needsHolder, holderSelection) && (
+              <p className="text-xs text-amber-700">Nombre y apellido son obligatorios.</p>
+            )}
+          </div>
+        )}
+
+        {needsHolder && holderUiShape(occupants) === 'choose-occupant' && (
           <div className="mb-4 space-y-2 rounded border border-amber-200 bg-amber-50 p-3">
             <p className="text-xs font-medium text-amber-800">
               Esta reserva no tiene titular definido. Elegí quién se aloja en
@@ -351,7 +397,7 @@ function CheckInModal({
                 checked={holderSelection.kind === 'new'}
                 onChange={() => setHolderSelection({ kind: 'new', firstName: '', lastName: '' })}
               />
-              Nuevo huésped
+              Otro huésped (no está en la lista)
             </label>
             {holderSelection.kind === 'new' && (
               <div className="flex gap-2 pl-6">
@@ -376,6 +422,9 @@ function CheckInModal({
                   className="w-1/2 rounded border border-slate-300 p-2 text-sm"
                 />
               </div>
+            )}
+            {!isHolderSelectionComplete(needsHolder, holderSelection) && (
+              <p className="text-xs text-amber-700">Elegí un huésped o cargá uno nuevo.</p>
             )}
           </div>
         )}

@@ -45,6 +45,25 @@ export function isHolderSelectionComplete(
   return false
 }
 
+// Forma de la UI de check-in cuando falta titular. Si no hay ocupantes
+// precargados, la única opción real es cargar un nombre nuevo — no tiene
+// sentido forzar un radio "Nuevo huésped" para llegar ahí (bug reportado en
+// el smoke test manual: caja ámbar con un solo radio, imposible destildar).
+// Si hay ocupantes, la elección es real y se muestra la lista.
+export type HolderUiShape = 'direct-new' | 'choose-occupant'
+
+export function holderUiShape(occupants: PreloadedOccupant[]): HolderUiShape {
+  return occupants.length === 0 ? 'direct-new' : 'choose-occupant'
+}
+
+// Selección inicial acorde a la forma de la UI: sin ocupantes, arrancamos
+// directo en "new" (vacío) para que los campos de nombre aparezcan sin
+// click previo; con ocupantes, arrancamos en "none" para no asumir por
+// recepción quién es el titular.
+export function initialHolderSelection(occupants: PreloadedOccupant[]): HolderSelection {
+  return occupants.length === 0 ? { kind: 'new', firstName: '', lastName: '' } : { kind: 'none' }
+}
+
 export interface PreloadedOccupant {
   personId: string
   firstName: string

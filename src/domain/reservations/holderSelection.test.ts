@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   companionsFromOccupants,
   holderRpcParams,
+  holderUiShape,
+  initialHolderSelection,
   isHolderSelectionComplete,
   type PreloadedOccupant,
 } from './holderSelection'
@@ -95,5 +97,31 @@ describe('companionsFromOccupants', () => {
   it('prefills everyone when no holder has been chosen yet', () => {
     const result = companionsFromOccupants(occupants, null)
     expect(result).toHaveLength(2)
+  })
+})
+
+describe('holderUiShape', () => {
+  it('goes straight to the new-holder fields when there are no preloaded occupants to choose from', () => {
+    expect(holderUiShape([])).toBe('direct-new')
+  })
+
+  it('shows the occupant choice when there is at least one preloaded occupant', () => {
+    const occupants: PreloadedOccupant[] = [
+      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, role: 'companion', confirmedAt: null },
+    ]
+    expect(holderUiShape(occupants)).toBe('choose-occupant')
+  })
+})
+
+describe('initialHolderSelection', () => {
+  it('defaults to an empty new-holder draft when there are no preloaded occupants (no click needed)', () => {
+    expect(initialHolderSelection([])).toEqual({ kind: 'new', firstName: '', lastName: '' })
+  })
+
+  it('defaults to no selection when there are preloaded occupants to choose from', () => {
+    const occupants: PreloadedOccupant[] = [
+      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, role: 'companion', confirmedAt: null },
+    ]
+    expect(initialHolderSelection(occupants)).toEqual({ kind: 'none' })
   })
 })
