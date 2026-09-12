@@ -51,7 +51,13 @@ describe('holderToPrefill', () => {
 })
 
 describe('holderPrefillFields', () => {
-  it('confirms the stored document and travel-profile fields instead of asking again blank', () => {
+  // Solo se confirman los datos que son DE LA PERSONA y no cambian entre
+  // estadías. Ciudad de procedencia, motivo de viaje y medio de transporte
+  // son datos DE ESTA LLEGADA: el mismo huésped puede venir de otra ciudad,
+  // por otro motivo y en otro transporte. Prellenarlos con lo del viaje
+  // anterior mostraría un dato viejo con apariencia de confirmado, y nadie
+  // corrige un campo que ya parece completo.
+  it('confirms only the person-level data, never the per-stay travel data', () => {
     const holder = occupant({
       document: '5666468',
       birthDate: '1990-01-01',
@@ -67,10 +73,7 @@ describe('holderPrefillFields', () => {
       birthDate: '1990-01-01',
       countryCode: 'BOL',
       city: 'La Paz',
-      originCity: 'Santa Cruz',
-      travelPurpose: 'turismo',
       occupation: 'ingeniero',
-      transportMeans: 'auto',
     })
   })
 
@@ -80,10 +83,7 @@ describe('holderPrefillFields', () => {
       birthDate: '',
       countryCode: '',
       city: '',
-      originCity: '',
-      travelPurpose: '',
       occupation: '',
-      transportMeans: '',
     })
   })
 

@@ -114,6 +114,37 @@ describe('companionsFromOccupants', () => {
     const result = companionsFromOccupants(occupants, null)
     expect(result).toHaveLength(2)
   })
+
+  // Ciudad de procedencia, motivo de viaje y medio de transporte son datos
+  // DE ESTA LLEGADA, no de la persona: el mismo huésped puede venir de otra
+  // ciudad, por otro motivo y en otro transporte. Arrastrarlos del viaje
+  // anterior mostraría un dato viejo con cara de confirmado. El documento y
+  // el nombre sí son de la persona y se confirman.
+  it('never carries per-stay travel data into a companion draft', () => {
+    const returning: PreloadedOccupant[] = [
+      {
+        personId: 'p-4',
+        firstName: 'Rosa',
+        lastName: 'Díaz',
+        document: '999',
+        email: null,
+        role: 'companion',
+        confirmedAt: null,
+        birthDate: '1990-01-01',
+        countryCode: 'BOL',
+        city: 'Sucre',
+        originCity: 'Santa Cruz',
+        travelPurpose: 'turismo',
+        occupation: 'ingeniera',
+        transportMeans: 'auto',
+      },
+    ]
+    const [draft] = companionsFromOccupants(returning, null)
+    expect(draft.document).toBe('999')
+    expect(draft.originCity).toBe('')
+    expect(draft.travelPurpose).toBe('')
+    expect(draft.transportMeans).toBe('')
+  })
 })
 
 describe('holderUiShape', () => {

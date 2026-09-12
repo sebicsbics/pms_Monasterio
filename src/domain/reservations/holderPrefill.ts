@@ -10,15 +10,18 @@
 import type { PreloadedOccupant } from './holderSelection'
 import type { HolderSelection } from './holderSelection'
 
+// Solo datos DE LA PERSONA, que no cambian entre estadías. Ciudad de
+// procedencia, motivo de viaje y medio de transporte NO están acá a
+// propósito: son datos DE ESTA LLEGADA (el mismo huésped puede venir de
+// otra ciudad, por otro motivo y en otro transporte), así que se piden en
+// blanco cada vez. No alcanza con no prellenarlos: al no existir en este
+// tipo, nadie los puede volver a prellenar por descuido.
 export interface HolderPrefillFields {
   document: string
   birthDate: string
   countryCode: string
   city: string
-  originCity: string
-  travelPurpose: string
   occupation: string
-  transportMeans: string
 }
 
 export const EMPTY_HOLDER_PREFILL: HolderPrefillFields = {
@@ -26,10 +29,7 @@ export const EMPTY_HOLDER_PREFILL: HolderPrefillFields = {
   birthDate: '',
   countryCode: '',
   city: '',
-  originCity: '',
-  travelPurpose: '',
   occupation: '',
-  transportMeans: '',
 }
 
 // El ocupante precargado a confirmar como titular:
@@ -63,9 +63,6 @@ export function holderPrefillFields(
     birthDate: holder.birthDate ?? '',
     countryCode: holder.countryCode ?? '',
     city: holder.city ?? '',
-    originCity: holder.originCity ?? '',
-    travelPurpose: holder.travelPurpose ?? '',
     occupation: holder.occupation ?? '',
-    transportMeans: holder.transportMeans ?? '',
   }
 }

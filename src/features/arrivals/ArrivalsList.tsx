@@ -180,10 +180,10 @@ function CheckInModal({
     setBirthDate(fields.birthDate)
     setCountryCode(fields.countryCode)
     setCity(fields.city)
-    setOriginCity(fields.originCity)
-    setTravelPurpose(fields.travelPurpose)
     setOccupation(fields.occupation)
-    setTransportMeans(fields.transportMeans)
+    // Procedencia, motivo de viaje y transporte quedan en blanco a
+    // propósito: son de esta llegada, no de la persona (ver
+    // holderPrefill.ts). Recepción los carga en cada check-in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holderSelection, occupants, needsHolder])
 

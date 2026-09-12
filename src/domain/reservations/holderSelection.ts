@@ -112,9 +112,13 @@ export function companionsFromOccupants(
       birthDate: o.birthDate ?? '',
       countryCode: o.countryCode ?? '',
       city: o.city ?? '',
-      originCity: o.originCity ?? '',
-      travelPurpose: o.travelPurpose ?? '',
       occupation: o.occupation ?? '',
-      transportMeans: o.transportMeans ?? '',
+      // Datos DE ESTA LLEGADA, no de la persona: de dónde viene, por qué
+      // y en qué llegó pueden cambiar entre estadías. Se piden en blanco
+      // cada vez; arrastrar los del viaje anterior mostraría un dato viejo
+      // con apariencia de confirmado, y nadie corrige lo que parece listo.
+      originCity: '',
+      travelPurpose: '',
+      transportMeans: '',
     }))
 }
