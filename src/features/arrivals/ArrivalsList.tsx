@@ -18,6 +18,7 @@ import {
   type HolderSelection,
   type PreloadedOccupant,
 } from '../../domain/reservations/holderSelection'
+import { checkinEmailError, checkinEmailRequired } from '../../domain/reservations/checkinEmail'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
 import { needsOccupancyReason, occupancyReasonParam } from '../../domain/reservations/occupancyReason'
 import { CompanionFields } from '../checkin/CompanionFields'
@@ -117,21 +118,36 @@ function CheckInModal({
   const needsHolder = !arrival.holderFirstName || !arrival.holderLastName
   const [occupants, setOccupants] = useState<PreloadedOccupant[]>([])
   const [holderSelection, setHolderSelection] = useState<HolderSelection>({ kind: 'none' })
+  // Correo YA cargado del titular (para no pedirlo de nuevo si ya existe)
+  // y el valor editable que ve el input. Se busca vía reservation_guests
+  // (fetchPreloadedOccupants) porque incluye la fila del holder aun
+  // cuando ya está resuelto (guest_id no nulo) — arrivals() solo trae el
+  // correo del CONTACTO de la booking, no del titular. Ver
+  // domain/reservations/checkinEmail.ts.
+  const [holderEmailOnFile, setHolderEmailOnFile] = useState<string | null>(null)
+  const [emailInput, setEmailInput] = useState('')
 
   useEffect(() => {
-    if (!needsHolder) return
     fetchPreloadedOccupants(arrival.reservationId)
       .then((loaded) => {
         setOccupants(loaded)
         // Sin ocupantes precargados la única opción real es cargar un
         // nombre nuevo: arrancamos ahí directo, sin pedir un click en un
         // radio que no representa ninguna elección (bug del smoke test).
-        setHolderSelection(initialHolderSelection(loaded))
+        if (needsHolder) setHolderSelection(initialHolderSelection(loaded))
+        const holder = loaded.find((o) => o.role === 'holder')
+        setHolderEmailOnFile(holder?.email ?? null)
+        setEmailInput(holder?.email ?? '')
       })
       .catch((e: Error) => setError(e.message))
     // Solo al montar: la reserva no cambia durante la vida del modal.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const emailRequired = checkinEmailRequired(wantsOffers, holderEmailOnFile)
+  const emailError = wantsOffers
+    ? checkinEmailError(wantsOffers, holderEmailOnFile, emailInput)
+    : null
 
   // Los ocupantes precargados que NO se eligieron como titular pasan a la
   // lista de acompañantes a confirmar (prellenados por nombre; el
@@ -233,6 +249,10 @@ function CheckInModal({
       setError('Indicá un motivo para exceder la capacidad de la habitación')
       return
     }
+    if (wantsOffers && emailError) {
+      setError(emailError)
+      return
+    }
 
     setBusy(true)
     setError(null)
@@ -262,6 +282,7 @@ function CheckInModal({
           countryCode: countryCode.trim().toUpperCase(),
           city: city.trim(),
           wantsOffers,
+          email: wantsOffers ? emailInput.trim() : undefined,
           originCity: originCity.trim(),
           travelPurpose: travelPurpose.trim(),
           occupation: occupation.trim(),
@@ -599,6 +620,18 @@ function CheckInModal({
             />
             Acepta recibir promociones por correo
           </label>
+          {wantsOffers && (
+            <div>
+              <input
+                type="email"
+                placeholder={emailRequired ? 'Correo (obligatorio)' : 'Correo'}
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                className="w-full rounded border border-slate-300 p-2"
+              />
+              {emailError && <p className="mt-1 text-xs text-red-600">{emailError}</p>}
+            </div>
+          )}
 
           <div className="space-y-3 border-t border-slate-200 pt-3">
             <div className="flex items-center justify-between">

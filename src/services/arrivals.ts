@@ -60,6 +60,12 @@ export interface CheckInProfile {
   countryCode: string
   city: string
   wantsOffers: boolean
+  // Correo del titular para las promociones (checkbox wantsOffers). Se
+  // omite del payload cuando no aplica: ver
+  // domain/reservations/checkinEmail.ts para cuándo es obligatorio/válido.
+  // Vacío/undefined NO borra un correo ya cargado (la RPC hace
+  // NULLIF + coalesce).
+  email?: string
   // Perfil de viaje (registro turístico).
   originCity: string
   travelPurpose: string
@@ -137,6 +143,7 @@ export async function checkInFromReservation(
     p_country_code: profile.countryCode,
     p_city: profile.city,
     p_wants_offers: profile.wantsOffers,
+    p_email: profile.email?.trim() || null,
     p_origin_city: profile.originCity,
     p_travel_purpose: profile.travelPurpose,
     p_occupation: profile.occupation,

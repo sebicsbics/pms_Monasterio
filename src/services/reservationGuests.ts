@@ -8,6 +8,7 @@ interface ReservationGuestRow {
     id: string
     first_name: string
     last_name: string
+    email: string | null
     guests: { passport_number: string | null }[] | null
   }
 }
@@ -22,7 +23,9 @@ export async function fetchPreloadedOccupants(
 ): Promise<PreloadedOccupant[]> {
   const { data, error } = await supabase
     .from('reservation_guests')
-    .select('role, confirmed_at, people:person_id(id, first_name, last_name, guests(passport_number))')
+    .select(
+      'role, confirmed_at, people:person_id(id, first_name, last_name, email, guests(passport_number))',
+    )
     .eq('reservation_id', reservationId)
   if (error) throw new Error(error.message)
 
@@ -31,6 +34,7 @@ export async function fetchPreloadedOccupants(
     firstName: r.people.first_name,
     lastName: r.people.last_name,
     document: r.people.guests?.[0]?.passport_number ?? null,
+    email: r.people.email,
     role: r.role,
     confirmedAt: r.confirmed_at,
   }))

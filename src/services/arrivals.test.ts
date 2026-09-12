@@ -139,6 +139,7 @@ describe('checkInFromReservation', () => {
       p_country_code: 'BOL',
       p_city: 'La Paz',
       p_wants_offers: false,
+      p_email: null,
       p_origin_city: 'Cochabamba',
       p_travel_purpose: 'Turismo',
       p_occupation: 'Ingeniero',
@@ -147,6 +148,24 @@ describe('checkInFromReservation', () => {
       p_agency_name: null,
       p_channel_code: null,
     })
+  })
+
+  it('forwards the trimmed email when present in the profile', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-10', { ...profile, email: '  ana@example.com  ' })
+    expect(rpcMock).toHaveBeenCalledWith(
+      'check_in_reservation_with_guests',
+      expect.objectContaining({ p_email: 'ana@example.com' }),
+    )
+  })
+
+  it('sends null (not empty string) when email is blank', async () => {
+    rpcMock.mockClear()
+    await checkInFromReservation('res-11', { ...profile, email: '   ' })
+    expect(rpcMock).toHaveBeenCalledWith(
+      'check_in_reservation_with_guests',
+      expect.objectContaining({ p_email: null }),
+    )
   })
 
   it('forwards agencyName and channelCode when present in the profile', async () => {

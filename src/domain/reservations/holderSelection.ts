@@ -69,6 +69,7 @@ export interface PreloadedOccupant {
   firstName: string
   lastName: string
   document: string | null
+  email: string | null
   role: 'holder' | 'companion'
   confirmedAt: string | null
 }

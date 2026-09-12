@@ -67,6 +67,7 @@ describe('companionsFromOccupants', () => {
       firstName: 'Ana',
       lastName: 'Pérez',
       document: '123',
+      email: null,
       role: 'holder',
       confirmedAt: null,
     },
@@ -75,6 +76,7 @@ describe('companionsFromOccupants', () => {
       firstName: 'Luis',
       lastName: 'Gómez',
       document: null,
+      email: null,
       role: 'companion',
       confirmedAt: null,
     },
@@ -88,7 +90,7 @@ describe('companionsFromOccupants', () => {
 
   it('carries the stored document through when the preloaded occupant has one', () => {
     const withDoc: PreloadedOccupant[] = [
-      { personId: 'p-3', firstName: 'Rosa', lastName: 'Díaz', document: '999', role: 'companion', confirmedAt: null },
+      { personId: 'p-3', firstName: 'Rosa', lastName: 'Díaz', document: '999', email: null, role: 'companion', confirmedAt: null },
     ]
     const result = companionsFromOccupants(withDoc, null)
     expect(result[0]).toMatchObject({ firstName: 'Rosa', lastName: 'Díaz', document: '999' })
@@ -107,7 +109,7 @@ describe('holderUiShape', () => {
 
   it('shows the occupant choice when there is at least one preloaded occupant', () => {
     const occupants: PreloadedOccupant[] = [
-      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, role: 'companion', confirmedAt: null },
+      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, email: null, role: 'companion', confirmedAt: null },
     ]
     expect(holderUiShape(occupants)).toBe('choose-occupant')
   })
@@ -120,7 +122,7 @@ describe('initialHolderSelection', () => {
 
   it('defaults to no selection when there are preloaded occupants to choose from', () => {
     const occupants: PreloadedOccupant[] = [
-      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, role: 'companion', confirmedAt: null },
+      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, email: null, role: 'companion', confirmedAt: null },
     ]
     expect(initialHolderSelection(occupants)).toEqual({ kind: 'none' })
   })
