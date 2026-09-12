@@ -19,6 +19,7 @@ import {
   type PreloadedOccupant,
 } from '../../domain/reservations/holderSelection'
 import { checkinEmailError, checkinEmailRequired } from '../../domain/reservations/checkinEmail'
+import { holderPrefillFields, holderToPrefill } from '../../domain/reservations/holderPrefill'
 import { cancelReservation, rescheduleReservation } from '../../services/reservations'
 import { needsOccupancyReason, occupancyReasonParam } from '../../domain/reservations/occupancyReason'
 import { CompanionFields } from '../checkin/CompanionFields'
@@ -164,15 +165,27 @@ function CheckInModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [occupants, holderSelection])
 
-  // Si el titular elegido es un ocupante YA precargado (con documento
-  // cargado al reservar), el check-in es CONFIRMAR ese dato, no pedirlo de
-  // nuevo vacío (issue 5 del smoke test manual, PR7).
+  // Si el titular ya se conoce (guest_id resuelto al reservar) o recién se
+  // eligió de la lista de ocupantes precargados, el check-in es CONFIRMAR
+  // sus datos ya guardados, no pedirlos de nuevo vacíos — antes esto solo
+  // corría al ELEGIR de la lista ámbar, y esa lista nunca aparece cuando el
+  // titular ya viene resuelto desde la reserva (bug reportado: reserva
+  // bulk con documento cargado llegaba al check-in con Documento vacío).
+  // Ver domain/reservations/holderPrefill.ts.
   useEffect(() => {
-    if (holderSelection.kind !== 'existing') return
-    const holder = occupants.find((o) => o.personId === holderSelection.personId)
-    if (holder?.document) setDocument(holder.document)
+    const holder = holderToPrefill(occupants, needsHolder, holderSelection)
+    if (!holder) return
+    const fields = holderPrefillFields(holder)
+    setDocument(fields.document)
+    setBirthDate(fields.birthDate)
+    setCountryCode(fields.countryCode)
+    setCity(fields.city)
+    setOriginCity(fields.originCity)
+    setTravelPurpose(fields.travelPurpose)
+    setOccupation(fields.occupation)
+    setTransportMeans(fields.transportMeans)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [holderSelection, occupants])
+  }, [holderSelection, occupants, needsHolder])
 
   // Edición de tarifa al cargar la reserva (root/reception), con
   // justificación obligatoria. La tarifa se aplica DENTRO del mismo submit

@@ -8,6 +8,18 @@ import {
   type PreloadedOccupant,
 } from './holderSelection'
 
+// Campos de perfil de viaje que no importan para estos tests (ver
+// holderPrefill.test.ts para su cobertura) pero que el tipo exige.
+const BLANK_PROFILE = {
+  birthDate: null,
+  countryCode: null,
+  city: null,
+  originCity: null,
+  travelPurpose: null,
+  occupation: null,
+  transportMeans: null,
+}
+
 describe('holderRpcParams', () => {
   it('returns empty params when the stay already has a holder (nothing to resolve)', () => {
     expect(holderRpcParams(false, { kind: 'none' })).toEqual({})
@@ -70,6 +82,7 @@ describe('companionsFromOccupants', () => {
       email: null,
       role: 'holder',
       confirmedAt: null,
+      ...BLANK_PROFILE,
     },
     {
       personId: 'p-2',
@@ -79,6 +92,7 @@ describe('companionsFromOccupants', () => {
       email: null,
       role: 'companion',
       confirmedAt: null,
+      ...BLANK_PROFILE,
     },
   ]
 
@@ -90,7 +104,7 @@ describe('companionsFromOccupants', () => {
 
   it('carries the stored document through when the preloaded occupant has one', () => {
     const withDoc: PreloadedOccupant[] = [
-      { personId: 'p-3', firstName: 'Rosa', lastName: 'Díaz', document: '999', email: null, role: 'companion', confirmedAt: null },
+      { personId: 'p-3', firstName: 'Rosa', lastName: 'Díaz', document: '999', email: null, role: 'companion', confirmedAt: null, ...BLANK_PROFILE },
     ]
     const result = companionsFromOccupants(withDoc, null)
     expect(result[0]).toMatchObject({ firstName: 'Rosa', lastName: 'Díaz', document: '999' })
@@ -109,7 +123,7 @@ describe('holderUiShape', () => {
 
   it('shows the occupant choice when there is at least one preloaded occupant', () => {
     const occupants: PreloadedOccupant[] = [
-      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, email: null, role: 'companion', confirmedAt: null },
+      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, email: null, role: 'companion', confirmedAt: null, ...BLANK_PROFILE },
     ]
     expect(holderUiShape(occupants)).toBe('choose-occupant')
   })
@@ -122,7 +136,7 @@ describe('initialHolderSelection', () => {
 
   it('defaults to no selection when there are preloaded occupants to choose from', () => {
     const occupants: PreloadedOccupant[] = [
-      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, email: null, role: 'companion', confirmedAt: null },
+      { personId: 'p-1', firstName: 'Ana', lastName: 'Pérez', document: null, email: null, role: 'companion', confirmedAt: null, ...BLANK_PROFILE },
     ]
     expect(initialHolderSelection(occupants)).toEqual({ kind: 'none' })
   })

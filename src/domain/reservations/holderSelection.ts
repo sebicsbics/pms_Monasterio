@@ -72,12 +72,26 @@ export interface PreloadedOccupant {
   email: string | null
   role: 'holder' | 'companion'
   confirmedAt: string | null
+  birthDate: string | null
+  countryCode: string | null
+  city: string | null
+  originCity: string | null
+  travelPurpose: string | null
+  occupation: string | null
+  transportMeans: string | null
 }
 
 export interface CompanionDraft {
   firstName: string
   lastName: string
   document: string
+  birthDate: string
+  countryCode: string
+  city: string
+  originCity: string
+  travelPurpose: string
+  occupation: string
+  transportMeans: string
 }
 
 // Ocupantes precargados que NO se eligieron como titular pasan a la lista
@@ -91,5 +105,16 @@ export function companionsFromOccupants(
 ): CompanionDraft[] {
   return occupants
     .filter((o) => o.personId !== excludeHolderPersonId)
-    .map((o) => ({ firstName: o.firstName, lastName: o.lastName, document: o.document ?? '' }))
+    .map((o) => ({
+      firstName: o.firstName,
+      lastName: o.lastName,
+      document: o.document ?? '',
+      birthDate: o.birthDate ?? '',
+      countryCode: o.countryCode ?? '',
+      city: o.city ?? '',
+      originCity: o.originCity ?? '',
+      travelPurpose: o.travelPurpose ?? '',
+      occupation: o.occupation ?? '',
+      transportMeans: o.transportMeans ?? '',
+    }))
 }
