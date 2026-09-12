@@ -4,6 +4,9 @@ import {
   type MixedPayment,
   type NonCashMethod,
 } from '../../domain/payments/mixedPayment'
+
+const nonCashLabel = (method: NonCashMethod): string =>
+  NON_CASH_METHODS.find((m) => m.code === method)?.label ?? method
 import type { PaymentProof } from '../../domain/payments/paymentProof'
 import { PaymentProofFields } from './PaymentProofFields'
 
@@ -51,7 +54,7 @@ export function MixedPaymentFields({
         </label>
         <label className="w-1/2 text-sm">
           <span className="mb-1 block text-xs font-medium text-slate-500">
-            Por {split.nonCashMethod === 'QR' ? 'QR' : 'tarjeta'} (Bs)
+            Por {nonCashLabel(split.nonCashMethod)} (Bs)
           </span>
           <input
             type="number"

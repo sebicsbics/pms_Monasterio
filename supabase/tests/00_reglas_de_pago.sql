@@ -8,7 +8,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(22);
 
 -- ---------- assert_payment_proof: la regla compartida ----------
 select lives_ok(
@@ -79,6 +79,30 @@ select throws_ok(
   'P0001',
   null,
   'una mitad en cero es un pago simple, no mixto'
+);
+select throws_ok(
+  $$ select public.record_mixed_income(450, 300, 150, 'EFECTIVO', 'adelanto', 'test', null, null) $$,
+  'P0001',
+  'La parte no-efectivo debe ser QR, TARJETA o DEPOSITO (recibido: EFECTIVO)',
+  'un medio no-efectivo inválido se rechaza con el mensaje completo'
+);
+
+-- ---------- record_mixed_income con DEPOSITO: sin respaldo, dos movimientos ----------
+select lives_ok(
+  $$ select public.record_mixed_income(450, 300, 150, 'DEPOSITO', 'adelanto', 'test depósito', null, null) $$,
+  'un pago mixto con DEPOSITO no exige comprobante ni referencia'
+);
+select results_eq(
+  $$ select payment_method, amount_bs from public.cash_movements
+     where concept = 'test depósito (mixto: efectivo)' $$,
+  $$ values ('EFECTIVO'::text, 300::numeric) $$,
+  'el mixto con depósito registra el movimiento en efectivo'
+);
+select results_eq(
+  $$ select payment_method, amount_bs from public.cash_movements
+     where concept = 'test depósito (mixto: deposito)' $$,
+  $$ values ('DEPOSITO'::text, 150::numeric) $$,
+  'el mixto con depósito registra el movimiento electrónico'
 );
 
 select * from finish();

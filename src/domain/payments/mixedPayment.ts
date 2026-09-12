@@ -6,11 +6,12 @@ import { needsPaymentReference, needsReceiptPhoto, type PaymentProof } from './p
 // y cuenta para el arqueo, lo electrónico no. Por eso se registra como dos
 // movimientos de caja separados y no como uno solo etiquetado "mixto" —
 // eso volvería a mezclar justo lo que la pestaña "Otros medios" separa.
-export type NonCashMethod = 'QR' | 'TARJETA'
+export type NonCashMethod = 'QR' | 'TARJETA' | 'DEPOSITO'
 
 export const NON_CASH_METHODS: { code: NonCashMethod; label: string }[] = [
   { code: 'QR', label: 'QR' },
   { code: 'TARJETA', label: 'Tarjeta' },
+  { code: 'DEPOSITO', label: 'Depósito bancario' },
 ]
 
 export interface MixedPayment {

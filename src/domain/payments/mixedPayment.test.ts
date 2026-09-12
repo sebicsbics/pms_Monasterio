@@ -4,6 +4,7 @@ import {
   EMPTY_MIXED_PAYMENT,
   isMixed,
   mixedPaymentError,
+  NON_CASH_METHODS,
   type MixedPayment,
 } from './mixedPayment'
 import { EMPTY_PAYMENT_PROOF, type PaymentProof } from './paymentProof'
@@ -15,6 +16,16 @@ const withRef: PaymentProof = { receipt: null, paymentReference: 'AB12345' }
 function split(patch: Partial<MixedPayment> = {}): MixedPayment {
   return { ...EMPTY_MIXED_PAYMENT, cashBs: '300', nonCashBs: '150', ...patch }
 }
+
+describe('NON_CASH_METHODS', () => {
+  it('offers QR, tarjeta and depósito, in that order', () => {
+    expect(NON_CASH_METHODS).toEqual([
+      { code: 'QR', label: 'QR' },
+      { code: 'TARJETA', label: 'Tarjeta' },
+      { code: 'DEPOSITO', label: 'Depósito bancario' },
+    ])
+  })
+})
 
 describe('isMixed', () => {
   it('only matches MIXTO', () => {
@@ -88,6 +99,12 @@ describe('mixedPaymentError', () => {
     ).toMatch(/código de referencia/i)
     expect(
       mixedPaymentError(450, split({ nonCashMethod: 'TARJETA' }), withRef),
+    ).toBeNull()
+  })
+
+  it('needs no proof at all when the electronic half is a bank deposit', () => {
+    expect(
+      mixedPaymentError(450, split({ nonCashMethod: 'DEPOSITO' }), EMPTY_PAYMENT_PROOF),
     ).toBeNull()
   })
 
