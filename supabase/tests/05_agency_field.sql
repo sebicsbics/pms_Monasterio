@@ -171,7 +171,7 @@ select is(
 );
 select ok(
   has_function_privilege('authenticated',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text,text)',
     'execute'),
   'authenticated conserva EXECUTE sobre check_in_reservation_with_guests tras el drop+create'
 );

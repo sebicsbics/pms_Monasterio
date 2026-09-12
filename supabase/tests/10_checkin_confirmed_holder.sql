@@ -411,11 +411,11 @@ select pass('huésped que regresa (documento ya existente) se reutiliza como tit
 -- 10) Higiene de grants (funciones tocadas en esta migración).
 -- ---------------------------------------------------------------------
 select ok(not has_function_privilege('anon',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text,text)',
     'execute'),
   'anon no puede ejecutar check_in_reservation_with_guests');
 select ok(has_function_privilege('authenticated',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text,text)',
     'execute'),
   'authenticated sí puede ejecutar check_in_reservation_with_guests');
 

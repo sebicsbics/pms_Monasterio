@@ -369,11 +369,11 @@ select pass('create_bulk_reservation: el techo de sanity de 20 personas sigue vi
 --    la tabla nueva.
 -- ---------------------------------------------------------------------
 select ok(not has_function_privilege('anon',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text,text)',
     'execute'),
   'anon no puede ejecutar check_in_reservation_with_guests (arity nueva)');
 select ok(has_function_privilege('authenticated',
-    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text)',
+    'public.check_in_reservation_with_guests(uuid,text,date,text,text,boolean,text,text,text,text,jsonb,text,text,text,text,uuid,text,text)',
     'execute'),
   'authenticated sí puede ejecutar check_in_reservation_with_guests (arity nueva)');
 
