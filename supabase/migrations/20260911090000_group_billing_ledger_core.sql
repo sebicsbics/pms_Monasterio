@@ -21,6 +21,29 @@
 -- receivable por booking) para que el cierre del grupo (Slice 5) pueda
 -- dejar la deuda pendiente contra el booking completo, no contra una
 -- reserva individual como hace hoy check_out_room con CTAS_POR_COBRAR.
+--
+-- net_owed_bs es SECURITY DEFINER y por lo tanto corre con los privilegios
+-- de su dueño -- eso hace que IGNORE la política de RLS de booking_balances
+-- (booking_balances_read: root/reception/reception_admin/accountant) si no
+-- tiene guard de rol propio. Por eso se separa en dos funciones desde el
+-- principio, mismo patrón que list_anticipos (20260807010000) y
+-- check_out_room (20260729000200):
+--   - _net_owed_bs: el cálculo puro, SIN guard de rol. La usan
+--     triggers/RPCs internos (Slices 4, 5, 5b -- record_booking_advance,
+--     _close_booking_group, settle_receivable) que corren en el contexto
+--     de una acción ya autorizada (check-out, cancelación, adelanto) y
+--     NUNCA deben fallar con "No autorizado" por el rol de quien la
+--     disparó. Revocada de public, anon Y authenticated: nadie la llama
+--     directo, sólo otras funciones SECURITY DEFINER.
+--   - net_owed_bs: wrapper público, con el mismo guard de rol que
+--     booking_balances_read. Es la única forma en que un cliente
+--     (frontend/API) puede consultar el saldo.
+--
+-- IMPORTANTE para branches futuros de este stage: cualquier trigger/RPC
+-- nuevo que necesite el saldo de un booking DEBE llamar `_net_owed_bs`,
+-- nunca `net_owed_bs` (el guard de rol rompería un trigger disparado por
+-- un rol que no esté en booking_balances_read, aunque la acción original
+-- sí estuviera autorizada por su propio guard).
 -- =====================================================================
 
 create table public.booking_balances (
@@ -46,7 +69,7 @@ create policy "booking_balances_read" on public.booking_balances
 -- corren como el dueño de la función, no como el rol autenticado. Ningún
 -- rol de la app puede insertar, editar ni borrar filas directamente.
 
-create function public.net_owed_bs(p_booking_id uuid)
+create function public._net_owed_bs(p_booking_id uuid)
 returns numeric
 language sql
 stable
@@ -57,6 +80,22 @@ as $$
        - coalesce(sum(amount_bs) filter (where event_type = 'advance_received'), 0)
   from public.booking_balances
   where booking_id = p_booking_id;
+$$;
+revoke execute on function public._net_owed_bs(uuid) from public, anon, authenticated;
+
+create function public.net_owed_bs(p_booking_id uuid)
+returns numeric
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if public.current_user_role() not in ('root', 'reception', 'reception_admin', 'accountant') then
+    raise exception 'No autorizado para ver saldos de grupo';
+  end if;
+  return public._net_owed_bs(p_booking_id);
+end;
 $$;
 revoke execute on function public.net_owed_bs(uuid) from public, anon;
 grant execute on function public.net_owed_bs(uuid) to authenticated;
