@@ -17,7 +17,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(26);
+select plan(33);
 
 -- ---------------------------------------------------------------------
 -- 0) Forma del esquema.
@@ -79,6 +79,13 @@ begin
   create temp table fixture_ids as
     select v_booking as booking_id, v_account as account_id, v_contract_id as contract_id;
 end $$;
+
+-- net_owed_bs ahora exige un rol autorizado (fix de seguridad, ver
+-- sección 5): fijamos el JWT a 'root' para poder seguir probando los
+-- valores calculados desde acá sin bajar de rol de Postgres (seguimos
+-- como superusuario para el resto de los fixtures).
+select set_config('request.jwt.claims',
+  '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
 
 select is(
   public.net_owed_bs((select booking_id from fixture_ids)),
@@ -165,6 +172,62 @@ select is(
   3000::numeric,
   'la fila contract_agreed original sigue intacta tras los intentos fallidos de UPDATE/DELETE'
 );
+
+-- ---------------------------------------------------------------------
+-- 5) Fix de seguridad (review de 83f4d73): net_owed_bs es SECURITY
+--    DEFINER y por lo tanto corre como su dueño, bypaseando RLS -- sin un
+--    guard de rol propio, cualquier autenticado (incluso 'owner', que NO
+--    está en booking_balances_read) podía leer el saldo de cualquier
+--    booking. Se separó en `_net_owed_bs` (cálculo interno sin guard,
+--    para triggers/RPCs que no deben depender del rol de quien disparó
+--    la acción original) y `net_owed_bs` (wrapper público con el mismo
+--    guard de rol que booking_balances_read).
+-- ---------------------------------------------------------------------
+
+-- (a, neg) 'owner' no está en booking_balances_read -> net_owed_bs debe rechazarlo.
+select set_config('request.jwt.claims',
+  '{"sub":"55555555-5555-5555-5555-555555555555","role":"authenticated"}', true);
+set local role authenticated;
+select is(current_user_role(), 'owner', 'fixture: sesión autenticada con rol owner');
+select throws_matching(
+  $$ select public.net_owed_bs((select booking_id from fixture_ids)) $$,
+  'No autorizado',
+  'owner no puede leer el saldo de un booking via net_owed_bs (antes se filtraba pese a no tener acceso a booking_balances)'
+);
+reset role;
+
+-- (b) 'reception' SÍ está en booking_balances_read -> net_owed_bs debe seguir funcionando.
+select set_config('request.jwt.claims',
+  '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+set local role authenticated;
+select is(current_user_role(), 'reception', 'fixture: sesión autenticada con rol reception');
+select is(
+  public.net_owed_bs((select booking_id from fixture_ids)),
+  2000::numeric,
+  'reception SÍ puede leer el saldo via net_owed_bs (2000 = contrato 3000 - adelanto 1000)'
+);
+reset role;
+
+-- (c, neg) _net_owed_bs es un helper interno: ni anon ni authenticated lo ejecutan directo.
+select ok(not has_function_privilege('authenticated', 'public._net_owed_bs(uuid)', 'execute'),
+  'authenticated NO puede ejecutar _net_owed_bs directamente (helper interno de triggers/RPCs)');
+select ok(not has_function_privilege('anon', 'public._net_owed_bs(uuid)', 'execute'),
+  'anon NO puede ejecutar _net_owed_bs directamente');
+
+-- (d, neg) authenticated (incluso root) no puede insertar en booking_balances:
+-- RLS habilitada, sin política de INSERT -> rechazado explícitamente (no en
+-- silencio como UPDATE/DELETE, porque INSERT sí valida contra las políticas
+-- existentes y lanza si ninguna aplica).
+select set_config('request.jwt.claims',
+  '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+set local role authenticated;
+select throws_matching(
+  $$ insert into public.booking_balances (booking_id, event_type, amount_bs)
+     select booking_id, 'contract_agreed', 1 from fixture_ids $$,
+  'new row violates row-level security policy',
+  'authenticated (incluso root) no puede insertar en booking_balances directo (sólo RPC/trigger SECURITY DEFINER)'
+);
+reset role;
 
 select * from finish();
 rollback;
