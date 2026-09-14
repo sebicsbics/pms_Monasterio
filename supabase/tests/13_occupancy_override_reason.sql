@@ -387,7 +387,7 @@ select ok(not has_function_privilege('anon',
   'anon no puede ejecutar add_guests_to_stay (arity nueva)');
 
 select ok(not has_function_privilege('anon',
-    'public.create_bulk_reservation(jsonb,text,text,text,text,date,date,text,numeric,text)', 'execute'),
+    'public.create_bulk_reservation(jsonb,text,text,text,text,date,date,text,numeric,text,text,text,numeric,uuid,text,text,text,text)', 'execute'),
   'anon no puede ejecutar create_bulk_reservation');
 
 select ok(not has_table_privilege('anon', 'public.occupancy_overrides', 'select'),

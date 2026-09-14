@@ -378,11 +378,11 @@ select ok(has_function_privilege('authenticated',
   'authenticated sí puede ejecutar create_reservation');
 
 select ok(not has_function_privilege('anon',
-    'public.create_bulk_reservation(jsonb,text,text,text,text,date,date,text,numeric,text)',
+    'public.create_bulk_reservation(jsonb,text,text,text,text,date,date,text,numeric,text,text,text,numeric,uuid,text,text,text,text)',
     'execute'),
   'anon no puede ejecutar create_bulk_reservation');
 select ok(has_function_privilege('authenticated',
-    'public.create_bulk_reservation(jsonb,text,text,text,text,date,date,text,numeric,text)',
+    'public.create_bulk_reservation(jsonb,text,text,text,text,date,date,text,numeric,text,text,text,numeric,uuid,text,text,text,text)',
     'execute'),
   'authenticated sí puede ejecutar create_bulk_reservation');
 
