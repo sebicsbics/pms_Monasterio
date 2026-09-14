@@ -14,6 +14,16 @@
 -- 'pending' llamando `assignable_staff()` se trae el legajo completo de
 -- personal (nombre + puesto) sin ninguna precondición.
 --
+-- LÍMITES DE ESTE TEST (leer antes de confiar en él):
+--   * La aserción general (e) busca `current_user_role()`/`is_staff()` en
+--     el texto de la función: prueba PRESENCIA, no CORRECCIÓN. Un comentario
+--     que los mencione, o un guard con la lógica invertida, también pasa.
+--     Cada guard nuevo necesita además su propio test con un rol no
+--     autorizado.
+--   * (b)/(c) ya pasaban antes del fix porque las funciones internas
+--     (`check_in_reservation`/`walk_in_check_in`) tienen su propio guard.
+--     Confirman el comportamiento; el respaldo ante una regresión es (e).
+--
 -- `check_in_reservation_with_guests` es más grave todavía: hace escrituras
 -- reales (crea/actualiza `people`, `guests`, `reservation_guests`,
 -- `occupancy_overrides`, `reservations.guest_id`) ANTES de llamar a
