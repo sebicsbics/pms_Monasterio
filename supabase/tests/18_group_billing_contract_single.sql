@@ -11,7 +11,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(33);
+select plan(37);
 
 -- ---------------------------------------------------------------------
 -- Fixtures compartidos (como postgres/superusuario).
@@ -529,6 +529,50 @@ select is(
   null::regprocedure,
   'la firma vieja de 13 parámetros ya no existe (DROP FUNCTION de este slice)'
 );
+
+-- ---------------------------------------------------------------------
+-- (p, neg, fix sdd/group-billing/review-booking-10) p_payer_mode=NULL
+--          -> rechazado con el mensaje en español. Antes: `NULL not in
+--          (...)` evalúa a NULL (no a TRUE), el IF nunca disparaba, y
+--          la llamada fallaba más abajo con una violación NOT NULL
+--          cruda en vez de con el mensaje claro (mismo patrón de #368,
+--          esta vez en un IF plpgsql). Cero efectos secundarios.
+-- ---------------------------------------------------------------------
+create temp table snap_p as select pg_temp.snap() as s;
+
+select throws_matching(
+  $$ select public.create_reservation(
+       (select room_id from fixture_e), (select room_type_id from fixture_e),
+       'Payer', 'Nulo', '70000014', 'payer.nulo@fixture.test',
+       '2027-05-22', '2027-05-24', 1, 'phone', null, null, true,
+       null, 'room', null, null, null, null, null, null, false, null
+     ) $$,
+  'Modalidad de pago inválida',
+  'p_payer_mode=NULL es rechazado con el mensaje en español, no con un error crudo'
+);
+select is(pg_temp.snap(), (select s from snap_p),
+  'la llamada rechazada (p, payer_mode NULL) no dejó gente/bookings/reservations/cuentas/ledger nuevos');
+
+-- ---------------------------------------------------------------------
+-- (q, neg, fix sdd/group-billing/review-booking-10) p_rate_mode=NULL
+--          (con payer_mode='client') -> rechazado con el mensaje en
+--          español, mismo trap. Cero efectos secundarios.
+-- ---------------------------------------------------------------------
+create temp table snap_q as select pg_temp.snap() as s;
+
+select throws_matching(
+  $$ select public.create_reservation(
+       (select room_id from fixture_e), (select room_type_id from fixture_e),
+       'Rate', 'Nulo', '70000015', 'rate.nulo@fixture.test',
+       '2027-05-22', '2027-05-24', 1, 'phone', null, null, true,
+       'client', null, null, (select account_id from fixture_account),
+       null, null, null, null, false, null
+     ) $$,
+  'Modalidad de tarifa inválida',
+  'p_rate_mode=NULL es rechazado con el mensaje en español, no con un error crudo'
+);
+select is(pg_temp.snap(), (select s from snap_q),
+  'la llamada rechazada (q, rate_mode NULL) no dejó gente/bookings/reservations/cuentas/ledger nuevos');
 
 select * from finish();
 rollback;

@@ -90,20 +90,43 @@ begin
     raise exception 'La habitación ya no está disponible para esas fechas';
   end if;
 
-  -- (b) payer_mode + gate de rol para 'client', ANTES de tocar
-  -- receivable_accounts (_resolve_receivable_account es SECURITY
-  -- DEFINER y evade su RLS por su cuenta).
-  if p_payer_mode not in ('client', 'each_stay') then
+  -- (b) Normalización + payer_mode/rate_mode + gate de rol para
+  -- 'client', ANTES de tocar receivable_accounts (_resolve_receivable_
+  -- account es SECURITY DEFINER y evade su RLS por su cuenta).
+  --
+  -- FIX (sdd/group-billing/review-booking-10, mismo patrón de #368):
+  -- en Postgres, `NULL not in (...)` evalúa a NULL, no a TRUE -- un IF
+  -- escrito así NUNCA dispara para un parámetro NULL. Antes de este
+  -- fix, p_payer_mode=NULL (o p_rate_mode=NULL) se colaba sin el
+  -- mensaje en español y la llamada fallaba más abajo con una
+  -- violación NOT NULL cruda al insertar en bookings. Se corrige con
+  -- `is null or` explícito. p_is_courtesy se normaliza con coalesce
+  -- (booleano con default sensato -- NULL se trata como "no es
+  -- cortesía", igual que el DEFAULT false de la columna) en vez de
+  -- exigir un valor explícito, porque a diferencia de payer_mode/
+  -- rate_mode no es un enum de negocio sin default razonable. El
+  -- chequeo de rate_mode pasa a ser INCONDICIONAL (antes sólo corría
+  -- si payer_mode='client'): rate_mode siempre se inserta en una
+  -- columna NOT NULL con su propio CHECK de dominio
+  -- (bookings_rate_mode_check), así que validarlo siempre, no sólo
+  -- para client, también cierra el mismo hueco para each_stay con un
+  -- rate_mode inválido -- antes cualquiera de los dos casos cursaba
+  -- las 240 líneas de la función hasta un error de Postgres crudo.
+  p_is_courtesy := coalesce(p_is_courtesy, false);
+
+  if p_payer_mode is null or p_payer_mode not in ('client', 'each_stay') then
     raise exception 'Modalidad de pago inválida: %', p_payer_mode;
+  end if;
+  if p_rate_mode is null or p_rate_mode not in ('room', 'person') then
+    raise exception 'Modalidad de tarifa inválida: %', p_rate_mode;
   end if;
   if p_payer_mode = 'client' and public.current_user_role() not in ('root', 'reception_admin') then
     raise exception 'Solo un administrador de recepción puede crear una reserva institucional';
   end if;
 
-  -- (c) Combos rate_mode / precio / cortesía.
-  if p_payer_mode = 'client' and p_rate_mode not in ('room', 'person') then
-    raise exception 'Modalidad de tarifa inválida: %', p_rate_mode;
-  end if;
+  -- (c) Combos rate_mode / precio / cortesía. payer_mode y rate_mode ya
+  -- están garantizados no-nulos y de dominio válido por los checks de
+  -- arriba, así que las comparaciones `=`/`<>` que siguen son seguras.
   if p_rate_mode = 'person' and p_payer_mode <> 'client' then
     raise exception 'La tarifa por persona sólo aplica a reservas institucionales';
   end if;
