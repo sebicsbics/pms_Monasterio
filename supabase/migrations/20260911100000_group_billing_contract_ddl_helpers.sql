@@ -45,13 +45,53 @@
 -- apply_rate_change ya gateado a reception_admin -- ya decidió aplicar
 -- directo). apply_rate_change EN SÍ NO se toca en este branch --
 -- eso es feat/booking-13-rate-lock.
+--
+-- SEGURIDAD -- _resolve_receivable_account es SECURITY DEFINER: el INSERT
+-- a receivable_accounts que hace al crear una cuenta nueva IGNORA la
+-- política RLS "receivable_accounts_ops" (root/reception/reception_admin
+-- únicamente). Esto es aceptable en este branch porque el helper todavía
+-- no lo llama nadie -- pero es una obligación para quien lo cablee:
+-- feat/booking-10-contract-single y feat/booking-11-contract-bulk DEBEN
+-- gatear la creación de un booking payer_mode='client' (y por lo tanto
+-- cualquier llamada a este helper) a root/reception_admin ANTES de
+-- invocarlo, igual que ya hace create_reservation con el resto de la
+-- lógica de payer_mode='client'. Sin ese gate, cualquier rol autenticado
+-- podría crear cuentas por cobrar activas sin pasar por la política.
+--
+-- REVISIÓN (2026-09-14, sdd/group-billing/review-booking-9 #366 /
+-- booking-9-fixes #367, APPROVE WITH FIXES sobre edaec2f) -- dos gaps de
+-- integridad encontrados en bookings_person_rate_requires_price:
+--   1. Sólo exigía "no nulo": un agreed_unit_price_bs=-50 pasaba. Se
+--      corrige a "> 0" (0 y negativos también rechazados).
+--   2. No existía ninguna restricción del lado contrario: rate_mode='room'
+--      con un agreed_unit_price_bs no nulo pasaba sin problema, dejando un
+--      precio "muerto" sin sentido de negocio (el total en ese modo sale
+--      de reservations.total_amount_bs, agreed_unit_price_bs no se lee
+--      nunca). Se agrega bookings_room_rate_has_no_unit_price.
+-- IMPORTANTE -- igual que el CHECK de courtesy_reason: la forma literal
+-- `agreed_unit_price_bs > 0` NO alcanza para rechazar rate_mode='person'
+-- con agreed_unit_price_bs NULL, porque `null > 0` evalúa a NULL (no a
+-- false) y Postgres sólo rechaza una fila por CHECK cuando el resultado es
+-- explícitamente false. Confirmado empíricamente en esta sesión (regresión
+-- del propio test (a) de este archivo, que ya exigía ese rechazo desde
+-- antes de esta revisión). Se usa coalesce(agreed_unit_price_bs, 0) > 0
+-- para que NULL sí caiga.
+-- Esta migración TODAVÍA no se pusheó a ningún ambiente compartido, así
+-- que se corrige EN EL MISMO archivo (no una migración nueva), mismo
+-- criterio que sdd/conventions/unpushed-migration-squash (#354). La base
+-- local YA tenía la definición vieja de bookings_person_rate_requires_price
+-- aplicada -- se reconcilia con SQL puntual (drop+add exactamente lo que
+-- dice este archivo) documentado en sdd/group-billing/apply-progress, sin
+-- `supabase db reset`.
 -- =====================================================================
 
 alter table public.bookings
   add column rate_mode text not null default 'room' check (rate_mode in ('room', 'person')),
   add column agreed_unit_price_bs numeric(10,2),
   add constraint bookings_person_rate_requires_price
-    check (rate_mode <> 'person' or agreed_unit_price_bs is not null),
+    check (rate_mode <> 'person' or coalesce(agreed_unit_price_bs, 0) > 0),
+  add constraint bookings_room_rate_has_no_unit_price
+    check (rate_mode = 'person' or agreed_unit_price_bs is null),
   add constraint bookings_person_rate_requires_client
     check (rate_mode <> 'person' or payer_mode = 'client'),
   add constraint bookings_client_requires_account

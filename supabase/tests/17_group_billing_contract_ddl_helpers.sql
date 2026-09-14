@@ -23,7 +23,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(36);
 
 -- ---------------------------------------------------------------------
 -- 0) Forma del esquema.
@@ -116,13 +116,69 @@ select lives_ok(
   'combo válido client+person+precio+cuenta es aceptado'
 );
 
--- (regresión) las 7 reservas/bookings each_stay/room preexistentes siguen
--- siendo válidas tras las 5 ALTER TABLE de este slice (ninguna violó los
+-- ---------------------------------------------------------------------
+-- 3b) FIX de review (edaec2f -> sdd/group-billing/review-booking-9 #366 /
+--     booking-9-fixes #367): agreed_unit_price_bs debe ser positivo en
+--     rate_mode='person' (el CHECK original sólo pedía "no nulo": -50
+--     pasaba) y prohibido (NULL) en rate_mode='room' (antes un precio
+--     "muerto" en modo habitación pasaba sin problema, datos
+--     inconsistentes sin razón de negocio).
+-- ---------------------------------------------------------------------
+
+-- (a2, neg) rate_mode='person' con agreed_unit_price_bs=0 -> rechazado.
+select throws_matching(
+  $$ insert into public.bookings (contact_person_id, payer_mode, rate_mode, agreed_unit_price_bs, receivable_account_id)
+     select contact_person_id, 'client', 'person', 0, (select account_id from fixture_ids)
+     from fixture $$,
+  'bookings_person_rate_requires_price',
+  'rate_mode=person con agreed_unit_price_bs=0 es rechazado'
+);
+
+-- (a3, neg) rate_mode='person' con agreed_unit_price_bs=-50 -> rechazado.
+select throws_matching(
+  $$ insert into public.bookings (contact_person_id, payer_mode, rate_mode, agreed_unit_price_bs, receivable_account_id)
+     select contact_person_id, 'client', 'person', -50, (select account_id from fixture_ids)
+     from fixture $$,
+  'bookings_person_rate_requires_price',
+  'rate_mode=person con agreed_unit_price_bs=-50 es rechazado'
+);
+
+-- (i, neg) rate_mode='room' con agreed_unit_price_bs=999 -> rechazado
+-- (constraint NUEVA: un precio pactado no tiene sentido fuera de
+-- rate_mode='person').
+select throws_matching(
+  $$ insert into public.bookings (contact_person_id, payer_mode, rate_mode, agreed_unit_price_bs)
+     select contact_person_id, 'each_stay', 'room', 999
+     from fixture $$,
+  'bookings_room_rate_has_no_unit_price',
+  'rate_mode=room con agreed_unit_price_bs=999 es rechazado'
+);
+
+-- (i', positivo) rate_mode='room' con agreed_unit_price_bs NULL -> aceptado
+-- (comportamiento normal, sin cambios).
+select lives_ok(
+  $$ insert into public.bookings (contact_person_id, payer_mode, rate_mode, agreed_unit_price_bs)
+     select contact_person_id, 'each_stay', 'room', null
+     from fixture $$,
+  'rate_mode=room con agreed_unit_price_bs NULL es aceptado'
+);
+
+-- (a4, positivo) rate_mode='person' con agreed_unit_price_bs=300 -> aceptado.
+select lives_ok(
+  $$ insert into public.bookings (contact_person_id, payer_mode, rate_mode, agreed_unit_price_bs, receivable_account_id)
+     select contact_person_id, 'client', 'person', 300, (select account_id from fixture_ids)
+     from fixture $$,
+  'rate_mode=person con agreed_unit_price_bs=300 es aceptado'
+);
+
+-- (regresión) las 7 bookings each_stay/room preexistentes + la fixture
+-- "room+precio NULL" insertada arriba (i', válida a propósito) siguen
+-- siendo válidas tras las 6 ALTER TABLE de este slice (ninguna violó los
 -- nuevos CHECK ni quedó con NULL en una columna NOT NULL nueva).
 select is(
   (select count(*)::int from public.bookings where payer_mode = 'each_stay' and rate_mode = 'room'),
-  7,
-  'las 7 bookings each_stay preexistentes quedaron con rate_mode=room (default) y siguen siendo válidas'
+  8,
+  'las 7 bookings each_stay preexistentes + 1 fixture nueva (room+precio NULL) quedaron válidas'
 );
 
 -- ---------------------------------------------------------------------
