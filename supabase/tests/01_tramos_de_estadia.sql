@@ -3,6 +3,31 @@
 --
 -- Es la lógica que decide cuánto paga el huésped, así que se verifica el
 -- TOTAL resultante y no sólo que la función no explote.
+--
+-- FIXTURE PROPIA, relativa a current_date (revisión 2026-09-14, group-
+-- billing stage 6 / sdd/group-billing/booking-9-fixes #367 punto 5):
+-- antes este archivo leía la estadía "en curso" del seed
+-- (`status='checked_in' and total_amount_bs=1050.00`), cuyas fechas
+-- (`current_date - 2` .. `current_date + 1`) quedan fijas en la fila
+-- desde el momento en que corrió `supabase/seed.sql`. Como el seed no se
+-- re-corre en cada test run, una base local "envejecida" (varios días
+-- después del seed) hace que esas fechas queden en el pasado respecto al
+-- current_date REAL del momento del test -- y `modify_stay_dates` (única
+-- función de este stage que valida contra `current_date`, ver
+-- 20260807000000_cash_history_and_stay_dates.sql:196) empieza a rechazar
+-- el escenario "acortar hasta la salida original" con "noches ya
+-- dormidas". Se confirmó el problema re-produciéndolo en una base con 3
+-- días de antigüedad desde el seed.
+--
+-- La fixture ahora arma su PROPIA reserva `checked_in` con fechas
+-- calculadas desde `current_date` DENTRO de esta misma transacción
+-- (mismo patrón que 08_booking_foundation.sql/16_*/17_*: insertar
+-- room/room_type/booking/reservation directo, sin pasar por una RPC), así
+-- que la estadía sigue "en curso hoy" sin importar cuántos días pasaron
+-- desde el último seed. El trigger `trg_sync_single_stay_segment` (mismo
+-- que usa el seed) crea el tramo inicial automáticamente al insertar la
+-- reserva -- no hace falta insertarlo a mano. Cada assertion original
+-- se mantiene con el MISMO valor esperado (3 noches x 350 = 1050, etc.).
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -12,12 +37,44 @@ select plan(14);
 select set_config('request.jwt.claims',
   '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
 
--- Estadía del seed: 3 noches a 350 = 1050, en curso.
-create temp table caso on commit drop as
-select r.id as res_id, r.room_id, r.check_in_date, r.check_out_date
-from public.reservations r
-where r.status = 'checked_in' and r.total_amount_bs = 1050.00
-limit 1;
+-- Estadía propia: 3 noches a 350 = 1050, "en curso" (entró hace 2 días,
+-- salida pactada para mañana) -- misma forma que tenía la fila del seed,
+-- pero construida ahora mismo relativa a current_date.
+do $$
+declare
+  v_person  uuid;
+  v_booking uuid;
+  v_room    uuid;
+  v_room_type uuid;
+  v_reservation uuid;
+begin
+  insert into public.people (first_name, last_name, email)
+  values ('Fixture', 'Tramos de Estadía', 'fixture.tramos-de-estadia@test.local')
+  returning id into v_person;
+
+  insert into public.bookings (contact_person_id, payer_mode)
+  values (v_person, 'each_stay')
+  returning id into v_booking;
+
+  -- Habitación libre: ninguna otra reserva (seed ni de otros tests) la usa.
+  select o.room_id, o.room_type_id into v_room, v_room_type
+  from public.room_type_options o
+  where o.room_id not in (select room_id from public.reservations where room_id is not null)
+  limit 1;
+
+  insert into public.reservations (
+    guest_id, room_id, room_type_id, check_in_date, check_out_date,
+    num_guests, total_amount_bs, status, booking_id
+  ) values (
+    null, v_room, v_room_type, current_date - 2, current_date + 1,
+    1, 1050.00, 'checked_in', v_booking
+  ) returning id into v_reservation;
+
+  create temp table caso on commit drop as
+    select v_reservation as res_id, v_room as room_id,
+           (current_date - 2)::date as check_in_date,
+           (current_date + 1)::date as check_out_date;
+end $$;
 
 select is(
   (select count(*)::int from public.stay_segments s join caso c on c.res_id = s.reservation_id),
