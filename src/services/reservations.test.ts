@@ -224,7 +224,14 @@ describe('createBulkReservation', () => {
     })
     const payload = rpcMock.mock.calls[0][1] as { p_rooms: Record<string, unknown>[] }
     expect(payload.p_rooms).toEqual([
-      { room_id: 'room-1', room_type_id: 'type-1', num_guests: 2, occupants: [] },
+      {
+        room_id: 'room-1',
+        room_type_id: 'type-1',
+        num_guests: 2,
+        occupants: [],
+        is_courtesy: false,
+        courtesy_reason: null,
+      },
     ])
   })
 
@@ -261,7 +268,120 @@ describe('createBulkReservation', () => {
           { first_name: 'Juan', last_name: 'Titular', document: '123' },
           { first_name: 'Mari', last_name: 'Acompañante', document: null },
         ],
+        is_courtesy: false,
+        courtesy_reason: null,
       },
     ])
+  })
+
+  it('sends every booking-level payer/rate/account parameter the RPC declares, defaulting to each_stay', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: { created: [], failed: [] }, error: null })
+    await createBulkReservation({
+      rooms: [{ roomId: 'room-1', roomTypeId: 'type-1', numGuests: 2 }],
+      firstName: 'Org',
+      lastName: 'Anizador',
+      phone: '555',
+      email: '',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-07',
+      method: 'phone',
+    })
+    expect(rpcMock).toHaveBeenCalledWith('create_bulk_reservation', {
+      p_rooms: [
+        {
+          room_id: 'room-1',
+          room_type_id: 'type-1',
+          num_guests: 2,
+          occupants: [],
+          is_courtesy: false,
+          courtesy_reason: null,
+        },
+      ],
+      p_first_name: 'Org',
+      p_last_name: 'Anizador',
+      p_phone: '555',
+      p_email: '',
+      p_check_in: '2026-08-06',
+      p_check_out: '2026-08-07',
+      p_method: 'phone',
+      p_rate_bs: null,
+      p_reason: null,
+      p_payer_mode: 'each_stay',
+      p_rate_mode: 'room',
+      p_agreed_unit_price_bs: null,
+      p_receivable_account_id: null,
+      p_new_account_name: null,
+      p_new_account_kind: null,
+      p_new_account_contact: null,
+      p_new_account_notes: null,
+    })
+  })
+
+  it('forwards payer_mode=client with rate_mode=person, a new account and per-room courtesy', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: { created: [], failed: [] }, error: null })
+    await createBulkReservation({
+      rooms: [
+        { roomId: 'room-1', roomTypeId: 'type-1', numGuests: 4 },
+        {
+          roomId: 'room-2',
+          roomTypeId: 'type-2',
+          numGuests: 1,
+          isCourtesy: true,
+          courtesyReason: 'Cortesía de gerencia',
+        },
+      ],
+      firstName: 'Hotel',
+      lastName: 'ABC',
+      phone: '555',
+      email: 'contacto@hotelabc.example',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-08',
+      method: 'phone',
+      payerMode: 'client',
+      rateMode: 'person',
+      agreedUnitPriceBs: 300,
+      newAccountName: 'Hotel ABC',
+      newAccountKind: 'empresa',
+      newAccountContact: 'contacto@hotelabc.example',
+    })
+    expect(rpcMock).toHaveBeenCalledWith('create_bulk_reservation', {
+      p_rooms: [
+        {
+          room_id: 'room-1',
+          room_type_id: 'type-1',
+          num_guests: 4,
+          occupants: [],
+          is_courtesy: false,
+          courtesy_reason: null,
+        },
+        {
+          room_id: 'room-2',
+          room_type_id: 'type-2',
+          num_guests: 1,
+          occupants: [],
+          is_courtesy: true,
+          courtesy_reason: 'Cortesía de gerencia',
+        },
+      ],
+      p_first_name: 'Hotel',
+      p_last_name: 'ABC',
+      p_phone: '555',
+      p_email: 'contacto@hotelabc.example',
+      p_check_in: '2026-08-06',
+      p_check_out: '2026-08-08',
+      p_method: 'phone',
+      p_rate_bs: null,
+      p_reason: null,
+      p_payer_mode: 'client',
+      p_rate_mode: 'person',
+      p_agreed_unit_price_bs: 300,
+      p_receivable_account_id: null,
+      p_new_account_name: 'Hotel ABC',
+      p_new_account_kind: 'empresa',
+      p_new_account_contact: 'contacto@hotelabc.example',
+      p_new_account_notes: null,
+    })
   })
 })

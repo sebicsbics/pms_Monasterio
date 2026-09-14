@@ -192,6 +192,11 @@ export interface BulkReservationInput {
     numGuests: number
     occupants?: RoomOccupantInput[]
     occupancyReason?: string
+    // Cortesía por habitación (sólo payerMode='client'): total_amount_bs=0
+    // y motivo obligatorio para esa habitación. No se puede convertir a
+    // cortesía después de creada.
+    isCourtesy?: boolean
+    courtesyReason?: string | null
   }[]
   firstName: string
   lastName: string
@@ -202,6 +207,16 @@ export interface BulkReservationInput {
   method: string
   rateBs?: number | null
   reason?: string | null
+  // Reserva institucional (stage 6, group-billing): quién paga. Ver
+  // ReservationInput para la semántica completa (idéntica acá).
+  payerMode?: 'each_stay' | 'client'
+  rateMode?: 'room' | 'person'
+  agreedUnitPriceBs?: number | null
+  receivableAccountId?: string | null
+  newAccountName?: string | null
+  newAccountKind?: 'empresa' | 'agencia' | 'persona' | null
+  newAccountContact?: string | null
+  newAccountNotes?: string | null
 }
 
 export interface BulkReservationResult {
@@ -226,6 +241,8 @@ export async function createBulkReservation(
         document: o.document ?? null,
       })),
       ...(r.occupancyReason ? { occupancy_reason: r.occupancyReason } : {}),
+      is_courtesy: r.isCourtesy ?? false,
+      courtesy_reason: r.courtesyReason ?? null,
     })),
     p_first_name: data.firstName,
     p_last_name: data.lastName,
@@ -236,6 +253,14 @@ export async function createBulkReservation(
     p_method: data.method,
     p_rate_bs: data.rateBs ?? null,
     p_reason: data.reason ?? null,
+    p_payer_mode: data.payerMode ?? 'each_stay',
+    p_rate_mode: data.rateMode ?? 'room',
+    p_agreed_unit_price_bs: data.agreedUnitPriceBs ?? null,
+    p_receivable_account_id: data.receivableAccountId ?? null,
+    p_new_account_name: data.newAccountName ?? null,
+    p_new_account_kind: data.newAccountKind ?? null,
+    p_new_account_contact: data.newAccountContact ?? null,
+    p_new_account_notes: data.newAccountNotes ?? null,
   })
   if (error) throw new Error(toUserMessage(error))
   const r = res as { created: string[]; failed: { room_id: string; error: string }[] }
