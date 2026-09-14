@@ -122,6 +122,66 @@ describe('createReservation', () => {
       p_rate_bs: null,
       p_reason: null,
       p_contact_stays: true,
+      p_payer_mode: 'each_stay',
+      p_rate_mode: 'room',
+      p_agreed_unit_price_bs: null,
+      p_receivable_account_id: null,
+      p_new_account_name: null,
+      p_new_account_kind: null,
+      p_new_account_contact: null,
+      p_new_account_notes: null,
+      p_is_courtesy: false,
+      p_courtesy_reason: null,
+    })
+  })
+
+  it('forwards payer_mode=client with rate_mode=person and the new-account fields', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: 'res-3', error: null })
+    await createReservation({
+      roomId: 'room-1',
+      roomTypeId: 'type-1',
+      firstName: 'Hotel',
+      lastName: 'ABC',
+      phone: '555',
+      email: 'contacto@hotelabc.example',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-07',
+      numGuests: 3,
+      method: 'phone',
+      payerMode: 'client',
+      rateMode: 'person',
+      agreedUnitPriceBs: 300,
+      newAccountName: 'Hotel ABC',
+      newAccountKind: 'empresa',
+      newAccountContact: 'contacto@hotelabc.example',
+      isCourtesy: true,
+      courtesyReason: 'Cortesía de gerencia',
+    })
+    expect(rpcMock).toHaveBeenCalledWith('create_reservation', {
+      p_room_id: 'room-1',
+      p_room_type_id: 'type-1',
+      p_first_name: 'Hotel',
+      p_last_name: 'ABC',
+      p_phone: '555',
+      p_email: 'contacto@hotelabc.example',
+      p_check_in: '2026-08-06',
+      p_check_out: '2026-08-07',
+      p_num_guests: 3,
+      p_method: 'phone',
+      p_rate_bs: null,
+      p_reason: null,
+      p_contact_stays: true,
+      p_payer_mode: 'client',
+      p_rate_mode: 'person',
+      p_agreed_unit_price_bs: 300,
+      p_receivable_account_id: null,
+      p_new_account_name: 'Hotel ABC',
+      p_new_account_kind: 'empresa',
+      p_new_account_contact: 'contacto@hotelabc.example',
+      p_new_account_notes: null,
+      p_is_courtesy: true,
+      p_courtesy_reason: 'Cortesía de gerencia',
     })
   })
 

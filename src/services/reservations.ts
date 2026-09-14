@@ -84,6 +84,30 @@ export interface ReservationInput {
   // no (queda sin titular hasta el check-in). Default: true — la mayoría
   // de las reservas individuales las toma quien se va a hospedar.
   contactStays?: boolean
+  // Reserva institucional (stage 6, group-billing): quién paga.
+  // 'each_stay' (default) = cada habitación paga la suya, como siempre.
+  // 'client' = una institución/agencia paga el paquete -- sólo
+  // root/reception_admin pueden crearlas (gate en create_reservation).
+  payerMode?: 'each_stay' | 'client'
+  // Sólo aplica con payerMode='client'. 'room' (default) = tarifa de
+  // lista/editable de siempre. 'person' = precio pactado por persona
+  // por noche (agreedUnitPriceBs), requiere numGuests explícito.
+  rateMode?: 'room' | 'person'
+  // Precio pactado por persona por noche, sólo con rateMode='person'.
+  agreedUnitPriceBs?: number | null
+  // Cuenta por cobrar EXISTENTE a vincular (mutuamente excluyente con
+  // los campos newAccount*).
+  receivableAccountId?: string | null
+  // Datos de una cuenta por cobrar NUEVA a crear atómicamente junto con
+  // la reserva (mutuamente excluyente con receivableAccountId).
+  newAccountName?: string | null
+  newAccountKind?: 'empresa' | 'agencia' | 'persona' | null
+  newAccountContact?: string | null
+  newAccountNotes?: string | null
+  // Cortesía al crear (sólo payerMode='client'): total_amount_bs=0 y
+  // motivo obligatorio. No se puede convertir a cortesía después.
+  isCourtesy?: boolean
+  courtesyReason?: string | null
 }
 
 // Devuelve el id de la reserva creada (necesario para poder chequear, del
@@ -103,6 +127,16 @@ export async function createReservation(data: ReservationInput): Promise<string>
     p_rate_bs: data.rateBs ?? null,
     p_reason: data.reason ?? null,
     p_contact_stays: data.contactStays ?? true,
+    p_payer_mode: data.payerMode ?? 'each_stay',
+    p_rate_mode: data.rateMode ?? 'room',
+    p_agreed_unit_price_bs: data.agreedUnitPriceBs ?? null,
+    p_receivable_account_id: data.receivableAccountId ?? null,
+    p_new_account_name: data.newAccountName ?? null,
+    p_new_account_kind: data.newAccountKind ?? null,
+    p_new_account_contact: data.newAccountContact ?? null,
+    p_new_account_notes: data.newAccountNotes ?? null,
+    p_is_courtesy: data.isCourtesy ?? false,
+    p_courtesy_reason: data.courtesyReason ?? null,
   })
   if (error) throw new Error(toUserMessage(error))
   return reservationId as string
