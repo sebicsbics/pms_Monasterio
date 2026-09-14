@@ -166,11 +166,28 @@ begin
 
   for elem in select value from jsonb_array_elements(p_rooms) as t(value)
   loop
+    -- v_room_id/v_room_type_id se asignan ACÁ, ANTES del begin -- igual
+    -- que en el body anterior (20260911050000_occupancy_override_
+    -- reason.sql) -- porque el bloque exception los usa para construir
+    -- failed[]. Nunca quedan "stale": esta asignación es lo PRIMERO que
+    -- corre en cada vuelta del loop, sin importar si la vuelta anterior
+    -- lanzó una excepción, así que siempre reflejan la habitación de
+    -- ESTA iteración.
     v_room_id      := (elem->>'room_id')::uuid;
     v_room_type_id := (elem->>'room_type_id')::uuid;
-    v_is_courtesy  := coalesce((elem->>'is_courtesy')::boolean, false);
-    v_courtesy_reason := nullif(trim(elem->>'courtesy_reason'), '');
     begin
+      -- FIX (sdd/group-billing/review-booking-11): v_is_courtesy/
+      -- v_courtesy_reason se calculan ACÁ DENTRO del begin (no antes,
+      -- como en un intento previo) -- el cast `(elem->>'is_courtesy')::
+      -- boolean` es NUEVO en este slice y puede lanzar 22P02 para un
+      -- valor mal formado (ej. 'not-a-bool'). Si ese cast corriera
+      -- ANTES del begin, abortaría TODA la llamada (incluyendo bookings
+      -- each_stay, que nunca deberían verse afectadas por un dato mal
+      -- formado en un campo que ni siquiera usan) en vez de quedar
+      -- contenido en el best-effort por-habitación de esta iteración.
+      v_is_courtesy  := coalesce((elem->>'is_courtesy')::boolean, false);
+      v_courtesy_reason := nullif(trim(elem->>'courtesy_reason'), '');
+
       if v_is_courtesy and p_payer_mode <> 'client' then
         raise exception 'La cortesía al crear sólo aplica a reservas institucionales';
       end if;

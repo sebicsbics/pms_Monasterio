@@ -13,7 +13,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(49);
+select plan(58);
 
 -- ---------------------------------------------------------------------
 -- Fixtures compartidos (como postgres/superusuario).
@@ -718,6 +718,113 @@ select throws_matching(
 );
 select is(pg_temp.snap(), (select s from snap_l2),
   'la llamada rechazada (l2, rate_mode NULL) no dejó gente/bookings/reservations/cuentas/ledger nuevos');
+
+-- ---------------------------------------------------------------------
+-- (m, neg, fix sdd/group-billing/review-booking-11) each_stay bulk, 2
+--          habitaciones, la habitación 2 trae is_courtesy='not-a-bool'
+--          (valor JSON mal formado, no boolean). El cast NUEVO de este
+--          slice ((elem->>'is_courtesy')::boolean) debe quedar DENTRO
+--          del bloque exception por-habitación -- si corriera antes,
+--          22P02 abortaría TODA la llamada, afectando incluso a
+--          each_stay (que ni siquiera usa is_courtesy). Se espera: la
+--          llamada NO lanza, habitación 1 se crea, habitación 2 queda
+--          en failed CON SU PROPIO room_id (nunca stale ni NULL).
+-- ---------------------------------------------------------------------
+do $$
+declare v_room1 uuid; v_type1 uuid; v_room2 uuid; v_type2 uuid; v_result jsonb;
+begin
+  select o.room_id, o.room_type_id into v_room1, v_type1
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.max_occupancy = 2 and rt.base_price_bs = 550
+    and o.room_id not in (select room_id from public.reservations)
+  order by o.room_id limit 1;
+  select o.room_id, o.room_type_id into v_room2, v_type2
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.max_occupancy = 2 and rt.base_price_bs = 550
+    and o.room_id not in (select room_id from public.reservations) and o.room_id <> v_room1
+  order by o.room_id limit 1;
+
+  v_result := public.create_bulk_reservation(
+    jsonb_build_array(
+      jsonb_build_object('room_id', v_room1, 'room_type_id', v_type1, 'num_guests', 2),
+      jsonb_build_object('room_id', v_room2, 'room_type_id', v_type2, 'num_guests', 2, 'is_courtesy', 'not-a-bool')
+    ),
+    'EachStay', 'CortesiaMalformada', '70100019', 'eachstay.cortesiamalformada.bulk@fixture.test',
+    '2027-07-04', '2027-07-06', 'phone'
+  );
+
+  create temp table fixture_m as select v_result as result, v_room1 as room1_id, v_room2 as room2_id;
+end $$;
+
+select is(
+  jsonb_array_length((select result from fixture_m)->'created'), 1,
+  'each_stay + is_courtesy mal formado en la habitación 2: la llamada NO lanza, 1 habitación creada'
+);
+select is(
+  jsonb_array_length((select result from fixture_m)->'failed'), 1,
+  'each_stay + is_courtesy mal formado: exactamente 1 habitación queda en failed'
+);
+select is(
+  (select count(*)::int from public.reservations where room_id = (select room1_id from fixture_m)),
+  1, 'each_stay + is_courtesy mal formado: la habitación 1 (válida) SÍ se creó'
+);
+select is(
+  (select result from fixture_m)->'failed'->0->>'room_id', (select room2_id::text from fixture_m),
+  'each_stay + is_courtesy mal formado: failed[0].room_id es el de la habitación 2 (nunca stale/NULL)'
+);
+select ok(
+  ((select result from fixture_m)->'failed'->0->>'error') ~ 'invalid input syntax for type boolean',
+  'each_stay + is_courtesy mal formado: el error de casteo queda contenido en failed[0].error'
+);
+
+-- ---------------------------------------------------------------------
+-- (n, regresión) mismo patrón que (m) pero con num_guests='abc' --
+--          ese cast YA vivía dentro del bloque exception antes de este
+--          fix, así que debe seguir comportándose igual (guardia de no
+--          regresión, no un fix nuevo).
+-- ---------------------------------------------------------------------
+do $$
+declare v_room1 uuid; v_type1 uuid; v_room2 uuid; v_type2 uuid; v_result jsonb;
+begin
+  select o.room_id, o.room_type_id into v_room1, v_type1
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.max_occupancy = 1 and rt.base_price_bs = 500
+    and o.room_id not in (select room_id from public.reservations)
+  order by o.room_id limit 1;
+  select o.room_id, o.room_type_id into v_room2, v_type2
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.max_occupancy = 1 and rt.base_price_bs = 500
+    and o.room_id not in (select room_id from public.reservations) and o.room_id <> v_room1
+  order by o.room_id limit 1;
+
+  v_result := public.create_bulk_reservation(
+    jsonb_build_array(
+      jsonb_build_object('room_id', v_room1, 'room_type_id', v_type1, 'num_guests', 1),
+      jsonb_build_object('room_id', v_room2, 'room_type_id', v_type2, 'num_guests', 'abc')
+    ),
+    'EachStay', 'GuestsMalformado', '70100020', 'eachstay.guestsmalformado.bulk@fixture.test',
+    '2027-07-07', '2027-07-09', 'phone'
+  );
+
+  create temp table fixture_n as select v_result as result, v_room1 as room1_id, v_room2 as room2_id;
+end $$;
+
+select is(
+  jsonb_array_length((select result from fixture_n)->'created'), 1,
+  'each_stay + num_guests mal formado en la habitación 2: la llamada NO lanza, 1 habitación creada (regresión)'
+);
+select is(
+  jsonb_array_length((select result from fixture_n)->'failed'), 1,
+  'each_stay + num_guests mal formado: exactamente 1 habitación queda en failed (regresión)'
+);
+select is(
+  (select result from fixture_n)->'failed'->0->>'room_id', (select room2_id::text from fixture_n),
+  'each_stay + num_guests mal formado: failed[0].room_id es el de la habitación 2 (regresión)'
+);
+select ok(
+  ((select result from fixture_n)->'failed'->0->>'error') ~ 'invalid input syntax for type integer',
+  'each_stay + num_guests mal formado: el error de casteo queda contenido en failed[0].error (regresión)'
+);
 
 -- ---------------------------------------------------------------------
 -- V-B: grants de la nueva firma de 18 parámetros; la vieja de 10
