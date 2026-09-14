@@ -86,10 +86,15 @@ select ok(not has_function_privilege('anon',
     'public.walk_in_check_in(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text)',
     'execute'),
   'anon no puede ejecutar walk_in_check_in');
-select ok(has_function_privilege('authenticated',
+-- change: fix/revoke-internal-function-grants -- walk_in_check_in es un
+-- helper interno (sólo lo llama walk_in_check_in_with_guests, nada en
+-- src/ lo invoca directo) y quedó revocada de authenticated en
+-- 20260911115000_revoke_internal_function_grants.sql. El caso de uso
+-- real (walk_in_check_in_with_guests) ya se prueba arriba.
+select ok(not has_function_privilege('authenticated',
     'public.walk_in_check_in(uuid,uuid,text,text,text,text,date,text,text,boolean,integer,numeric,text)',
     'execute'),
-  'authenticated sí puede ejecutar walk_in_check_in');
+  'authenticated ya NO puede ejecutar walk_in_check_in directo: es interna, se llega por walk_in_check_in_with_guests');
 
 -- feat/booking-10-contract-single cambió la aridad de create_reservation
 -- (13 -> 23 parámetros, R2.8): la firma vieja ya no existe, se referencia
