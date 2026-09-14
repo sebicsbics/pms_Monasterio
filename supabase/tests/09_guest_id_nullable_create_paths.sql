@@ -365,12 +365,15 @@ select pass('arrivals(): holder_first_name/last_name reflejan al titular cuando 
 -- ---------------------------------------------------------------------
 -- 6) Higiene de grants.
 -- ---------------------------------------------------------------------
+-- feat/booking-10-contract-single cambió la aridad de create_reservation
+-- (13 -> 23 parámetros, R2.8): la firma vieja ya no existe, se referencia
+-- la nueva.
 select ok(not has_function_privilege('anon',
-    'public.create_reservation(uuid,uuid,text,text,text,text,date,date,int,text,numeric,text,boolean)',
+    'public.create_reservation(uuid,uuid,text,text,text,text,date,date,integer,text,numeric,text,boolean,text,text,numeric,uuid,text,text,text,text,boolean,text)',
     'execute'),
   'anon no puede ejecutar create_reservation');
 select ok(has_function_privilege('authenticated',
-    'public.create_reservation(uuid,uuid,text,text,text,text,date,date,int,text,numeric,text,boolean)',
+    'public.create_reservation(uuid,uuid,text,text,text,text,date,date,integer,text,numeric,text,boolean,text,text,numeric,uuid,text,text,text,text,boolean,text)',
     'execute'),
   'authenticated sí puede ejecutar create_reservation');
 
