@@ -7,13 +7,22 @@
 -- nuevos al final, todos con default = comportamiento actual). Este
 -- archivo prueba TANTO la regresión each_stay (nada cambia) como el
 -- camino nuevo 'client' (room/person, cortesía por habitación, cuenta
--- por cobrar, gate de rol, tarifa custom, contrato congelado al final)
--- -- SIN atomicidad all-or-nothing todavía (eso es
--- feat/booking-12-contract-bulk-atomicity, archivo 19a).
+-- por cobrar, gate de rol, tarifa custom, contrato congelado al final).
+--
+-- UPDATED en feat/booking-12-contract-bulk-atomicity: los escenarios
+-- (d1-d3, f1-f3) validaban fallas por-habitación en modo 'client' vía
+-- llamada directa esperando {created:[],failed:[...]} (best-effort,
+-- comportamiento de feat/booking-11). Desde este slice 'client' es
+-- todo-o-nada -- se reescribieron con throws_matching + snapshot de
+-- las 5 tablas, igual que (g)/(h)/(l). La cobertura EXHAUSTIVA de
+-- atomicidad (todas las tablas relevantes, camino de cuenta nueva,
+-- regresión each_stay) vive en 19a_group_billing_contract_bulk_
+-- atomicity.sql -- este archivo sólo se actualiza para no afirmar un
+-- comportamiento que ya no es cierto.
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(58);
+select plan(59);
 
 -- ---------------------------------------------------------------------
 -- Fixtures compartidos (como postgres/superusuario).
@@ -222,112 +231,91 @@ select is(
 
 -- ---------------------------------------------------------------------
 -- (d, neg) rate_mode='person', una sola habitación, num_guests
---          ausente/NULL/0. IMPORTANTE: esta validación vive DENTRO del
---          bloque exception por-habitación (best-effort, sin cambios
---          respecto al body actual -- el all-or-nothing es
---          feat/booking-12), así que la llamada NO lanza una excepción
---          al caller: devuelve {created:[], failed:[{room_id,error}]}.
---          "Sin creación parcial" se prueba en (d1) chequeando 0
---          reservations y 0 contract_agreed para esa booking -- la fila
---          de `bookings` en sí SÍ queda persistida (huérfana), gap
---          documentado para feat/booking-12-contract-bulk-atomicity.
+--          ausente/NULL/0. UPDATED en feat/booking-12-contract-bulk-
+--          atomicity: payer_mode='client' ya NO es best-effort -- el
+--          `raise;` dentro del bloque exception hace que la llamada
+--          RELANCE (no queda en failed[]), abortando la sentencia
+--          completa. Se prueba con throws_matching + snapshot de las 5
+--          tablas (sin creación parcial, sin booking huérfana -- a
+--          diferencia del comportamiento de feat/booking-11).
 -- ---------------------------------------------------------------------
-do $$
-declare v_room uuid; v_type uuid; v_result jsonb; v_booking uuid;
-begin
-  select o.room_id, o.room_type_id into v_room, v_type
-  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
-  where rt.max_occupancy = 2 and rt.base_price_bs = 480
-    and o.room_id not in (select room_id from public.reservations)
-  limit 1;
-
-  v_result := public.create_bulk_reservation(
-    jsonb_build_array(jsonb_build_object('room_id', v_room, 'room_type_id', v_type)),
-    'Sin', 'Huespedes', '70100004', 'sin.huespedes.bulk@fixture.test',
-    '2027-06-10', '2027-06-12', 'phone',
-    null, null, 'client', 'person', 300, (select account_id from fixture_account)
-  );
-  select id into v_booking from public.bookings where contact_person_id =
-    (select id from public.people where email = 'sin.huespedes.bulk@fixture.test');
-
-  create temp table fixture_d1 as select v_result as result, v_booking as booking_id;
-end $$;
-
-select is(
-  jsonb_array_length((select result from fixture_d1)->'created'), 0,
-  'person mode, num_guests ausente en el JSON: ninguna reserva creada (queda en failed)'
+create temp table snap_d1 as select pg_temp.snap() as s;
+select throws_matching(
+  $$ select public.create_bulk_reservation(
+       jsonb_build_array(jsonb_build_object(
+         'room_id', (select o.room_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=2 and rt.base_price_bs=480
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'room_type_id', (select o.room_type_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=2 and rt.base_price_bs=480
+             and o.room_id not in (select room_id from public.reservations) limit 1)
+       )),
+       'Sin', 'Huespedes', '70100004', 'sin.huespedes.bulk@fixture.test',
+       '2027-06-10', '2027-06-12', 'phone',
+       null, null, 'client', 'person', 300, (select account_id from fixture_account)
+     ) $$,
+  'Indicá la cantidad de huéspedes',
+  'person mode, num_guests ausente en el JSON: TODA la llamada relanza (all-or-nothing, feat/booking-12)'
 );
-select ok(
-  ((select result from fixture_d1)->'failed'->0->>'error') ~ 'Indicá la cantidad de huéspedes',
-  'person mode, num_guests ausente: el mensaje en español queda en failed[0].error'
-);
-select is(
-  (select count(*)::int from public.reservations where booking_id = (select booking_id from fixture_d1)),
-  0, 'person mode, num_guests ausente: sin creación parcial -- 0 reservations para esa booking'
-);
-select is(
-  (select count(*)::int from public.booking_balances where booking_id = (select booking_id from fixture_d1)),
-  0, 'person mode, num_guests ausente: sin contract_agreed (0 habitaciones creadas)'
-);
+select is(pg_temp.snap(), (select s from snap_d1),
+  'person mode, num_guests ausente: ninguna tabla cambia -- ni siquiera queda una booking huérfana');
 
-do $$
-declare v_room uuid; v_type uuid; v_result jsonb;
-begin
-  select o.room_id, o.room_type_id into v_room, v_type
-  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
-  where rt.max_occupancy = 2 and rt.base_price_bs = 480
-    and o.room_id not in (select room_id from public.reservations)
-  limit 1;
-
-  v_result := public.create_bulk_reservation(
-    jsonb_build_array(jsonb_build_object('room_id', v_room, 'room_type_id', v_type, 'num_guests', null)),
-    'Null', 'Huespedes', '70100005', 'null.huespedes.bulk@fixture.test',
-    '2027-06-10', '2027-06-12', 'phone',
-    null, null, 'client', 'person', 300, (select account_id from fixture_account)
-  );
-  create temp table fixture_d2 as select v_result as result;
-end $$;
-
-select is(
-  jsonb_array_length((select result from fixture_d2)->'created'), 0,
-  'person mode, num_guests=NULL explícito: ninguna reserva creada'
+create temp table snap_d2 as select pg_temp.snap() as s;
+select throws_matching(
+  $$ select public.create_bulk_reservation(
+       jsonb_build_array(jsonb_build_object(
+         'room_id', (select o.room_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=2 and rt.base_price_bs=480
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'room_type_id', (select o.room_type_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=2 and rt.base_price_bs=480
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'num_guests', null
+       )),
+       'Null', 'Huespedes', '70100005', 'null.huespedes.bulk@fixture.test',
+       '2027-06-10', '2027-06-12', 'phone',
+       null, null, 'client', 'person', 300, (select account_id from fixture_account)
+     ) $$,
+  'Indicá la cantidad de huéspedes',
+  'person mode, num_guests=NULL explícito: TODA la llamada relanza (all-or-nothing, feat/booking-12)'
 );
-select ok(
-  ((select result from fixture_d2)->'failed'->0->>'error') ~ 'Indicá la cantidad de huéspedes',
-  'person mode, num_guests=NULL explícito: el mensaje en español queda en failed[0].error'
-);
+select is(pg_temp.snap(), (select s from snap_d2),
+  'person mode, num_guests=NULL explícito: ninguna tabla cambia');
 
-do $$
-declare v_room uuid; v_type uuid; v_result jsonb;
-begin
-  select o.room_id, o.room_type_id into v_room, v_type
-  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
-  where rt.max_occupancy = 2 and rt.base_price_bs = 480
-    and o.room_id not in (select room_id from public.reservations)
-  limit 1;
-
-  v_result := public.create_bulk_reservation(
-    jsonb_build_array(jsonb_build_object('room_id', v_room, 'room_type_id', v_type, 'num_guests', 0)),
-    'Cero', 'Huespedes', '70100006', 'cero.huespedes.bulk@fixture.test',
-    '2027-06-10', '2027-06-12', 'phone',
-    null, null, 'client', 'person', 300, (select account_id from fixture_account)
-  );
-  create temp table fixture_d3 as select v_result as result;
-end $$;
-
-select is(
-  jsonb_array_length((select result from fixture_d3)->'created'), 0,
-  'person mode, num_guests=0 explícito: ninguna reserva creada'
+create temp table snap_d3 as select pg_temp.snap() as s;
+select throws_matching(
+  $$ select public.create_bulk_reservation(
+       jsonb_build_array(jsonb_build_object(
+         'room_id', (select o.room_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=2 and rt.base_price_bs=480
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'room_type_id', (select o.room_type_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=2 and rt.base_price_bs=480
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'num_guests', 0
+       )),
+       'Cero', 'Huespedes', '70100006', 'cero.huespedes.bulk@fixture.test',
+       '2027-06-10', '2027-06-12', 'phone',
+       null, null, 'client', 'person', 300, (select account_id from fixture_account)
+     ) $$,
+  'Cada habitación necesita al menos 1 persona',
+  'person mode, num_guests=0 explícito: TODA la llamada relanza (all-or-nothing, feat/booking-12)'
 );
-select ok(
-  ((select result from fixture_d3)->'failed'->0->>'error') ~ 'Cada habitación necesita al menos 1 persona',
-  'person mode, num_guests=0 explícito: el mensaje en español queda en failed[0].error'
-);
+select is(pg_temp.snap(), (select s from snap_d3),
+  'person mode, num_guests=0 explícito: ninguna tabla cambia');
 
 -- ---------------------------------------------------------------------
--- (e, neg) cortesía en una booking each_stay. Misma nota que (d): la
---          validación vive dentro del bloque exception por-habitación
---          -- no lanza, queda en failed.
+-- (e, neg) cortesía en una booking each_stay. payer_mode='each_stay'
+--          NO cambia con feat/booking-12-contract-bulk-atomicity (el
+--          `raise;` sólo aplica a 'client') -- sigue siendo best-effort,
+--          la validación queda contenida en el bloque exception y no
+--          lanza al caller.
 -- ---------------------------------------------------------------------
 do $$
 declare v_room uuid; v_type uuid; v_result jsonb;
@@ -359,85 +347,82 @@ select ok(
 );
 
 -- ---------------------------------------------------------------------
--- (f, neg) cortesía sin motivo válido: ausente / '' / '   ' -> los tres
---          quedan en failed con el mismo mensaje (misma nota que d/e).
+-- (f, neg) cortesía sin motivo válido: ausente / '' / '   ' -> las tres
+--          son payer_mode='client'. UPDATED en feat/booking-12-
+--          contract-bulk-atomicity: ya NO quedan en failed[], relanzan
+--          y abortan toda la llamada (misma nota que (d)).
 -- ---------------------------------------------------------------------
-do $$
-declare v_room uuid; v_type uuid; v_result jsonb;
-begin
-  select o.room_id, o.room_type_id into v_room, v_type
-  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
-  where rt.max_occupancy = 1 and rt.base_price_bs = 450
-    and o.room_id not in (select room_id from public.reservations)
-  limit 1;
-
-  v_result := public.create_bulk_reservation(
-    jsonb_build_array(jsonb_build_object(
-      'room_id', v_room, 'room_type_id', v_type, 'num_guests', 1, 'is_courtesy', true
-    )),
-    'Cortesía', 'SinMotivo1', '70100008', 'cortesia.sinmotivo1.bulk@fixture.test',
-    '2027-06-16', '2027-06-18', 'phone',
-    null, null, 'client', 'room', null, (select account_id from fixture_account)
-  );
-  create temp table fixture_f1 as select v_result as result;
-end $$;
-
-select ok(
-  ((select result from fixture_f1)->'failed'->0->>'error') ~ 'La cortesía requiere un motivo',
-  'cortesía sin la clave courtesy_reason: el mensaje en español queda en failed[0].error'
+create temp table snap_f1 as select pg_temp.snap() as s;
+select throws_matching(
+  $$ select public.create_bulk_reservation(
+       jsonb_build_array(jsonb_build_object(
+         'room_id', (select o.room_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=1 and rt.base_price_bs=450
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'room_type_id', (select o.room_type_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=1 and rt.base_price_bs=450
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'num_guests', 1, 'is_courtesy', true
+       )),
+       'Cortesía', 'SinMotivo1', '70100008', 'cortesia.sinmotivo1.bulk@fixture.test',
+       '2027-06-16', '2027-06-18', 'phone',
+       null, null, 'client', 'room', null, (select account_id from fixture_account)
+     ) $$,
+  'La cortesía requiere un motivo',
+  'cortesía sin la clave courtesy_reason: TODA la llamada relanza (all-or-nothing, feat/booking-12)'
 );
+select is(pg_temp.snap(), (select s from snap_f1),
+  'cortesía sin courtesy_reason: ninguna tabla cambia');
 
-do $$
-declare v_room uuid; v_type uuid; v_result jsonb;
-begin
-  select o.room_id, o.room_type_id into v_room, v_type
-  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
-  where rt.max_occupancy = 1 and rt.base_price_bs = 450
-    and o.room_id not in (select room_id from public.reservations)
-  limit 1;
-
-  v_result := public.create_bulk_reservation(
-    jsonb_build_array(jsonb_build_object(
-      'room_id', v_room, 'room_type_id', v_type, 'num_guests', 1,
-      'is_courtesy', true, 'courtesy_reason', ''
-    )),
-    'Cortesía', 'SinMotivo2', '70100009', 'cortesia.sinmotivo2.bulk@fixture.test',
-    '2027-06-16', '2027-06-18', 'phone',
-    null, null, 'client', 'room', null, (select account_id from fixture_account)
-  );
-  create temp table fixture_f2 as select v_result as result;
-end $$;
-
-select ok(
-  ((select result from fixture_f2)->'failed'->0->>'error') ~ 'La cortesía requiere un motivo',
-  'cortesía con courtesy_reason vacío (empty string): el mensaje en español queda en failed[0].error'
+create temp table snap_f2 as select pg_temp.snap() as s;
+select throws_matching(
+  $$ select public.create_bulk_reservation(
+       jsonb_build_array(jsonb_build_object(
+         'room_id', (select o.room_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=1 and rt.base_price_bs=450
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'room_type_id', (select o.room_type_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=1 and rt.base_price_bs=450
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'num_guests', 1, 'is_courtesy', true, 'courtesy_reason', ''
+       )),
+       'Cortesía', 'SinMotivo2', '70100009', 'cortesia.sinmotivo2.bulk@fixture.test',
+       '2027-06-16', '2027-06-18', 'phone',
+       null, null, 'client', 'room', null, (select account_id from fixture_account)
+     ) $$,
+  'La cortesía requiere un motivo',
+  'cortesía con courtesy_reason vacío (empty string): TODA la llamada relanza (all-or-nothing, feat/booking-12)'
 );
+select is(pg_temp.snap(), (select s from snap_f2),
+  'cortesía con courtesy_reason vacío: ninguna tabla cambia');
 
-do $$
-declare v_room uuid; v_type uuid; v_result jsonb;
-begin
-  select o.room_id, o.room_type_id into v_room, v_type
-  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
-  where rt.max_occupancy = 1 and rt.base_price_bs = 450
-    and o.room_id not in (select room_id from public.reservations)
-  limit 1;
-
-  v_result := public.create_bulk_reservation(
-    jsonb_build_array(jsonb_build_object(
-      'room_id', v_room, 'room_type_id', v_type, 'num_guests', 1,
-      'is_courtesy', true, 'courtesy_reason', '   '
-    )),
-    'Cortesía', 'SinMotivo3', '70100010', 'cortesia.sinmotivo3.bulk@fixture.test',
-    '2027-06-16', '2027-06-18', 'phone',
-    null, null, 'client', 'room', null, (select account_id from fixture_account)
-  );
-  create temp table fixture_f3 as select v_result as result;
-end $$;
-
-select ok(
-  ((select result from fixture_f3)->'failed'->0->>'error') ~ 'La cortesía requiere un motivo',
-  'cortesía con courtesy_reason de sólo espacios: el mensaje en español queda en failed[0].error'
+create temp table snap_f3 as select pg_temp.snap() as s;
+select throws_matching(
+  $$ select public.create_bulk_reservation(
+       jsonb_build_array(jsonb_build_object(
+         'room_id', (select o.room_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=1 and rt.base_price_bs=450
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'room_type_id', (select o.room_type_id from public.room_type_options o
+           join public.room_types rt on rt.id=o.room_type_id
+           where rt.max_occupancy=1 and rt.base_price_bs=450
+             and o.room_id not in (select room_id from public.reservations) limit 1),
+         'num_guests', 1, 'is_courtesy', true, 'courtesy_reason', '   '
+       )),
+       'Cortesía', 'SinMotivo3', '70100010', 'cortesia.sinmotivo3.bulk@fixture.test',
+       '2027-06-16', '2027-06-18', 'phone',
+       null, null, 'client', 'room', null, (select account_id from fixture_account)
+     ) $$,
+  'La cortesía requiere un motivo',
+  'cortesía con courtesy_reason de sólo espacios: TODA la llamada relanza (all-or-nothing, feat/booking-12)'
 );
+select is(pg_temp.snap(), (select s from snap_f3),
+  'cortesía con courtesy_reason de sólo espacios: ninguna tabla cambia');
 
 -- ---------------------------------------------------------------------
 -- (g, neg) reception intenta payer_mode='client' -> rechazado (decisión

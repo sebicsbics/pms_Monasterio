@@ -384,4 +384,36 @@ describe('createBulkReservation', () => {
       p_new_account_notes: null,
     })
   })
+
+  // Regresión (feat/booking-12-contract-bulk-atomicity): antes de este
+  // slice, un `payer_mode='client'` con una habitación fallida SIEMPRE
+  // devolvía `{ data, error: null }` (best-effort, la falla quedaba en
+  // `failed[]`). Desde este slice la RPC puede RELANZAR en vez de eso
+  // (all-or-nothing) -- Supabase entonces resuelve con `{ data: null,
+  // error }`. createBulkReservation ya maneja esta forma genéricamente
+  // (mismo `if (error) throw new Error(toUserMessage(error))` que usan
+  // cancelReservation/rescheduleReservation, ver líneas 39-47/78-86 de
+  // este archivo) -- no hizo falta tocar el servicio, este test sólo
+  // deja la regresión bajo cobertura explícita para bulk también.
+  it('surfaces the RPC error message unchanged when a client booking room fails atomically', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'La habitación ya no está disponible para esas fechas' },
+    })
+    await expect(
+      createBulkReservation({
+        rooms: [{ roomId: 'room-1', roomTypeId: 'type-1', numGuests: 2 }],
+        firstName: 'Hotel',
+        lastName: 'ABC',
+        phone: '555',
+        email: 'contacto@hotelabc.example',
+        checkIn: '2026-08-06',
+        checkOut: '2026-08-08',
+        method: 'phone',
+        payerMode: 'client',
+        receivableAccountId: 'account-1',
+      }),
+    ).rejects.toThrow('La habitación ya no está disponible para esas fechas')
+  })
 })
