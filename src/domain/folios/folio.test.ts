@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balanceDue, netAnticipos, roomAndExtrasTotal } from './folio'
+import { balanceDue, netAnticipos, roomAndExtrasTotal, roomChargeLabel } from './folio'
 
 const active = (amountBs: number) => ({ amountBs, status: 'active' as const })
 
@@ -85,5 +85,23 @@ describe('roomAndExtrasTotal', () => {
 
   it('client sin extras: el total es 0, no el precio de la habitación', () => {
     expect(roomAndExtrasTotal(500, 0, 'client')).toBe(0)
+  })
+})
+
+// review de feat/booking-17-checkout-enforcement: el panel mostraba
+// "Habitación (Doble) 500 Bs" seguido de "Total 80 Bs" para una
+// habitación institucional -- el precio de la habitación parecía sumar
+// al total aunque el fix anterior ya lo excluye del cálculo. La etiqueta
+// tiene que decir explícitamente que esa línea no es parte de lo que se
+// cobra en este check-out.
+describe('roomChargeLabel', () => {
+  it('each_stay: muestra el tipo de habitación (sin cambios)', () => {
+    expect(roomChargeLabel('Doble', 'each_stay')).toBe('Habitación (Doble)')
+  })
+
+  it('client: aclara que está cubierta por el contrato del grupo, no por el tipo de habitación', () => {
+    expect(roomChargeLabel('Doble', 'client')).toBe(
+      'Habitación (cubierta por el contrato del grupo)',
+    )
   })
 })

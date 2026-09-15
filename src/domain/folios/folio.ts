@@ -12,10 +12,12 @@ export interface FolioCharge {
 export interface Folio {
   reservationId: string
   roomType: string
-  roomChargeBs: number // total por la(s) noche(s)
+  payerMode: PayerMode
+  roomChargeBs: number // total por la(s) noche(s) -- informativo para
+  // 'client': no forma parte de totalBs/balanceDueBs (feat/booking-17)
   charges: FolioCharge[]
   extrasTotalBs: number // suma de consumos
-  totalBs: number // habitación + consumos
+  totalBs: number // habitación + consumos (solo consumos si 'client')
   anticipoTotalBs: number // anticipos netos (recibido − reembolsado)
   balanceDueBs: number // lo que falta cobrar en el check-out
 }
@@ -77,4 +79,17 @@ export function roomAndExtrasTotal(
 ): number {
   if (payerMode === 'client') return extrasTotalBs
   return roomChargeBs + extrasTotalBs
+}
+
+/**
+ * Etiqueta de la línea "Habitación" del resumen de folio. Para una
+ * reserva institucional (payer_mode='client'), el precio de la
+ * habitación NO forma parte de lo que se cobra en este check-out (ver
+ * roomAndExtrasTotal) -- la etiqueta lo aclara en vez de mostrar el tipo
+ * de habitación como si sumara al total, que confundía en el panel
+ * (review de feat/booking-17-checkout-enforcement).
+ */
+export function roomChargeLabel(roomType: string, payerMode: PayerMode): string {
+  if (payerMode === 'client') return 'Habitación (cubierta por el contrato del grupo)'
+  return `Habitación (${roomType})`
 }

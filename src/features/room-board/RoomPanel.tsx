@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { PrintButton } from '../../components/ui'
 import type { Room } from '../../domain/rooms/room'
 import type { Folio } from '../../domain/folios/folio'
+import { roomChargeLabel } from '../../domain/folios/folio'
 import {
   walkInWithOptionalPayment,
   checkOutRoom,
@@ -1200,8 +1201,14 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                       </div>
                     ))
                   ) : (
-                    <div className="flex justify-between text-slate-600">
-                      <span>Habitación ({folio.roomType})</span>
+                    <div
+                      className={
+                        folio.payerMode === 'client'
+                          ? 'flex justify-between text-slate-400'
+                          : 'flex justify-between text-slate-600'
+                      }
+                    >
+                      <span>{roomChargeLabel(folio.roomType, folio.payerMode)}</span>
                       <span>{folio.roomChargeBs.toFixed(2)} Bs</span>
                     </div>
                   )}

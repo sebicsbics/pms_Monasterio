@@ -78,6 +78,7 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
   return {
     reservationId: row.reservations.id,
     roomType: row.reservations.room_types.name,
+    payerMode,
     roomChargeBs,
     charges,
     extrasTotalBs,
