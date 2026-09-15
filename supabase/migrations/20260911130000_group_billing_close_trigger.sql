@@ -25,15 +25,16 @@
 -- ORDEN DE LOCKS / ANÁLISIS DE DEADLOCK (obligatorio, ver instrucción de
 -- apply): se mapeó, leyendo los cuerpos VIVOS, qué lock de fila toma cada
 -- camino y en qué orden:
---   * record_booking_advance (feat/booking-14): SOLO toma
+--   * record_booking_advance (feat/booking-14): toma
 --     `select * from bookings where id=... for update`. add_cash_movement
---     y record_mixed_income (que llama a add_cash_movement dos veces)
---     NO toman ningún lock sobre cash_sessions (`select id from
---     cash_sessions where status='open'` sin FOR UPDATE) ni sobre ninguna
---     otra tabla. Cadena de locks: [bookings] únicamente.
+--     y record_mixed_income no hacen SELECT ... FOR UPDATE sobre
+--     cash_sessions, PERO el INSERT en cash_movements toma un lock
+--     IMPLÍCITO `FOR KEY SHARE` sobre la fila de cash_sessions (lo hace
+--     Postgres por la FK session_id, en todo INSERT que la referencia).
+--     Cadena: [bookings] -> [cash_sessions KEY SHARE].
 --   * check_out_room: toma `select ... from rooms where id=... for
---     update` (lock de `rooms`), después NO toma lock sobre
---     cash_sessions (mismo motivo), y recién al final hace
+--     update` (lock de `rooms`), su cobro también toma KEY SHARE sobre
+--     cash_sessions (misma FK), y recién al final hace
 --     `update reservations set status='checked_out'` (lock de fila de
 --     `reservations`, implícito en el UPDATE) -- ESE update es el que
 --     dispara este trigger AFTER, que (solo para bookings 'client') toma
@@ -46,11 +47,16 @@
 --     [reservations] -> [bookings].
 --
 -- Para que exista un deadlock, DOS transacciones necesitan tomar DOS
--- recursos en orden CRUZADO (A bloquea recurso 1 y espera el 2; B
--- bloquea el 2 y espera el 1). record_booking_advance solo toma UN
--- recurso (`bookings`) en toda su transacción -- una transacción de un
--- solo lock nunca puede participar en un ciclo de deadlock, porque nunca
--- queda esperando un segundo recurso mientras retiene el primero.
+-- recursos en orden CRUZADO y con modos que CONFLICTÚEN. El único recurso
+-- que record_booking_advance comparte en orden inverso con check_out_room
+-- es cash_sessions, y ahí ambos toman FOR KEY SHARE: es compatible
+-- consigo mismo y con el FOR NO KEY UPDATE de un UPDATE de cash_sessions
+-- que no toque la clave (close_cash_session), así que nunca se esperan
+-- entre sí por esa fila (medido con dos sesiones en la review de
+-- feat/booking-15). AVISO para cambios futuros: si algún camino que
+-- también toque `bookings` pasa a hacer SELECT ... FOR UPDATE / FOR SHARE
+-- sobre cash_sessions, o un UPDATE que modifique su clave, este análisis
+-- deja de valer y hay que rehacerlo.
 -- check_out_room/cancel_reservation SÍ encadenan dos locks cada uno
 -- (rooms|reservations -> bookings), pero NINGÚN camino adquiere
 -- `bookings` primero y `rooms`/`reservations` después -- así que tampoco
@@ -60,6 +66,17 @@
 -- cruzado). CONCLUSIÓN: no se detectó ningún deadlock posible con el
 -- mapeo de locks actual -- no se requiere ningún cambio en
 -- record_booking_advance ni en las funciones de checkout/cancelación.
+--
+-- VERIFICADO END-TO-END en la base local (2026-09-15, dos sesiones
+-- psql reales, datos temporales ya borrados):
+--   1) check_out_room de la última habitación queda sin commit 8s; un
+--      record_booking_advance concurrente sobre el mismo booking espera
+--      el lock y, al liberarse, falla con 'Esta reserva de grupo ya está
+--      cerrada' (vio el cierre ya confirmado).
+--   2) check_out_room concurrente de las dos últimas habitaciones: la
+--      segunda espera ~4s el lock de bookings, ve el check-out confirmado
+--      de la primera (READ COMMITTED toma snapshot nuevo por sentencia) y
+--      cierra el grupo: exactamente 1 group_closed y 1 receivable.
 -- =====================================================================
 
 create or replace function public._close_booking_group()
