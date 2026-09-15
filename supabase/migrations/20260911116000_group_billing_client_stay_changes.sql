@@ -38,6 +38,16 @@
 -- total_amount_bs sin cambios es COMPATIBLE con el invariante de
 -- stay_segments en LOS TRES casos permitidos, sin excepciones:
 --
+-- LÍMITE CONOCIDO (review de 5d325a0): "coincide" y "EXACTO" abajo valen
+-- solo cuando total_amount_bs es divisible por las noches a 2 decimales.
+-- rate_bs es numeric(10,2) y se deriva como total/noches, así que con
+-- 1000.00 / 3 noches el tramo queda en 333.33 y sum(stay_segments) da
+-- 999.99. Es una limitación PREEXISTENTE del modelo (tarifa por noche
+-- redondeada), no la introduce este cambio. El dinero no se afecta:
+-- folio, check-out y el ledger leen total_amount_bs, nunca la suma de
+-- tramos. Resolverla exigiría guardar el monto por tramo (o un
+-- remanente), fuera del alcance de este stage.
+--
 -- 1) ACORTAR (modify_stay_dates, único tramo posible ya que EXTENDER
 --    está bloqueado arriba): el propio trigger
 --    trg_sync_single_stay_segment/sync_single_stay_segment() reajusta
