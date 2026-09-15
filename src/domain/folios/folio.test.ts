@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balanceDue, netAnticipos } from './folio'
+import { balanceDue, netAnticipos, roomAndExtrasTotal } from './folio'
 
 const active = (amountBs: number) => ({ amountBs, status: 'active' as const })
 
@@ -64,5 +64,26 @@ describe('balanceDue', () => {
   // El hotel no devuelve la diferencia: cobra 0 y ahí termina.
   it('nunca devuelve negativo cuando el anticipo excede el folio', () => {
     expect(balanceDue(500, 800)).toBe(0)
+  })
+})
+
+// feat/booking-17-checkout-enforcement: check_out_room ya no cobra el
+// total de la habitación en una reserva institucional (payer_mode=
+// 'client'), solo sus extras -- el contrato del grupo se salda al
+// cerrarse el grupo o al saldar la cuenta por cobrar, nunca en el
+// check-out individual (decisión #391). El preview del folio en pantalla
+// tiene que reflejar EXACTAMENTE lo mismo que va a cobrar el RPC, o
+// muestra un monto que después no coincide con lo realmente cobrado.
+describe('roomAndExtrasTotal', () => {
+  it('each_stay: suma habitación + extras (sin cambios)', () => {
+    expect(roomAndExtrasTotal(500, 80, 'each_stay')).toBe(580)
+  })
+
+  it('client: ignora el cargo de habitación, solo cuentan los extras', () => {
+    expect(roomAndExtrasTotal(500, 80, 'client')).toBe(80)
+  })
+
+  it('client sin extras: el total es 0, no el precio de la habitación', () => {
+    expect(roomAndExtrasTotal(500, 0, 'client')).toBe(0)
   })
 })

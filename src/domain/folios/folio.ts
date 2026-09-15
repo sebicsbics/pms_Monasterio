@@ -55,3 +55,26 @@ export function netAnticipos(anticipos: AnticipoAmounts[]): number {
 export function balanceDue(totalBs: number, anticipoTotalBs: number): number {
   return Math.max(totalBs - anticipoTotalBs, 0)
 }
+
+// Modalidad de pago del booking al que pertenece la reserva (stage 6,
+// group-billing): 'each_stay' es el caso de siempre (cada habitación paga
+// lo suyo); 'client' es una reserva institucional/agencia.
+export type PayerMode = 'client' | 'each_stay'
+
+/**
+ * Total a considerar para el check-out: habitación + extras, EXCEPTO para
+ * una reserva institucional (payer_mode='client'), donde check_out_room
+ * cobra SOLO los extras de esta habitación -- el cargo de habitación es
+ * parte del contrato del grupo, que se salda al cerrarse el grupo o al
+ * saldar su cuenta por cobrar, nunca en el check-out individual (feat/
+ * booking-17, decisión #391). Sin esta distinción, el preview mostraría
+ * un monto que el RPC nunca va a cobrar.
+ */
+export function roomAndExtrasTotal(
+  roomChargeBs: number,
+  extrasTotalBs: number,
+  payerMode: PayerMode,
+): number {
+  if (payerMode === 'client') return extrasTotalBs
+  return roomChargeBs + extrasTotalBs
+}

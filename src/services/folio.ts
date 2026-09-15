@@ -1,5 +1,11 @@
 import { supabase } from './supabase'
-import { balanceDue, netAnticipos, type Folio } from '../domain/folios/folio'
+import {
+  balanceDue,
+  netAnticipos,
+  roomAndExtrasTotal,
+  type Folio,
+  type PayerMode,
+} from '../domain/folios/folio'
 import type { AnticipoStatus } from '../domain/anticipos/anticipos'
 import { toUserMessage } from './dbErrors'
 
@@ -18,6 +24,10 @@ interface FolioRow {
     total_amount_bs: number
     room_types: { name: string }
     anticipos: AnticipoRow[]
+    // NULL cuando no hay booking embebido resoluble (no debería pasar,
+    // reservations.booking_id es NOT NULL) -- se asume 'each_stay' por
+    // defecto, igual que la columna en la base (feat/booking-17).
+    bookings: { payer_mode: string } | null
   }
   folio_charges: ChargeRow[]
 }
@@ -35,7 +45,8 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
       `
       reservations!inner (
         id, total_amount_bs, room_types ( name ),
-        anticipos ( amount_bs, status )
+        anticipos ( amount_bs, status ),
+        bookings ( payer_mode )
       ),
       folio_charges ( id, description, amount_bs )
     `,
@@ -55,7 +66,8 @@ export async function fetchFolio(roomId: string): Promise<Folio | null> {
   }))
   const roomChargeBs = Number(row.reservations.total_amount_bs)
   const extrasTotalBs = charges.reduce((sum, c) => sum + c.amountBs, 0)
-  const totalBs = roomChargeBs + extrasTotalBs
+  const payerMode = (row.reservations.bookings?.payer_mode ?? 'each_stay') as PayerMode
+  const totalBs = roomAndExtrasTotal(roomChargeBs, extrasTotalBs, payerMode)
   const anticipoTotalBs = netAnticipos(
     (row.reservations.anticipos ?? []).map((a) => ({
       amountBs: Number(a.amount_bs),

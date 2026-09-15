@@ -5,13 +5,99 @@ const rpcMock = vi.fn(async (..._args: unknown[]) => ({
   error: null as { message: string; code?: string } | null,
 }))
 
+interface FolioMaybeSingleResult {
+  data: unknown
+  error: { message: string } | null
+}
+const maybeSingleMock = vi.fn(
+  async (): Promise<FolioMaybeSingleResult> => ({ data: null, error: null }),
+)
+
 vi.mock('./supabase', () => ({
   supabase: {
     rpc: (...args: unknown[]) => rpcMock(...args),
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            maybeSingle: () => maybeSingleMock(),
+          }),
+        }),
+      }),
+    }),
   },
 }))
 
-import { addFolioCharge, addFolioProductCharge } from './folio'
+import { addFolioCharge, addFolioProductCharge, fetchFolio } from './folio'
+
+// feat/booking-17-checkout-enforcement: fetchFolio lee bookings.payer_mode
+// vía el embed de reservations, porque el check-out de una habitación
+// institucional cobra solo extras (decisión #391) -- si el preview
+// siguiera sumando total_amount_bs, mostraría un monto que el RPC nunca
+// va a cobrar.
+describe('fetchFolio', () => {
+  it('client: el total/saldo del preview son solo los extras, no el precio de la habitación', async () => {
+    maybeSingleMock.mockResolvedValueOnce({
+      data: {
+        reservations: {
+          id: 'res-1',
+          total_amount_bs: 500,
+          room_types: { name: 'Doble' },
+          anticipos: [],
+          bookings: { payer_mode: 'client' },
+        },
+        folio_charges: [{ id: 'c1', description: 'Minibar', amount_bs: 80 }],
+      },
+      error: null,
+    })
+
+    const folio = await fetchFolio('room-1')
+
+    expect(folio?.totalBs).toBe(80)
+    expect(folio?.balanceDueBs).toBe(80)
+  })
+
+  it('each_stay: sigue sumando habitación + extras menos anticipos (regresión)', async () => {
+    maybeSingleMock.mockResolvedValueOnce({
+      data: {
+        reservations: {
+          id: 'res-2',
+          total_amount_bs: 500,
+          room_types: { name: 'Doble' },
+          anticipos: [{ amount_bs: 100, status: 'active' }],
+          bookings: { payer_mode: 'each_stay' },
+        },
+        folio_charges: [{ id: 'c2', description: 'Minibar', amount_bs: 50 }],
+      },
+      error: null,
+    })
+
+    const folio = await fetchFolio('room-2')
+
+    expect(folio?.totalBs).toBe(550)
+    expect(folio?.balanceDueBs).toBe(450)
+  })
+
+  it('sin booking embebido: se asume each_stay por defecto (regresión, no revienta)', async () => {
+    maybeSingleMock.mockResolvedValueOnce({
+      data: {
+        reservations: {
+          id: 'res-3',
+          total_amount_bs: 500,
+          room_types: { name: 'Doble' },
+          anticipos: [],
+          bookings: null,
+        },
+        folio_charges: [],
+      },
+      error: null,
+    })
+
+    const folio = await fetchFolio('room-3')
+
+    expect(folio?.totalBs).toBe(500)
+  })
+})
 
 // Ambas RPC exigen el consumidor (change: reservation-booker-vs-guest,
 // PR5) -- el cargo debe quedar atribuido a quién realmente lo consumió,
