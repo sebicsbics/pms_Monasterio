@@ -43,6 +43,9 @@ select plan(11);
 --     en su propia migración (20260911090000), tiene su propio guard de
 --     rol interno (current_user_role() not in (...)) y ya pasó una
 --     revisión de seguridad dedicada (sdd/group-billing/net-owed-guard).
+--     record_booking_advance se suma en esta misma línea (branch
+--     feat/booking-14-advance-rpc, Slice 4): otra RPC pública real,
+--     otorgada en su propia migración, con el mismo guard de rol interno.
 --     Si aparece cualquier otro nombre de más, es una función interna que
 --     se coló por un grant en bloque.
 -- ---------------------------------------------------------------------
@@ -61,12 +64,13 @@ select is(
   || 'generate_housekeeping_assignments, is_staff, list_anticipos, list_info_notes, '
   || 'list_receivables, list_reservations_brief, list_tasks, lookup_guest_by_document, '
   || 'modify_anticipo, modify_stay_dates, my_profile, net_owed_bs, open_cash_session, '
-  || 'open_time_entries, override_reservation_rate, record_anticipo, register_stock_entry, '
+  || 'open_time_entries, override_reservation_rate, record_anticipo, '
+  || 'record_booking_advance, register_stock_entry, '
   || 'reject_rate_discount_request, reschedule_reservation, resolve_info_note, '
   || 'set_my_avatar, settle_receivable, username_to_email, void_cash_movement, '
   || 'walk_in_check_in_with_guests',
   'authenticated alcanza exactamente las RPC públicas + los 2 helpers de política + '
-  || 'net_owed_bs (52 funciones) -- ni una interna de más'
+  || 'net_owed_bs + record_booking_advance (53 funciones) -- ni una interna de más'
 );
 
 -- ---------------------------------------------------------------------
