@@ -21,7 +21,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(31);
 
 -- ---------------------------------------------------------------------
 -- Fixture: cuenta por cobrar compartida.
@@ -180,6 +180,33 @@ select is(
 );
 
 -- ---------------------------------------------------------------------
+-- Neutraliza un artefacto de pre-feat/booking-17: check_out_room todavía
+-- cobra el total completo de una habitación 'client' (no solo extras),
+-- así que A1/A2 ya llegaron 'paid' por su propio check-out (ver (a5)/(a6)
+-- arriba), ANTES de saldar la cuenta del grupo. Con ese estado previo,
+-- (s4)/(s5) más abajo pasarían igual aunque se borrara la rama nueva de
+-- settle_receivable -- no probarían nada. Se resetean a mano, como
+-- postgres (bypassa RLS, no pasa por ningún RPC), para que la ÚNICA
+-- causa posible de que A1/A2 vuelvan a 'paid' sea settle_receivable.
+-- ---------------------------------------------------------------------
+reset role;
+update public.reservations set payment_status = 'pending'
+  where id in ((select res1 from fixture_a), (select res2 from fixture_a));
+
+select is(
+  (select payment_status from public.reservations where id = (select res1 from fixture_a)),
+  'pending', '(a8) A1 reseteado a mano a pending (neutraliza el artefacto de check-out pre-booking-17)'
+);
+select is(
+  (select payment_status from public.reservations where id = (select res2 from fixture_a)),
+  'pending', '(a9) A2 reseteado a mano a pending'
+);
+select is(
+  (select payment_status from public.reservations where id = (select res3 from fixture_a)),
+  'pending', '(a10) A3 sigue pending (no se tocó, ya lo estaba: cancelada, nunca facturada)'
+);
+
+-- ---------------------------------------------------------------------
 -- Saldar la cuenta de A: rol autorizado (reception), caja abierta
 -- del seed.
 -- ---------------------------------------------------------------------
@@ -206,11 +233,12 @@ select is(
 
 select is(
   (select payment_status from public.reservations where id = (select res1 from fixture_a)),
-  'paid', '(s4) A1 sigue paid tras saldar'
+  'paid', '(s4, NUEVO) A1 pasa de pending a paid SOLO por saldar la cuenta del grupo (reseteada arriba, sin'
+  || ' otro camino posible hacia paid)'
 );
 select is(
   (select payment_status from public.reservations where id = (select res2 from fixture_a)),
-  'paid', '(s5) A2 sigue paid tras saldar'
+  'paid', '(s5, NUEVO) A2 pasa de pending a paid SOLO por saldar la cuenta del grupo (idem)'
 );
 select is(
   (select payment_status from public.reservations where id = (select res3 from fixture_a)),
