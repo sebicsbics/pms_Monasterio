@@ -38,7 +38,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(45);
 
 create or replace function pg_temp.snap_res(p_id uuid) returns text language sql as $$
   select row(
@@ -386,7 +386,7 @@ select is(
 select is(
   (select count(*)::int from public.stay_segments where reservation_id = (select reservation_id from fixture_frozen_change_room)),
   2,
-  '(20) quedan 2 tramos (el viejo recortado + el nuevo) -- deuda documentada: su suma puede no calzar con el total'
+  '(20) quedan 2 tramos (el viejo recortado + el nuevo)'
 );
 select is(
   (select operational_status from public.rooms where id = (select room_id from fixture_frozen_change_room)),
@@ -457,6 +457,304 @@ select is(
   (select count(*)::int from public.reservation_reschedules where reservation_id = (select reservation_id from fixture_frozen_reschedule)),
   1,
   '(29) reschedule_reservation audita el movimiento permitido igual que en each_stay'
+);
+
+-- =======================================================================
+-- ROUND 2 (review sdd/group-billing/review-booking-13c, #383):
+-- fortalece la fixture original de change_room congelado (arriba) y
+-- agrega los casos que el review pidió -- redondeo exacto en
+-- reschedule_reservation (each_stay Y congelada) y la tarifa heredada
+-- de change_room preservada de forma RECURSIVA en dos cambios seguidos,
+-- más el caso límite de una reserva de cortesía (total 0).
+-- =======================================================================
+
+-- ---------------------------------------------------------------------
+-- (30)-(31) FORTALECE la fixture original de change_room congelado
+--     (arriba, 1200 / 4 noches @300, p_rate_bs=999 ignorado): ahora que
+--     el tramo nuevo hereda v_last.rate_bs, la suma de tramos calza
+--     EXACTO con el total, y el tramo nuevo quedó a 300 (la tarifa del
+--     contrato), no a 999 (lo que había tipeado quien hizo el cambio).
+-- ---------------------------------------------------------------------
+select is(
+  (select coalesce(sum((end_date - start_date) * rate_bs), 0) from public.stay_segments
+     where reservation_id = (select reservation_id from fixture_frozen_change_room)),
+  1200.00,
+  '(30) frozen: la suma de tramos calza EXACTO con el total tras change_room (1200)'
+);
+select is(
+  (select rate_bs from public.stay_segments
+     where reservation_id = (select reservation_id from fixture_frozen_change_room)
+     order by end_date desc limit 1),
+  300.00,
+  '(31) frozen: el tramo nuevo hereda la tarifa del contrato (300), no la p_rate_bs pasada (999)'
+);
+
+-- ---------------------------------------------------------------------
+-- (32) CARACTERIZACIÓN + FIX: reschedule_reservation each_stay con un
+--     total que NO es múltiplo exacto de las noches (1000.00 / 3 =
+--     333.33, x3 = 999.99) -- revela y corrige un bug de redondeo
+--     PREEXISTENTE en la rama "misma cantidad de noches", que afecta a
+--     cualquier reserva, no sólo a las institucionales congeladas.
+--     Fixture insertada a mano (mismo patrón que 01_tramos_de_
+--     estadia.sql) porque create_reservation arma el total como tarifa
+--     por noche x noches, y no hay una tarifa "limpia" que multiplicada
+--     por 3 dé exactamente 1000.00.
+-- ---------------------------------------------------------------------
+do $$
+declare v_person uuid; v_booking uuid; v_room uuid; v_room_type uuid; v_res uuid;
+begin
+  insert into public.people (first_name, last_name, email)
+  values ('Caracter', 'Reschedule Redondeo', 'char.reschedule.redondeo@fixture.test')
+  returning id into v_person;
+
+  insert into public.bookings (contact_person_id, payer_mode)
+  values (v_person, 'each_stay')
+  returning id into v_booking;
+
+  select o.room_id, o.room_type_id into v_room, v_room_type
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.name = 'Doble Estándar'
+    and o.room_id not in (select room_id from public.reservations)
+  limit 1;
+
+  insert into public.reservations (
+    guest_id, room_id, room_type_id, check_in_date, check_out_date,
+    num_guests, total_amount_bs, status, booking_id
+  ) values (
+    null, v_room, v_room_type, '2027-09-01', '2027-09-04',
+    1, 1000.00, 'confirmed', v_booking
+  ) returning id into v_res;
+
+  create temp table fixture_char_reschedule_rounding as select v_res as reservation_id;
+end $$;
+
+select is(
+  (select (public.reschedule_reservation(
+       (select reservation_id from fixture_char_reschedule_rounding),
+       '2027-09-05', '2027-09-08', 'Mismo total exacto, sin redondeo'
+     )).total_amount_bs),
+  1000.00,
+  '(32) each_stay: reschedule_reservation manteniendo noches YA NO arrastra redondeo (1000.00 exacto, no 999.99)'
+);
+
+-- ---------------------------------------------------------------------
+-- (33)-(36) MISMO fix, reserva institucional congelada: total 1000.00 /
+--     3 noches (no divisible exacto). Reprogramar manteniendo las 3
+--     noches debe dejar el total y el contrato EXACTOS en 1000.00, y el
+--     tramo único debe seguir reflejando las fechas nuevas.
+-- ---------------------------------------------------------------------
+do $$
+declare v_person uuid; v_booking uuid; v_room uuid; v_room_type uuid; v_res uuid; v_account uuid;
+begin
+  insert into public.receivable_accounts (name, kind) values ('Fixture Reschedule Redondeo SA', 'empresa')
+    returning id into v_account;
+
+  insert into public.people (first_name, last_name, email)
+  values ('Frozen', 'Reschedule Redondeo', 'frozen.reschedule.redondeo@fixture.test')
+  returning id into v_person;
+
+  insert into public.bookings (contact_person_id, payer_mode, rate_mode, receivable_account_id)
+  values (v_person, 'client', 'room', v_account)
+  returning id into v_booking;
+
+  select o.room_id, o.room_type_id into v_room, v_room_type
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.name = 'Doble Estándar'
+    and o.room_id not in (select room_id from public.reservations)
+  limit 1;
+
+  insert into public.reservations (
+    guest_id, room_id, room_type_id, check_in_date, check_out_date,
+    num_guests, total_amount_bs, status, booking_id
+  ) values (
+    null, v_room, v_room_type, '2027-09-01', '2027-09-04',
+    1, 1000.00, 'confirmed', v_booking
+  ) returning id into v_res;
+
+  insert into public.booking_balances (booking_id, event_type, amount_bs, notes)
+  values (v_booking, 'contract_agreed', 1000.00, 'Contrato fixture redondeo');
+
+  create temp table fixture_frozen_reschedule_rounding as select v_res as reservation_id;
+end $$;
+
+select is(
+  (select (public.reschedule_reservation(
+       (select reservation_id from fixture_frozen_reschedule_rounding),
+       '2027-09-05', '2027-09-08', 'Reprograma sin redondeo, contrato congelado'
+     )).total_amount_bs),
+  1000.00,
+  '(33) frozen: reschedule_reservation manteniendo noches con un total no divisible exacto (1000.00) no arrastra redondeo'
+);
+select is(
+  (select amount_bs from public.booking_balances bb
+     join public.reservations r on r.booking_id = bb.booking_id
+     where r.id = (select reservation_id from fixture_frozen_reschedule_rounding) and bb.event_type = 'contract_agreed'),
+  1000.00,
+  '(34) frozen: el contrato sigue en 1000.00 exacto tras reprogramar'
+);
+select is(
+  (select count(*)::int from public.stay_segments where reservation_id = (select reservation_id from fixture_frozen_reschedule_rounding)),
+  1,
+  '(35) frozen: sigue habiendo un único tramo tras reprogramar sin sumar/restar noches'
+);
+select is(
+  (select row(start_date, end_date) from public.stay_segments where reservation_id = (select reservation_id from fixture_frozen_reschedule_rounding)),
+  row('2027-09-05'::date, '2027-09-08'::date),
+  '(36) frozen: el tramo único sigue las fechas nuevas de la reserva'
+);
+
+-- ---------------------------------------------------------------------
+-- (37)-(42) WARNING adoptado: change_room repetido DOS veces sobre una
+--     reserva congelada (1200 / 3 noches @400), cada vez con un
+--     p_rate_bs distinto e irrelevante (777, luego 555) y un tipo de
+--     habitación con precio de lista distinto -- prueba que el tramo
+--     nuevo hereda SIEMPRE la tarifa del contrato (400) y que
+--     sum(stay_segments) se mantiene en 1200 de forma RECURSIVA, no
+--     sólo la primera vez.
+-- ---------------------------------------------------------------------
+do $$
+declare v_room uuid; v_room_type uuid; v_res uuid;
+begin
+  select o.room_id, o.room_type_id into v_room, v_room_type
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.name = 'Triple Estándar'
+    and o.room_id not in (select room_id from public.reservations)
+  limit 1;
+  v_res := public.create_reservation(
+    v_room, v_room_type, 'Frozen', 'Cambia Cuarto Repetido', '70000208', 'frozen.cambiocuartorepetido@fixture.test',
+    current_date - 2, current_date + 1, 1, 'phone', 400, 'Tarifa institucional pactada', true,
+    'client', 'room', null, (select account_id from fixture_account), null, null, null, null, false, null
+  );
+  update public.reservations set status = 'checked_in' where id = v_res;
+  create temp table fixture_frozen_change_room_repeat as select v_res as reservation_id, v_room as room_id;
+end $$;
+
+do $$
+declare v_new_room uuid; v_new_room_type uuid;
+begin
+  select o.room_id, o.room_type_id into v_new_room, v_new_room_type
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.name = 'Loft Cuádruple'
+    and o.room_id not in (select room_id from public.reservations)
+  limit 1;
+  create temp table fixture_frozen_change_room_repeat_target1 as select v_new_room as new_room_id, v_new_room_type as new_room_type_id;
+end $$;
+
+do $$
+declare v_new_room uuid; v_new_room_type uuid;
+begin
+  select o.room_id, o.room_type_id into v_new_room, v_new_room_type
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.name = 'Doble Estándar'
+    and o.room_id not in (select room_id from public.reservations)
+  limit 1;
+  create temp table fixture_frozen_change_room_repeat_target2 as select v_new_room as new_room_id, v_new_room_type as new_room_type_id;
+end $$;
+
+select is(
+  public.change_room(
+    (select room_id from fixture_frozen_change_room_repeat),
+    (select new_room_id from fixture_frozen_change_room_repeat_target1),
+    (select new_room_type_id from fixture_frozen_change_room_repeat_target1),
+    777, current_date - 1, 'Primer cambio, contrato congelado'
+  ),
+  1200.00,
+  '(37) frozen: primer change_room ignora p_rate_bs=777, total sigue en 1200'
+);
+select is(
+  (select coalesce(sum((end_date - start_date) * rate_bs), 0) from public.stay_segments
+     where reservation_id = (select reservation_id from fixture_frozen_change_room_repeat)),
+  1200.00,
+  '(38) frozen: la suma de tramos calza exacto con el total tras el primer cambio'
+);
+select is(
+  (select rate_bs from public.stay_segments
+     where reservation_id = (select reservation_id from fixture_frozen_change_room_repeat)
+     order by end_date desc limit 1),
+  400.00,
+  '(39) frozen: el tramo nuevo hereda la tarifa del contrato (400), no la p_rate_bs pasada (777)'
+);
+select is(
+  public.change_room(
+    (select new_room_id from fixture_frozen_change_room_repeat_target1),
+    (select new_room_id from fixture_frozen_change_room_repeat_target2),
+    (select new_room_type_id from fixture_frozen_change_room_repeat_target2),
+    555, current_date, 'Segundo cambio, contrato congelado'
+  ),
+  1200.00,
+  '(40) frozen: segundo change_room seguido también ignora p_rate_bs=555, total sigue en 1200'
+);
+select is(
+  (select coalesce(sum((end_date - start_date) * rate_bs), 0) from public.stay_segments
+     where reservation_id = (select reservation_id from fixture_frozen_change_room_repeat)),
+  1200.00,
+  '(41) frozen: la suma de tramos SIGUE calzando exacto (1200) tras el SEGUNDO cambio -- invariante recursivo'
+);
+select is(
+  (select count(*)::int from public.booking_balances bb
+     join public.reservations r on r.booking_id = bb.booking_id
+     where r.id = (select reservation_id from fixture_frozen_change_room_repeat) and bb.event_type = 'contract_agreed'),
+  1,
+  '(42) frozen: el contrato sigue teniendo un único contract_agreed tras dos cambios de habitación'
+);
+
+-- ---------------------------------------------------------------------
+-- (43)-(45) EDGE: reserva de cortesía institucional congelada (total 0,
+--     tarifa 0) -- cambiar de habitación debe mantener el total en 0.
+-- ---------------------------------------------------------------------
+do $$
+declare v_room uuid; v_room_type uuid; v_res uuid;
+begin
+  select o.room_id, o.room_type_id into v_room, v_room_type
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.name = 'Familiar'
+    and o.room_id not in (select room_id from public.reservations)
+  limit 1;
+  v_res := public.create_reservation(
+    v_room, v_room_type, 'Frozen', 'Cortesia', '70000209', 'frozen.cortesia@fixture.test',
+    current_date - 1, current_date + 1, 1, 'phone', null, null, true,
+    'client', 'room', null, (select account_id from fixture_account), null, null, null, null, true, 'Cortesía institucional de prueba'
+  );
+  update public.reservations set status = 'checked_in' where id = v_res;
+  create temp table fixture_frozen_change_room_courtesy as select v_res as reservation_id, v_room as room_id;
+end $$;
+
+do $$
+declare v_new_room uuid; v_new_room_type uuid;
+begin
+  -- "Presidencial" resultó tener 0 habitaciones libres en esta base
+  -- local (ver pattern/pgtap-fixture-room-type-pools-can-overlap-
+  -- physically) -- "Matrimonial Colonial Suite" es un pool disjunto de
+  -- todo lo ya usado en este archivo (Simple/Doble/Triple Estándar,
+  -- Loft Cuádruple, Familiar) y tiene libres de sobra.
+  select o.room_id, o.room_type_id into v_new_room, v_new_room_type
+  from public.room_type_options o join public.room_types rt on rt.id = o.room_type_id
+  where rt.name = 'Matrimonial Colonial Suite'
+    and o.room_id not in (select room_id from public.reservations)
+  limit 1;
+  create temp table fixture_frozen_change_room_courtesy_target as select v_new_room as new_room_id, v_new_room_type as new_room_type_id;
+end $$;
+
+select is(
+  public.change_room(
+    (select room_id from fixture_frozen_change_room_courtesy),
+    (select new_room_id from fixture_frozen_change_room_courtesy_target),
+    (select new_room_type_id from fixture_frozen_change_room_courtesy_target),
+    999, null, 'Cambia de habitación, reserva de cortesía congelada'
+  ),
+  0.00,
+  '(43) frozen: change_room en una reserva de cortesía (total 0) mantiene el total en 0, ignora p_rate_bs'
+);
+select is(
+  (select total_amount_bs from public.reservations where id = (select reservation_id from fixture_frozen_change_room_courtesy)),
+  0.00,
+  '(44) frozen: total_amount_bs de la reserva de cortesía queda en 0 tras el cambio de habitación'
+);
+select is(
+  (select coalesce(sum((end_date - start_date) * rate_bs), 0) from public.stay_segments
+     where reservation_id = (select reservation_id from fixture_frozen_change_room_courtesy)),
+  0.00,
+  '(45) frozen: la suma de tramos de la reserva de cortesía también queda en 0'
 );
 
 select * from finish();

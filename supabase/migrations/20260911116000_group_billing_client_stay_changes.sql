@@ -9,10 +9,16 @@
 -- con la cadena de branches locales pendientes -- ver
 -- sdd/group-billing/decisions-round-5 y apply-progress.
 --
--- Body-only, mismas firmas desde 20260807000000 (modify_stay_dates),
--- 20260722020000 (change_room), 20260722010000 (reschedule_reservation)
--- -- ver V-A en apply-progress para las 3 firmas exactas -- sin DROP,
--- grants sin cambios.
+-- Body-only, mismas firmas desde 20260807000000_cash_history_and_stay_
+-- dates.sql (modify_stay_dates), 20260805030000_stay_segments.sql
+-- (change_room), 20260727000100_refunds_to_cancel_reschedule.sql
+-- (reschedule_reservation) -- provenance verificada con
+-- `git grep -n "create or replace function public.<fn>"` sobre
+-- supabase/migrations/ antes de escribir este ROUND 2 (el ROUND 1 de
+-- esta misma migración citaba 20260722020000/20260722010000, que NO
+-- son los archivos correctos -- error cosmético de provenance, sin
+-- impacto funcional, corregido acá). Ver V-A en apply-progress para las
+-- 3 firmas exactas -- sin DROP, grants sin cambios.
 --
 -- Regla (decisión de usuario, decisions-round-5):
 --   - EXTENDER una reserva institucional con contract_agreed ya
@@ -30,29 +36,47 @@
 --
 -- FEASIBILITY GATE (apply-time, ver apply-progress): mantener
 -- total_amount_bs sin cambios es COMPATIBLE con el invariante de
--- stay_segments para el caso de 1 solo tramo (el único alcanzable en
--- ACORTAR, porque EXTENDER -- la única operación que abriría un segundo
--- tramo -- ya está bloqueada arriba): el propio trigger
--- trg_sync_single_stay_segment/sync_single_stay_segment() reajusta
--- rate_bs del tramo único a total_amount_bs/noches_nuevas cada vez que
--- reservations cambia, así que sum(stay_segments) SIGUE coincidiendo
--- con total_amount_bs, sólo que a una tarifa por noche más alta (el
--- mismo monto repartido en menos noches).
+-- stay_segments en LOS TRES casos permitidos, sin excepciones:
 --
--- Para change_room, que sí deja > 1 tramo, ese mismo trigger se
--- abstiene (su guard es "v_count > 1 -> return null, mandan las RPC"),
--- así que la suma de tramos puede NO calzar exactamente con
--- total_amount_bs para una reserva congelada que cambió de habitación.
--- Se documenta como deuda conocida en vez de inventar una regla de
--- reparto arbitraria entre el tramo viejo y el nuevo: ni un CHECK ni
--- ningún test existente exigen esa igualdad para reservas 'client', y
--- el dinero (folio, cobro de check-out) SIEMPRE lee total_amount_bs
--- directo (src/services/folio.ts:56), nunca la suma de tramos -- el
--- único efecto es que el desglose itemizado del folio (RoomPanel.tsx,
--- sólo cuando hay más de un tramo) podría no sumar exactamente el
--- "Total" mostrado para este caso específico. Se deja para cuando
--- llegue la UI dedicada de checkout institucional
--- (feat/booking-17-checkout-enforcement).
+-- 1) ACORTAR (modify_stay_dates, único tramo posible ya que EXTENDER
+--    está bloqueado arriba): el propio trigger
+--    trg_sync_single_stay_segment/sync_single_stay_segment() reajusta
+--    rate_bs del tramo único a total_amount_bs/noches_nuevas cada vez
+--    que reservations cambia, así que sum(stay_segments) SIGUE
+--    coincidiendo con total_amount_bs, sólo que a una tarifa por noche
+--    más alta (el mismo monto repartido en menos noches).
+--
+-- 2) change_room (dos o más tramos: ese mismo trigger se abstiene, su
+--    guard es "v_count > 1 -> return null, mandan las RPC"): ROUND 2
+--    (review sdd/group-billing/review-booking-13c, #383) -- el tramo
+--    nuevo YA NO usa p_rate_bs (la tarifa que tipeó quien hace el
+--    cambio, irrelevante para un contrato ya fijado), sino
+--    v_last.rate_bs -- la tarifa del tramo saliente, que por
+--    construcción SIEMPRE es total_amount_bs/noches (el propio trigger
+--    la dejó así la primera vez, o el branch "sin tramos" de abajo la
+--    materializa así). Esto hace que sum(stay_segments) =
+--    total_amount_bs EXACTO, y se preserva RECURSIVAMENTE: cada
+--    change_room sucesivo vuelve a copiar la MISMA tarifa hacia el
+--    tramo siguiente. No hay reparto arbitrario entre tramo viejo y
+--    nuevo que inventar -- el contrato es un monto único, y todos los
+--    tramos de una reserva congelada terminan a la misma tarifa
+--    implícita (total/noches).
+--
+-- 3) reschedule_reservation manteniendo las mismas noches: ROUND 2
+--    (#383) -- el ROUND 1 asumía que `v_per_night * v_new_nights`
+--    reproducía el total EXACTO cuando las noches no cambian, pero
+--    v_per_night es numeric(10,2): si el total no es múltiplo exacto de
+--    las noches (contrato de 1000.00 / 3 noches, típico de un pacto
+--    institucional negociado), total/3=333.33 y 333.33*3=999.99 -- un
+--    centavo de deriva, reproducido en vivo. El fix salta la
+--    multiplicación por completo cuando v_new_nights=v_old_nights y
+--    deja total_amount_bs literalmente igual (self-reference contra la
+--    fila VIEJA en el propio UPDATE ... SET, semántica estándar de
+--    Postgres). Este bug de redondeo es PREEXISTENTE y afecta a
+--    CUALQUIER reserva -- no sólo a las institucionales congeladas --
+--    así que el fix también corrige el caso each_stay (ver test 23,
+--    assertion nueva sobre reschedule_reservation each_stay con un
+--    total no divisible exacto).
 -- =====================================================================
 
 create or replace function public.modify_stay_dates(
@@ -180,7 +204,7 @@ begin
   return public.recalc_reservation_total(v_res.id);
 end;
 $function$;
--- Grants sin cambios (misma firma desde 20260807000000).
+-- Grants sin cambios (misma firma desde 20260807000000_cash_history_and_stay_dates.sql).
 
 create or replace function public.change_room(
   p_room_id uuid, p_new_room_id uuid, p_new_room_type_id uuid, p_rate_bs numeric,
@@ -225,8 +249,9 @@ begin
   -- noches, sólo reasigna dónde duerme el huésped -- se permite incluso
   -- para una reserva institucional congelada, pero el total pactado NO
   -- se recalcula con la tarifa nueva (ver nota de FEASIBILITY GATE al
-  -- principio de esta migración sobre la deuda documentada con la suma
-  -- de tramos). EXISTS es NULL-safe frente a booking_id nulo.
+  -- principio de esta migración, punto 2, sobre cómo el tramo nuevo
+  -- hereda v_last.rate_bs en vez de p_rate_bs). EXISTS es NULL-safe
+  -- frente a booking_id nulo.
   v_frozen := exists (
     select 1 from public.booking_balances bb
     where bb.booking_id = v_res.booking_id and bb.event_type = 'contract_agreed'
@@ -281,10 +306,20 @@ begin
     update public.stay_segments set end_date = v_from where id = v_last.id;
   end if;
 
+  -- ROUND 2 (review #383): para una reserva congelada, el tramo nuevo
+  -- hereda la tarifa del tramo saliente (v_last.rate_bs -- capturada
+  -- ANTES del recorte/delete de arriba, así que sigue siendo la tarifa
+  -- correcta aunque esa fila ya haya sido actualizada o borrada), no la
+  -- p_rate_bs que haya tipeado quien hace el cambio. v_last.rate_bs es
+  -- siempre total_amount_bs/noches por construcción (el trigger de
+  -- tramo único la fija así, o el branch "sin tramos" de arriba la
+  -- materializa así), así que sum(stay_segments) queda exacto y esto se
+  -- repite igual en cada change_room sucesivo.
   insert into public.stay_segments (
     reservation_id, room_id, room_type_id, rate_bs, start_date, end_date, reason
   ) values (
-    v_res.id, p_new_room_id, p_new_room_type_id, p_rate_bs,
+    v_res.id, p_new_room_id, p_new_room_type_id,
+    case when v_frozen then v_last.rate_bs else p_rate_bs end,
     v_from, v_res.check_out_date,
     coalesce(nullif(trim(p_reason), ''), 'Cambio de habitación')
   );
@@ -304,7 +339,7 @@ begin
   return public.recalc_reservation_total(v_res.id);
 end;
 $function$;
--- Grants sin cambios (misma firma desde 20260722020000).
+-- Grants sin cambios (misma firma desde 20260805030000_stay_segments.sql).
 
 create or replace function public.reschedule_reservation(
   p_reservation_id uuid, p_check_in date, p_check_out date, p_reason text
@@ -377,17 +412,30 @@ begin
   end if;
 
   -- Conservar la tarifa por noche vigente (respeta overrides previos).
-  -- Nota: cuando v_new_nights = v_old_nights (único caso alcanzable acá
-  -- para una reserva congelada), v_per_night * v_new_nights reproduce
-  -- total_amount_bs EXACTO -- misma noche, misma división, sin
-  -- necesidad de una rama especial para "no tocar el total".
+  -- ROUND 2 FIX (review sdd/group-billing/review-booking-13c, #383): el
+  -- ROUND 1 asumía que `v_per_night * v_new_nights` reproducía el total
+  -- EXACTO cuando las noches no cambian -- FALSO cuando total_amount_bs
+  -- no es múltiplo exacto de las noches a 2 decimales (v_per_night es
+  -- numeric(10,2): 1000.00/3=333.33, y 333.33*3=999.99, un centavo de
+  -- deriva). El caso v_new_nights=v_old_nights salta la multiplicación
+  -- por completo y deja total_amount_bs literalmente igual -- la
+  -- referencia a `total_amount_bs` dentro de este mismo UPDATE ... SET
+  -- apunta a la fila VIEJA (semántica estándar de Postgres), así que no
+  -- hace falta una segunda SELECT. Este bug de redondeo es PREEXISTENTE
+  -- (no introducido por esta migración) y afecta a CUALQUIER reserva
+  -- reprogramada manteniendo la misma cantidad de noches con un total
+  -- no divisible exacto -- el fix lo corrige para reservas each_stay
+  -- también, no sólo para las institucionales congeladas (ver test 23).
   select total_amount_bs / v_old_nights into v_per_night
     from public.reservations where id = p_reservation_id;
 
   update public.reservations
     set check_in_date  = p_check_in,
         check_out_date = p_check_out,
-        total_amount_bs = v_per_night * v_new_nights
+        total_amount_bs = case
+          when v_new_nights = v_old_nights then total_amount_bs
+          else v_per_night * v_new_nights
+        end
     where id = p_reservation_id
     returning * into v_row;
 
@@ -401,4 +449,4 @@ begin
   return v_row;
 end;
 $function$;
--- Grants sin cambios (misma firma desde 20260722010000).
+-- Grants sin cambios (misma firma desde 20260727000100_refunds_to_cancel_reschedule.sql).
