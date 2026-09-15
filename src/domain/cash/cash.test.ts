@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ANTICIPO_PAYMENT_METHODS,
   CAJA_PAYMENT_METHODS,
+  categoryLabel,
   isAnticipoMethod,
   differenceWithOtherMeansBs,
   expectedWithOtherMeansBs,
@@ -26,6 +27,16 @@ function movement(paymentMethod: string | null): CashMovement {
     voidReason: null,
   }
 }
+
+describe('categoryLabel', () => {
+  it('labels adelanto_grupo (record_booking_advance, stage 6 group bookings)', () => {
+    expect(categoryLabel('income', 'adelanto_grupo')).toBe('Adelanto de grupo')
+  })
+
+  it('falls back to the raw code for an unknown category (regression)', () => {
+    expect(categoryLabel('income', 'algo_nuevo')).toBe('algo_nuevo')
+  })
+})
 
 describe('isCashMovement', () => {
   it('counts EFECTIVO as cash', () => {

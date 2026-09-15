@@ -6,6 +6,11 @@ export const INCOME_CATEGORIES: Record<string, string> = {
   evento: 'Evento / salón',
   cobro_cuenta: 'Cobro cuenta por cobrar',
   adelanto: 'Adelanto / seña',
+  // record_booking_advance (stage 6, reservas institucionales) usa una
+  // categoría propia en vez de 'adelanto': cash_session_history agrega
+  // por kind+payment_method, no por category, así que el cajón no se ve
+  // afectado -- sin la etiqueta acá, CajaView mostraría el código crudo.
+  adelanto_grupo: 'Adelanto de grupo',
   // Sin categoría de reembolso: el hotel NO reembolsa (ver
   // domain/anticipos). Ofrecerla en el desplegable invitaba a registrar
   // un movimiento que la operación no tiene. `categoryLabel` igual sabe
