@@ -10,14 +10,13 @@
 -- silencioso. Esta migración agrega la rama booking_id, que marca TODAS
 -- las reservas del booking como 'paid'.
 --
--- Nota: el check-out individual de una habitación 'client' todavía cobra
--- el total completo de la habitación (no solo extras), porque ese fix es
--- feat/booking-17 (Slice 6), que no existe en esta rama. Por eso las
--- habitaciones A1/A2, que hacen check-out normal, YA llegan 'paid' antes
--- de saldar la cuenta del grupo (gap conocido, documentado en
--- feat/booking-15). La prueba realmente nueva es A3: una habitación
--- CANCELADA (nunca facturada individualmente) que solo pasa a 'paid'
--- cuando se salda la cuenta por cobrar del grupo.
+-- Nota (actualizada en feat/booking-17-checkout-enforcement): desde esa
+-- rama, el check-out individual de una habitación 'client' cobra SOLO
+-- sus extras y YA NO marca payment_status='paid' (decisión #391). Acá
+-- A1/A2 no tienen extras cargadas, así que su check-out normal las deja
+-- 'pending' -- exactamente igual que A3 (cancelada, nunca facturada
+-- individualmente). Las tres (A1, A2, A3) solo pasan a 'paid' cuando se
+-- salda la cuenta por cobrar del grupo (settle_receivable, esta rama).
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
@@ -39,8 +38,9 @@ end $$;
 
 -- ---------------------------------------------------------------------
 -- (A) Booking de 3 habitaciones (client, pool 500/1 noche x2). A1 y A2
---     hacen check-out normal (quedan 'paid' por el gap conocido); A3 se
---     cancela (última transición activa) y cierra el grupo.
+--     hacen check-out normal SIN extras (quedan 'pending', ya que el
+--     check-out solo cobra extras); A3 se cancela (última transición
+--     activa) y cierra el grupo.
 -- ---------------------------------------------------------------------
 do $$
 declare
@@ -119,11 +119,11 @@ select is(
 
 select is(
   (select payment_status from public.reservations where id = (select res1 from fixture_a)),
-  'paid', '(a5, pre-settle) A1 ya está paid por su propio check-out (gap conocido, feat/booking-17 pendiente)'
+  'pending', '(a5, pre-settle) A1 sigue pending tras su propio check-out (solo cobra extras, feat/booking-17)'
 );
 select is(
   (select payment_status from public.reservations where id = (select res2 from fixture_a)),
-  'paid', '(a6, pre-settle) A2 ya está paid por su propio check-out'
+  'pending', '(a6, pre-settle) A2 sigue pending tras su propio check-out (idem)'
 );
 select is(
   (select payment_status from public.reservations where id = (select res3 from fixture_a)),
@@ -180,26 +180,18 @@ select is(
 );
 
 -- ---------------------------------------------------------------------
--- Neutraliza un artefacto de pre-feat/booking-17: check_out_room todavía
--- cobra el total completo de una habitación 'client' (no solo extras),
--- así que A1/A2 ya llegaron 'paid' por su propio check-out (ver (a5)/(a6)
--- arriba), ANTES de saldar la cuenta del grupo. Con ese estado previo,
--- (s4)/(s5) más abajo pasarían igual aunque se borrara la rama nueva de
--- settle_receivable -- no probarían nada. Se resetean a mano, como
--- postgres (bypassa RLS, no pasa por ningún RPC), para que la ÚNICA
--- causa posible de que A1/A2 vuelvan a 'paid' sea settle_receivable.
+-- Checkpoint inmediatamente antes de saldar la cuenta de A: las tres
+-- reservas siguen pending de forma NATURAL (feat/booking-17 ya no marca
+-- paid en el check-out individual de una habitación institucional) --
+-- sin esto, (s4)/(s5) más abajo no probarían nada de settle_receivable.
 -- ---------------------------------------------------------------------
-reset role;
-update public.reservations set payment_status = 'pending'
-  where id in ((select res1 from fixture_a), (select res2 from fixture_a));
-
 select is(
   (select payment_status from public.reservations where id = (select res1 from fixture_a)),
-  'pending', '(a8) A1 reseteado a mano a pending (neutraliza el artefacto de check-out pre-booking-17)'
+  'pending', '(a8) A1 sigue pending justo antes de saldar la cuenta'
 );
 select is(
   (select payment_status from public.reservations where id = (select res2 from fixture_a)),
-  'pending', '(a9) A2 reseteado a mano a pending'
+  'pending', '(a9) A2 sigue pending justo antes de saldar la cuenta'
 );
 select is(
   (select payment_status from public.reservations where id = (select res3 from fixture_a)),
