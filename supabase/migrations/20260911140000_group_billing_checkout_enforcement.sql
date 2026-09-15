@@ -7,25 +7,60 @@
 -- refleja "la deuda del GRUPO por esta habitación está saldada", no
 -- "este check-out cobró plata".
 --
--- Tres reescrituras body-only (CREATE OR REPLACE, mismas firmas, sin
--- DROP, grants sin cambios -- verificado con pg_get_functiondef/proacl
--- antes y después):
---   1. check_out_room (8 args, sin cambios desde 20260817000100): para
---      reservas de bookings 'client', cobra SOLO los extras de la
---      habitación (no el total_amount_bs) y YA NO marca payment_status=
---      'paid' -- esa deuda vive en booking_balances/receivables y se
---      salda al cerrarse el grupo o al saldar la cuenta por cobrar.
+-- REVISIÓN (2026-09-15, review de esta misma rama, sdd/group-billing/
+-- review-booking-17, request changes): la primera versión de esta
+-- migración usaba un UPDATE MASIVO a 'paid' tanto en _close_booking_group
+-- (rama saldo<=0) como en el tail de settle_receivable (rama booking_id).
+-- El review reprodujo en vivo el bug: un grupo prepago (neto 0) cuya
+-- última habitación mandó 80 Bs de extras a CTAS_POR_COBRAR terminaba con
+-- esa habitación 'paid' aunque su propia cuenta de extras seguía
+-- pendiente -- el UPDATE masivo pisaba esa cuenta sin mirarla. Mismo bug
+-- en settle_receivable: saldar la cuenta de GRUPO marcaba paid una
+-- habitación que todavía debía sus extras. Decisión #391 v2 (orquestador,
+-- "modelo correcto, no parche", sdd/group-billing/client-payment-status):
+-- una reserva de un booking 'client' es 'paid' SI Y SOLO SI (1) el grupo
+-- cerró (existe un evento group_closed), (2) la deuda del GRUPO está
+-- saldada (sin cuenta por cobrar de booking, o esa cuenta tiene
+-- status='paid' -- una cancelada NO cuenta como saldada) Y (3) todas SUS
+-- PROPIAS cuentas por cobrar de extras (reservation_id, CTAS_POR_COBRAR)
+-- tienen status='paid'. En cualquier otro caso, 'pending'.
+--
+-- Esta migración sigue sin pushearse (rama local, nunca compartida) --
+-- se edita EN EL LUGAR (squash, sdd/conventions/unpushed-migration-
+-- squash) en vez de agregar una migración nueva encima.
+--
+-- Cuatro reescrituras body-only (CREATE OR REPLACE, mismas firmas donde
+-- ya existían, sin DROP, grants sin cambios -- verificado con
+-- pg_get_functiondef/proacl antes y después) MÁS una función nueva:
+--   1. check_out_room (8 args, sin cambios de firma desde
+--      20260817000100): para reservas de bookings 'client', cobra SOLO
+--      los extras de la habitación (no el total_amount_bs) y YA NO marca
+--      payment_status='paid'. SIN llamada a _refresh_client_payment_status
+--      acá -- ver el comentario junto al bloque CTAS_POR_COBRAR más abajo
+--      para el análisis de orden de sentencias que lo justifica.
 --   2. record_anticipo (9 args, sin cambios desde 20260806010000):
 --      rechaza cualquier reserva de un booking 'client' ANTES de mutar
 --      nada (ni anticipos ni cash_movements).
 --   3. _close_booking_group (trigger, 0 args, sin cambios de firma desde
---      20260911130000): cuando el saldo neto al cerrar es <= 0 (nada
---      pendiente, sin cuenta por cobrar), marca TODAS las reservas del
---      booking -- incluidas las canceladas -- como payment_status=
---      'paid'. Sin esto, con el punto 1 ya aplicado, un grupo pagado por
---      completo quedaría con sus habitaciones en 'pending' para siempre
---      (no existe ninguna cuenta por cobrar que las pudiera saldar
---      después).
+--      20260911130000): ya NO hace un update masivo -- llama SIEMPRE a
+--      public._refresh_client_payment_status(new.booking_id) después de
+--      auditar el cierre (y de insertar la cuenta de grupo si
+--      corresponde), tenga o no saldo pendiente.
+--   4. settle_receivable (7 args, sin cambios de firma desde
+--      20260806010000, incorporada a esta migración -- basada en el
+--      cuerpo VIVO de feat/booking-16): la rama booking_id ya NO hace un
+--      update masivo -- llama a _refresh_client_payment_status. La rama
+--      reservation_id se bifurca: si la reserva es de un booking
+--      'client' (cuenta de extras), llama a _refresh_client_payment_status
+--      también; si es each_stay (camino de siempre), el UPDATE único sin
+--      cambios.
+--   5. NUEVA _refresh_client_payment_status(uuid) (SECURITY DEFINER,
+--      revocada de public/anon/authenticated): recalcula, en un solo
+--      UPDATE con CASE/EXISTS (NULL-safe por construcción, sin comparar
+--      contra columnas que puedan ser NULL de forma implícita --
+--      postgres/check-constraint-null-trap), el payment_status de TODAS
+--      las reservas del booking según la regla de arriba. No-op si el
+--      booking no es 'client'.
 -- =====================================================================
 
 create or replace function public.check_out_room(
@@ -136,6 +171,20 @@ begin
     update public.reservations set payment_status = 'pending' where id = v_reservation_id;
 
     -- Se factura el SALDO (para client: solo los extras impagos).
+    --
+    -- Orden de sentencias (revisión #391 v2, verificado en el cuerpo
+    -- VIVO): este INSERT de la cuenta de extras corre ANTES del
+    -- `update reservations set status='checked_out'` de más abajo (línea
+    -- que dispara el trigger reservations_close_booking_group, AFTER
+    -- UPDATE OF status). Es decir, si este check-out es el que cierra el
+    -- grupo (última habitación activa), _close_booking_group ya va a ver
+    -- esta cuenta de extras recién insertada cuando llame a
+    -- _refresh_client_payment_status -- no hace falta llamarla de nuevo
+    -- acá. Y si este check-out NO es el que cierra el grupo, la regla
+    -- exige payment_status='pending' de todos modos (el grupo todavía no
+    -- cerró), que es exactamente el valor que esta misma sentencia ya
+    -- dejó dos líneas arriba. Por construcción, check_out_room nunca
+    -- necesita llamar a _refresh_client_payment_status por su cuenta.
     if v_due > 0 then
       insert into public.receivables (account_id, reservation_id, amount_bs, concept)
       values (p_receivable_account_id, v_reservation_id, v_due,
@@ -341,17 +390,16 @@ begin
     insert into public.receivables (account_id, booking_id, amount_bs, concept)
     values (v_account_id, new.booking_id, v_net, 'Saldo de grupo/institución')
     on conflict (booking_id) where booking_id is not null do nothing;
-  else
-    -- (8, NUEVO feat/booking-17, decisión #391) Sin saldo pendiente, no
-    -- va a quedar ninguna cuenta por cobrar que saldar -- si no
-    -- marcáramos las reservas acá, quedarían 'pending' para siempre
-    -- (check_out_room ya no las marca 'paid' para bookings 'client',
-    -- feat/booking-17, más arriba en esta misma migración). Incluye las
-    -- CANCELADAS: su parte del contrato ya está saldada, mismo criterio
-    -- sin filtro de status que usa settle_receivable (feat/booking-16)
-    -- para el caso con saldo > 0.
-    update public.reservations set payment_status = 'paid' where booking_id = new.booking_id;
   end if;
+
+  -- (8, revisión #391 v2) Ya NO hay un `else update ... set paid` acá --
+  -- ese UPDATE masivo pisaba cualquier cuenta de EXTRAS de una habitación
+  -- (reservation_id, CTAS_POR_COBRAR) que siguiera pendiente, marcándola
+  -- 'paid' igual (bug reproducido en vivo por el review de esta rama,
+  -- sdd/group-billing/review-booking-17). Ahora SIEMPRE se recalcula con
+  -- la regla completa (grupo cerrado + deuda de grupo saldada + cada
+  -- cuenta propia pagada), tenga o no saldo de grupo pendiente.
+  perform public._refresh_client_payment_status(new.booking_id);
 
   return new;
 end;
@@ -359,3 +407,161 @@ $function$;
 
 -- Grants sin cambios (trigger interno, revocado de public/anon/
 -- authenticated desde 20260911130000).
+
+create or replace function public.settle_receivable(
+  p_id uuid,
+  p_method text,
+  p_receipt_path text default null,
+  p_payment_reference text default null,
+  p_cash_bs numeric default null,
+  p_non_cash_bs numeric default null,
+  p_non_cash_method text default null
+) returns public.receivables
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_row      public.receivables;
+  v_movement public.cash_movements;
+  v_mov_id   uuid;
+  v_ref      text := nullif(trim(p_payment_reference), '');
+  -- (revisión #391 v2) solo se usan cuando la cuenta es a nivel de
+  -- reserva (v_row.reservation_id is not null) -- ver más abajo.
+  v_reservation_booking_id  uuid;
+  v_reservation_payer_mode  text;
+begin
+  if public.current_user_role() not in ('root', 'reception', 'reception_admin') then
+    raise exception 'No autorizado';
+  end if;
+  if not exists (select 1 from public.payment_methods where code = p_method and is_active) then
+    raise exception 'Forma de pago inválida: %', p_method;
+  end if;
+
+  select * into v_row from public.receivables where id = p_id for update;
+  if not found then
+    raise exception 'Cuenta por cobrar no encontrada';
+  end if;
+  if v_row.status <> 'pending' then
+    raise exception 'La deuda ya no está pendiente (estado: %)', v_row.status;
+  end if;
+
+  if p_method = 'MIXTO' then
+    v_mov_id := public.record_mixed_income(
+      v_row.amount_bs, p_cash_bs, p_non_cash_bs, p_non_cash_method,
+      'cobro_cuenta', 'Cobro cuenta por cobrar', p_receipt_path, v_ref
+    );
+  else
+    perform public.assert_payment_proof(p_method, v_ref, p_receipt_path);
+    if public.payment_records_income(p_method) then
+      v_movement := public.add_cash_movement(
+        'income', 'cobro_cuenta', v_row.amount_bs,
+        'Cobro cuenta por cobrar', p_receipt_path, p_method, v_ref
+      );
+      v_mov_id := v_movement.id;
+    end if;
+  end if;
+
+  update public.receivables
+    set status = 'paid', settled_by = auth.uid(), settled_at = now(),
+        settle_method = p_method, cash_movement_id = v_mov_id,
+        settle_receipt_path = p_receipt_path, settle_payment_reference = v_ref
+    where id = p_id
+    returning * into v_row;
+
+  -- (revisión #391 v2) Cuentas de grupo tienen reservation_id NULL y
+  -- booking_id seteado (feat/booking-15). Ya NO hay un UPDATE masivo acá
+  -- -- pisaba cualquier cuenta de extras de otra habitación que siguiera
+  -- pendiente (bug reproducido en vivo por el review). Ahora SIEMPRE se
+  -- recalcula con la regla completa.
+  if v_row.booking_id is not null then
+    perform public._refresh_client_payment_status(v_row.booking_id);
+  elsif v_row.reservation_id is not null then
+    -- Cuenta a NIVEL DE RESERVA: puede ser el camino each_stay de
+    -- siempre (reservation_id, booking_id NULL en la reserva -- payer_mode
+    -- 'each_stay') o una cuenta de EXTRAS de una habitación institucional
+    -- (feat/booking-17, CTAS_POR_COBRAR). Para el segundo caso, el estado
+    -- de la habitación depende de la regla completa (grupo cerrado +
+    -- deuda de grupo saldada + esta cuenta), no solo de esta cuenta --
+    -- para el primero, el UPDATE único de siempre, sin cambios de
+    -- comportamiento.
+    select r.booking_id, coalesce(b.payer_mode, 'each_stay')
+      into v_reservation_booking_id, v_reservation_payer_mode
+    from public.reservations r
+    join public.bookings b on b.id = r.booking_id
+    where r.id = v_row.reservation_id;
+
+    if v_reservation_payer_mode = 'client' then
+      perform public._refresh_client_payment_status(v_reservation_booking_id);
+    else
+      update public.reservations set payment_status = 'paid' where id = v_row.reservation_id;
+    end if;
+  end if;
+
+  return v_row;
+end;
+$function$;
+
+-- Grants sin cambios (misma firma que 20260806010000).
+
+create or replace function public._refresh_client_payment_status(p_booking_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_payer_mode text;
+begin
+  -- No-op para bookings each_stay (o inexistentes) -- esta función solo
+  -- tiene sentido para 'client'. `is distinct from` NULL-safe por
+  -- construcción, aunque bookings.payer_mode es NOT NULL (verificado en
+  -- vivo, postgres/check-constraint-null-trap).
+  select payer_mode into v_payer_mode from public.bookings where id = p_booking_id;
+  if v_payer_mode is distinct from 'client' then
+    return;
+  end if;
+
+  -- Regla (decisión #391 v2, "modelo correcto, no parche"): una reserva
+  -- de este booking es 'paid' SI Y SOLO SI:
+  --   (1) el grupo cerró -- existe un evento booking_balances con
+  --       event_type='group_closed' para este booking;
+  --   (2) la deuda del GRUPO está saldada -- NO existe una cuenta por
+  --       cobrar a nivel de booking (reservation_id NULL) con
+  --       status <> 'paid'. Si nunca se creó ninguna (saldo <= 0 al
+  --       cerrar), esta condición es verdadera por vacuidad. Una cuenta
+  --       'cancelled' (cancel_receivable) SIGUE contando como no saldada
+  --       -- status <> 'paid' es verdadero para 'cancelled' también, así
+  --       que bloquea igual que 'pending' (regresión probada en 27_*,
+  --       redfix-d);
+  --   (3) TODAS las cuentas por cobrar propias de ESTA reserva (extras,
+  --       reservation_id = r.id) tienen status='paid'. Si esta reserva
+  --       nunca tuvo una (extras cobrados en el momento o sin extras),
+  --       esta condición es verdadera por vacuidad.
+  -- En cualquier otro caso, 'pending'. Sin filtro de status en la reserva
+  -- (incluye canceladas, mismo criterio que settle_receivable desde
+  -- feat/booking-16). Todo por EXISTS/NOT EXISTS -- ningún operador de
+  -- comparación contra una columna nullable, sin riesgo del NULL-trap de
+  -- un CHECK (postgres/check-constraint-null-trap) ni de esta consulta.
+  update public.reservations r
+    set payment_status = case
+      when exists (
+             select 1 from public.booking_balances bb
+             where bb.booking_id = p_booking_id and bb.event_type = 'group_closed'
+           )
+       and not exists (
+             select 1 from public.receivables br
+             where br.booking_id = p_booking_id and br.reservation_id is null and br.status <> 'paid'
+           )
+       and not exists (
+             select 1 from public.receivables rr
+             where rr.reservation_id = r.id and rr.status <> 'paid'
+           )
+      then 'paid'
+      else 'pending'
+    end
+  where r.booking_id = p_booking_id;
+end;
+$function$;
+
+revoke execute on function public._refresh_client_payment_status(uuid) from public, anon, authenticated;
