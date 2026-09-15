@@ -33,15 +33,22 @@
 -- cajón y el que hay que poder rastrear desde el arqueo"). NO devuelve
 -- el id de la fila de booking_balances.
 --
--- El sobrepago (adelanto mayor al saldo pendiente) está permitido por
--- diseño (net_owed_bs puede quedar negativo, registrado para
--- auditoría) -- no se bloquea, se documenta en (h). Pregunta de negocio
--- para el orquestador: ¿alguna vez se debería avisar/bloquear un
--- sobrepago en la UI (Slice 11)? Este RPC no lo hace.
+-- El sobrepago (adelanto mayor al saldo pendiente) se RECHAZA en la
+-- base (decisión de negocio, ronda 6 -- sdd/group-billing/decisions-
+-- round-6, #387): sin reembolsos, un sobrepago solo puede venir de un
+-- error de tipeo, y dejaría un saldo negativo permanente. El guard
+-- corre DESPUÉS del lock de la fila (FOR UPDATE) y de los checks de
+-- contrato/cierre, ANTES de despachar la caja: `p_amount_bs >
+-- _net_owed_bs(p_booking_id)`. Un adelanto EXACTAMENTE igual al saldo
+-- pendiente sí se acepta (deja el saldo en 0); con saldo 0, cualquier
+-- adelanto se rechaza. El mismo lock que ya serializa dos adelantos
+-- concurrentes sobre el mismo booking (ver el guard de "booking
+-- existe" más abajo) evita que dos adelantos concurrentes pasen ambos
+-- el check de sobrepago contra el mismo saldo -- ver (h).
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(36);
+select plan(41);
 
 -- ---------------------------------------------------------------------
 -- Fixtures (como postgres/superusuario).
@@ -458,23 +465,59 @@ select is(
 );
 
 -- ---------------------------------------------------------------------
--- (h) Sobrepago: permitido por diseño, net_owed_bs puede quedar
---     negativo. Documentado, no bloqueado (ver cabecera del archivo).
+-- (h) Sobrepago: RECHAZADO en la base (decisión de negocio, ronda 6).
+--     fixture_client tiene 200 pendientes desde (a). Un adelanto mayor
+--     se rechaza sin insertar nada; uno EXACTO se acepta y deja el
+--     saldo en 0; con saldo 0, cualquier adelanto se rechaza.
 -- ---------------------------------------------------------------------
 select set_config('request.jwt.claims',
   '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true); -- reception
 
-select lives_ok(
+create temp table snap_h_bb as select count(*)::int as n from public.booking_balances;
+create temp table snap_h_cm as select count(*)::int as n from public.cash_movements;
+
+-- (h1) 500 > 200 pendientes -> rechazado, nada insertado.
+select throws_ok(
   format(
-    $$ select public.record_booking_advance(%L, 500, 'EFECTIVO', null, null, null, null, null, 'Sobrepago intencional') $$,
+    $$ select public.record_booking_advance(%L, 500, 'EFECTIVO', null, null, null, null, null, 'Sobrepago') $$,
     (select booking_id from fixture_client)
   ),
-  '(h) un adelanto mayor al saldo pendiente (200) SÍ se acepta -- sin bloqueo'
+  'P0001', 'El adelanto supera el saldo pendiente (200.00 Bs)',
+  '(h1) un adelanto mayor al saldo pendiente (200) se rechaza'
+);
+select is((select count(*)::int from public.booking_balances), (select n from snap_h_bb),
+  '(h1) ... sin dejar ninguna fila nueva en booking_balances');
+select is((select count(*)::int from public.cash_movements), (select n from snap_h_cm),
+  '(h1) ... ni ningún movimiento de caja nuevo');
+
+-- (h2) exactamente 200 -> se acepta, el saldo queda en 0.
+select lives_ok(
+  format(
+    $$ select public.record_booking_advance(%L, 200, 'EFECTIVO', null, null, null, null, null, 'Adelanto exacto al saldo') $$,
+    (select booking_id from fixture_client)
+  ),
+  '(h2) un adelanto EXACTAMENTE igual al saldo pendiente (200) sí se acepta'
 );
 select is(
   public._net_owed_bs((select booking_id from fixture_client)),
-  -300::numeric,
-  '(h) net_owed_bs queda negativo (200 - 500 = -300), registrado para auditoría'
+  0::numeric,
+  '(h2) ... y el saldo queda en 0'
+);
+
+-- (h3) saldo 0 -> cualquier adelanto (hasta 1 Bs) se rechaza.
+select throws_ok(
+  format(
+    $$ select public.record_booking_advance(%L, 1, 'EFECTIVO', null, null, null, null, null, null) $$,
+    (select booking_id from fixture_client)
+  ),
+  'P0001', 'El adelanto supera el saldo pendiente (0.00 Bs)',
+  '(h3) con saldo 0, cualquier adelanto (incluso 1) se rechaza'
+);
+select is(
+  (select count(*)::int from public.booking_balances
+    where booking_id = (select booking_id from fixture_client) and event_type = 'advance_received'),
+  2,
+  '(h3) ... sigue habiendo solo 2 advance_received en este booking (a y h2; ni h1 ni h3 insertaron)'
 );
 
 -- ---------------------------------------------------------------------

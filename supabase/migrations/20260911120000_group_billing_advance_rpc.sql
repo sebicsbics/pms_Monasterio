@@ -39,11 +39,18 @@
 -- define como "el que afecta el cajón y el que hay que poder rastrear
 -- desde el arqueo".
 --
--- Sobrepago (adelanto mayor al saldo pendiente): permitido por diseño.
--- net_owed_bs puede quedar negativo; queda registrado para auditoría,
--- no se bloquea (spec no lo prohíbe, design tampoco). Pregunta de
--- negocio abierta para el orquestador: si alguna vez conviene
--- advertir/bloquear esto desde la UI (Slice 11) -- este RPC no lo hace.
+-- Sobrepago (adelanto mayor al saldo pendiente): RECHAZADO (decisión de
+-- negocio, ronda 6 -- sdd/group-billing/decisions-round-6, #387). Sin
+-- reembolsos, un sobrepago solo puede venir de un error de tipeo, y
+-- dejaría un saldo negativo permanente. El check corre DESPUÉS del lock
+-- de la fila (FOR UPDATE, más arriba) y de los checks de contrato/
+-- cierre, ANTES de despachar la caja -- el mismo lock que ya sirve para
+-- que el futuro trigger de cierre (feat/booking-15) se serialice contra
+-- un adelanto en curso también evita que DOS adelantos concurrentes
+-- sobre el mismo booking pasen ambos el check de sobrepago contra el
+-- mismo saldo: el segundo espera el lock, recalcula _net_owed_bs ya con
+-- el primero aplicado, y se rechaza si corresponde. Un adelanto
+-- EXACTAMENTE igual al saldo pendiente sí se acepta (lo deja en 0).
 -- =====================================================================
 
 create or replace function public.record_booking_advance(
@@ -62,10 +69,11 @@ security definer
 set search_path = public
 as $$
 declare
-  v_booking public.bookings;
-  v_mov     public.cash_movements;
-  v_mov_id  uuid;
-  v_ref     text := nullif(trim(p_payment_reference), '');
+  v_booking  public.bookings;
+  v_mov      public.cash_movements;
+  v_mov_id   uuid;
+  v_net_owed numeric;
+  v_ref      text := nullif(trim(p_payment_reference), '');
 begin
   if public.current_user_role() not in ('root', 'reception', 'reception_admin') then
     raise exception 'No autorizado para registrar adelantos';
@@ -102,6 +110,15 @@ begin
     where booking_id = p_booking_id and event_type = 'group_closed'
   ) then
     raise exception 'Esta reserva de grupo ya está cerrada';
+  end if;
+
+  -- Sobrepago: el lock FOR UPDATE de arriba ya serializa dos adelantos
+  -- concurrentes sobre este mismo booking, así que este chequeo ve
+  -- siempre el saldo correcto (nunca dos llamadas leen el mismo saldo
+  -- "viejo" a la vez).
+  v_net_owed := public._net_owed_bs(p_booking_id);
+  if p_amount_bs > v_net_owed then
+    raise exception 'El adelanto supera el saldo pendiente (% Bs)', v_net_owed;
   end if;
 
   if p_payment_method = 'MIXTO' then
