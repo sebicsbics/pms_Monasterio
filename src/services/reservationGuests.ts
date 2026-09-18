@@ -4,6 +4,14 @@ import type { PreloadedOccupant } from '../domain/reservations/holderSelection'
 interface ReservationGuestRow {
   role: 'holder' | 'companion'
   confirmed_at: string | null
+  // Campos de viaje: datos de ESTA estadía, viven como columnas propias de
+  // reservation_guests (Slice 8b, feat/booking-20-travel-fields-writesites),
+  // no del embed guests de abajo — ese es por PERSONA (histórico) y leerlos
+  // de ahí haría que una nueva estadía mostrara los datos de una anterior
+  // (R8.4).
+  origin_city: string | null
+  travel_purpose: string | null
+  transport_means: string | null
   people: {
     id: string
     first_name: string
@@ -21,10 +29,7 @@ interface GuestEmbed {
   passport_number: string | null
   country_code: string | null
   city: string | null
-  origin_city: string | null
-  travel_purpose: string | null
   occupation: string | null
-  transport_means: string | null
 }
 
 function firstGuest(embed: GuestEmbed | GuestEmbed[] | null): GuestEmbed | undefined {
@@ -43,7 +48,7 @@ export async function fetchPreloadedOccupants(
   const { data, error } = await supabase
     .from('reservation_guests')
     .select(
-      'role, confirmed_at, people:person_id(id, first_name, last_name, email, birth_date, guests(passport_number, country_code, city, origin_city, travel_purpose, occupation, transport_means))',
+      'role, confirmed_at, origin_city, travel_purpose, transport_means, people:person_id(id, first_name, last_name, email, birth_date, guests(passport_number, country_code, city, occupation))',
     )
     .eq('reservation_id', reservationId)
   if (error) throw new Error(error.message)
@@ -61,10 +66,10 @@ export async function fetchPreloadedOccupants(
       birthDate: r.people.birth_date,
       countryCode: guest?.country_code ?? null,
       city: guest?.city ?? null,
-      originCity: guest?.origin_city ?? null,
-      travelPurpose: guest?.travel_purpose ?? null,
+      originCity: r.origin_city,
+      travelPurpose: r.travel_purpose,
       occupation: guest?.occupation ?? null,
-      transportMeans: guest?.transport_means ?? null,
+      transportMeans: r.transport_means,
     }
   })
 }
