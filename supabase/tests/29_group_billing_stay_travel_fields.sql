@@ -59,10 +59,12 @@ begin
 
   -- estadía más reciente (misma persona vía mismo documento -> dedupe
   -- por documento reutiliza el mismo person_id), fecha posterior, otra
-  -- habitación, esta vez SÍ captura datos de viaje en `guests` (todavía
-  -- el único lugar donde `check_in_reservation_with_guests` los escribe
-  -- en esta rama -- los write sites migran a reservation_guests en la
-  -- Slice 8b).
+  -- habitación. Desde la Slice 8b, check_in_reservation_with_guests YA
+  -- NO escribe los campos de viaje en `guests` (escribe directo en
+  -- reservation_guests) -- para simular datos LEGADO que ya estaban en
+  -- `guests` ANTES de esa migración (el escenario real que el backfill
+  -- de la Slice 8a tiene que migrar), se setean acá con un UPDATE
+  -- directo a `guests`, no vía el parámetro de la RPC.
   select o.room_id, o.room_type_id into v_room_id, v_room_type_id
   from public.room_type_options o
   join public.rooms rm0 on rm0.id = o.room_id and rm0.operational_status = 'available'
@@ -80,9 +82,11 @@ begin
   perform public.check_in_reservation_with_guests(
     p_reservation_id => v_res_new, p_document => '11100040', p_birth_date => '1990-01-01'::date,
     p_country_code => 'BO', p_city => 'La Paz', p_wants_offers => false,
-    p_origin_city => 'Santa Cruz', p_travel_purpose => 'Turismo', p_transport_means => 'Bus',
     p_holder_first_name => 'Viajera', p_holder_last_name => 'Repetida'
   );
+  update public.guests set
+    origin_city = 'Santa Cruz', travel_purpose = 'Turismo', transport_means = 'Bus'
+  where passport_number = '11100040';
 
   create temp table fixture_travel as
   select v_res_old as res_old, v_res_new as res_new;
