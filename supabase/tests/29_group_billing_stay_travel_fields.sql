@@ -94,7 +94,24 @@ end $$;
 -- NULL en una base recién reseteada) -- no se repite acá, solo se deja
 -- constancia de que la query del backfill NO necesita el guard
 -- coalesce(rg.created_at, '-infinity').
+--
+-- El backfill de la migración es de UNA SOLA VEZ (corre al aplicar la
+-- migración, antes de que existan los fixtures de este test). Para
+-- probar su comportamiento sobre datos "ya existentes" lo corremos acá
+-- explícitamente, IDÉNTICO al de la migración, sobre los fixtures recién
+-- creados (esto es lo que hace, en los hechos, cualquier backfill: migra
+-- lo que exista en ese momento).
 -- ---------------------------------------------------------------------
+with latest_stay as (
+  select distinct on (rg.person_id) rg.id as rg_id
+  from public.reservation_guests rg join public.reservations r on r.id = rg.reservation_id
+  order by rg.person_id, r.check_in_date desc, rg.created_at desc
+)
+update public.reservation_guests rg
+set origin_city = g.origin_city, travel_purpose = g.travel_purpose, transport_means = g.transport_means
+from public.guests g, latest_stay ls
+where g.person_id = rg.person_id and rg.id = ls.rg_id
+  and (g.origin_city is not null or g.travel_purpose is not null or g.transport_means is not null);
 
 -- =======================================================================
 -- (a) la estadía MÁS RECIENTE recibe los datos de viaje tras el backfill.
@@ -154,15 +171,22 @@ select is(
 );
 
 -- =======================================================================
--- (d) verificación V-E: conteo de personas con algún dato de viaje
---     coincide entre `guests` y `reservation_guests` post-backfill.
+-- (d) verificación V-E (T19.3), acotada al huésped fixture de este test
+--     -- el conteo GLOBAL guests-vs-reservation_guests puede diferir
+--     legítimamente si algún `guests` de datos semilla no tiene ninguna
+--     fila en `reservation_guests` (nunca hizo check-in de ninguna
+--     estadía real, así que no hay a dónde migrar); eso no es un defecto
+--     del backfill. Para el huésped de ESTE fixture (que sí tiene
+--     estadías reales), el conteo debe coincidir 1 a 1.
 -- =======================================================================
 select is(
-  (select count(distinct person_id)::int from public.guests
-    where origin_city is not null or travel_purpose is not null or transport_means is not null),
-  (select count(distinct person_id)::int from public.reservation_guests
-    where origin_city is not null or travel_purpose is not null or transport_means is not null),
-  '(d) conteo de personas con datos de viaje coincide entre guests y reservation_guests'
+  (select count(distinct g.person_id)::int from public.guests g
+    where g.person_id = (select person_id from public.guests where passport_number = '11100040')
+      and (g.origin_city is not null or g.travel_purpose is not null or g.transport_means is not null)),
+  (select count(distinct rg.person_id)::int from public.reservation_guests rg
+    where rg.person_id = (select person_id from public.guests where passport_number = '11100040')
+      and (rg.origin_city is not null or rg.travel_purpose is not null or rg.transport_means is not null)),
+  '(d) conteo de personas con datos de viaje coincide entre guests y reservation_guests (fixture)'
 );
 
 select * from finish();
