@@ -63,14 +63,14 @@ select is(
   || 'create_ticket_from_schedule, current_user_role, delete_employee, force_clock_out, '
   || 'generate_housekeeping_assignments, is_staff, list_anticipos, list_info_notes, '
   || 'list_receivables, list_reservations_brief, list_tasks, lookup_guest_by_document, '
-  || 'modify_anticipo, modify_stay_dates, my_profile, net_owed_bs, open_cash_session, '
+  || 'mark_reservation_courtesy, modify_anticipo, modify_stay_dates, my_profile, net_owed_bs, open_cash_session, '
   || 'open_time_entries, override_reservation_rate, record_anticipo, '
   || 'record_booking_advance, register_stock_entry, '
   || 'reject_rate_discount_request, reschedule_reservation, resolve_info_note, '
   || 'set_my_avatar, settle_receivable, username_to_email, void_cash_movement, '
   || 'walk_in_check_in_with_guests',
   'authenticated alcanza exactamente las RPC públicas + los 2 helpers de política + '
-  || 'net_owed_bs + record_booking_advance (53 funciones) -- ni una interna de más'
+  || 'net_owed_bs + record_booking_advance + mark_reservation_courtesy (54 funciones) -- ni una interna de más'
 );
 
 -- ---------------------------------------------------------------------

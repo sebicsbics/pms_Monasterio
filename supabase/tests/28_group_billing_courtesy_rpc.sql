@@ -53,6 +53,8 @@ begin
 
   create temp table fixture_a as select v_res_id as res_id;
 
+  perform public.check_in_reservation(v_res_id, '11100030', '1990-01-01', 'BO', 'La Paz', false);
+
   perform set_config('request.jwt.claims',
     '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true); -- reception_admin
 
@@ -138,8 +140,8 @@ select is(
 );
 select is(
   (select status from public.reservations where id = (select res_id from fixture_a)),
-  'confirmed',
-  '(c2) la reserva cortesía sigue activa (confirmed), no se toca su status'
+  'checked_in',
+  '(c2) la reserva cortesía sigue activa (checked_in), no se toca su status'
 );
 
 -- =======================================================================
