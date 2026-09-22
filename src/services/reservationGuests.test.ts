@@ -112,7 +112,8 @@ describe('fetchPreloadedOccupants', () => {
   it('selects the travel fields as columns of reservation_guests, not of the nested guests embed (R8.4)', async () => {
     eqMock.mockResolvedValueOnce({ data: [], error: null })
     await fetchPreloadedOccupants('res-1')
-    const selectArg = selectMock.mock.calls[selectMock.mock.calls.length - 1][0] as string
+    const lastCall = selectMock.mock.calls[selectMock.mock.calls.length - 1] as unknown as [string]
+    const selectArg = lastCall[0]
     expect(selectArg).toMatch(/(^|,\s*)origin_city(\s*,|$)/)
     expect(selectArg).toMatch(/(^|,\s*)travel_purpose(\s*,|$)/)
     expect(selectArg).toMatch(/(^|,\s*)transport_means(\s*,|$)/)
