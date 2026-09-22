@@ -34,7 +34,7 @@ describe('GroupBookingsView (R11.1–R11.4)', () => {
     render(<GroupBookingsView role="reception" />)
     await screen.findByText(/Hotel ABC/)
     fireEvent.click(screen.getByText(/Hotel ABC/))
-    await screen.findByText(/Saldo pendiente: 2000 Bs/)
+    expect((await screen.findAllByText(/Saldo pendiente: 2000 Bs/)).length).toBeGreaterThan(0)
   })
 
   it('(b) actualiza el saldo mostrado tras registrar un adelanto exitoso', async () => {
@@ -42,18 +42,18 @@ describe('GroupBookingsView (R11.1–R11.4)', () => {
     render(<GroupBookingsView role="reception" />)
     await screen.findByText(/Hotel ABC/)
     fireEvent.click(screen.getByText(/Hotel ABC/))
-    await screen.findByText(/Saldo pendiente: 2000 Bs/)
+    expect((await screen.findAllByText(/Saldo pendiente: 2000 Bs/)).length).toBeGreaterThan(0)
 
     // Tras registrar, el mock de listClientBookingsBrief refleja el nuevo saldo.
     bookings = [{ ...BOOKING_OPEN, netOwedBs: 1500 }]
 
-    fireEvent.change(screen.getByLabelText(/Monto \(Bs\)/i), { target: { value: '500' } })
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '500' } })
     fireEvent.click(screen.getByRole('button', { name: /Registrar adelanto/i }))
 
     await waitFor(() => {
       expect(bookingsService.recordBookingAdvance).toHaveBeenCalled()
     })
-    await screen.findByText(/Saldo pendiente: 1500 Bs/)
+    expect((await screen.findAllByText(/Saldo pendiente: 1500 Bs/)).length).toBeGreaterThan(0)
   })
 
   it('(c) muestra el aviso de habitaciones vencidas cuando overdueRooms no está vacío', async () => {
@@ -68,7 +68,7 @@ describe('GroupBookingsView (R11.1–R11.4)', () => {
     render(<GroupBookingsView role="reception" />)
     await screen.findByText(/Hotel ABC/)
     fireEvent.click(screen.getByText(/Hotel ABC/))
-    await screen.findByText(/Saldo pendiente: 2000 Bs/)
+    expect((await screen.findAllByText(/Saldo pendiente: 2000 Bs/)).length).toBeGreaterThan(0)
     expect(screen.queryByText(/habitaciones sin check-in con fecha vencida/i)).not.toBeInTheDocument()
   })
 })

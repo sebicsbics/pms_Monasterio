@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js'
 import {
   BarChart3,
   BedDouble,
+  Building2,
   CalendarPlus,
   CalendarRange,
   Clock,
@@ -48,6 +49,7 @@ import type { BulkReservationPrefill } from './features/reservations/BulkReserva
 import { AvailabilityGrid } from './features/availability/AvailabilityGrid'
 import { InfoLogView } from './features/info/InfoLogView'
 import { ReceivablesView } from './features/receivables/ReceivablesView'
+import { GroupBookingsView } from './features/bookings/GroupBookingsView'
 import { PrintButton } from './components/ui'
 import { InventoryView } from './features/inventory/InventoryView'
 import { EmployeesView } from './features/employees/EmployeesView'
@@ -72,7 +74,7 @@ type Tab =
   | 'board' | 'arrivals' | 'inhouse' | 'reservation' | 'availability' | 'inventory'
   | 'employees' | 'tasks' | 'housekeeping' | 'maintenance' | 'fichaje' | 'profile'
   | 'access' | 'dashboard' | 'caja' | 'events' | 'discounts' | 'anticipos' | 'anticipos-admin'
-  | 'info' | 'receivables'
+  | 'info' | 'receivables' | 'group-bookings'
 
 
 type Group = 'Operación' | 'Personal' | 'Gestión'
@@ -103,6 +105,11 @@ const TABS: {
   { id: 'anticipos', label: 'Anticipos', roles: OPERATIONS, icon: Wallet, group: 'Operación' },
   { id: 'anticipos-admin', label: 'Corregir anticipos', roles: ANTICIPOS_ADMIN, icon: Wallet, group: 'Gestión' },
   { id: 'receivables', label: 'Cuentas por cobrar', roles: ['root', 'reception', 'reception_admin', 'accountant', 'owner'], icon: Landmark, group: 'Gestión' },
+  // Sin 'owner': list_client_bookings_brief() lo rechaza (No autorizado) --
+  // owner no tiene acceso de lectura a booking_balances/receivables bajo
+  // ninguna política de esta etapa, a diferencia del resto de los tabs de
+  // 'Gestión' que sí ofrecen lectura a owner.
+  { id: 'group-bookings', label: 'Grupos/Instituciones', roles: ['root', 'reception', 'reception_admin', 'accountant'], icon: Building2, group: 'Gestión' },
 ]
 
 function App() {
@@ -317,6 +324,7 @@ function App() {
         {activeTab === 'tasks' && <TasksView />}
         {activeTab === 'info' && <InfoLogView />}
         {activeTab === 'receivables' && <ReceivablesView />}
+        {activeTab === 'group-bookings' && <GroupBookingsView role={role} />}
         {activeTab === 'housekeeping' && <HousekeepingBoardView />}
         {activeTab === 'maintenance' && <MaintenanceView role={role} />}
         {activeTab === 'fichaje' && <FichajeView userId={session.user.id} role={role} />}
