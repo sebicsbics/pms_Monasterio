@@ -304,7 +304,7 @@ select throws_matching(
        '2027-06-10', '2027-06-12', 'phone',
        null, null, 'client', 'person', 300, (select account_id from fixture_account)
      ) $$,
-  'Cada habitación necesita al menos 1 persona',
+  'necesita al menos 1 persona',
   'person mode, num_guests=0 explícito: TODA la llamada relanza (all-or-nothing, feat/booking-12)'
 );
 select is(pg_temp.snap(), (select s from snap_d3),

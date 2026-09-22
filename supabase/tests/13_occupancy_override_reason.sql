@@ -261,6 +261,7 @@ do $$
 declare
   v_room1 uuid; v_type1 uuid;
   v_room2 uuid; v_type2 uuid;
+  v_room1_number text;
   v_rooms jsonb;
   v_result jsonb;
   v_res2 uuid;
@@ -276,6 +277,7 @@ begin
       and x.status in ('confirmed','checked_in')
       and x.check_in_date < '2033-03-05' and '2033-03-01' < x.check_out_date
   ) order by o.room_id limit 1;
+  select room_number into v_room1_number from public.rooms where id = v_room1;
 
   select o.room_id, o.room_type_id into v_room2, v_type2
   from public.room_type_options o
@@ -308,7 +310,10 @@ begin
   end if;
 
   v_failed_err := (v_result->'failed'->0->>'error');
-  if v_failed_err <> 'La habitación admite 1 huésped(es); estás registrando 2. Indique un motivo para exceder el límite.' then
+  if v_failed_err <> format(
+    'La habitación %s admite 1 huésped(es); estás registrando 2. Indique un motivo para exceder el límite.',
+    v_room1_number
+  ) then
     raise exception 'el motivo de falla no fue el mensaje exacto de sobre-ocupación';
   end if;
 

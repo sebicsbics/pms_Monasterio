@@ -135,7 +135,7 @@ select throws_matching(
        null, null, 'client', 'room', null, null,
        'Cuenta Nueva Atomico A', 'empresa'
      ) $$,
-  'La habitación ya no está disponible para esas fechas',
+  'ya no está disponible para esas fechas',
   '(a) client bulk, habitación 2 ocupada, cuenta NUEVA: TODA la llamada relanza el mismo mensaje (all-or-nothing)'
 );
 
