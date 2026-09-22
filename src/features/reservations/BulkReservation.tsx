@@ -80,8 +80,19 @@ export function BulkReservation({
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [method, setMethod] = useState('phone')
-  const [rateBs, setRateBs] = useState('')
-  const [rateReason, setRateReason] = useState('')
+  // Precio pactado POR HABITACIÓN (sdd/per-room-rate-in-bulk): antes había
+  // un único campo "Tarifa" a nivel de toda la reserva que se aplicaba a
+  // TODAS las habitaciones por igual, aplanando precios distintos (ej.
+  // habitación 6 a 480 y habitación 7 a 350 quedaban ambas en 400 con un
+  // solo valor ingresado). Ahora cada habitación tiene su propio precio,
+  // opcional — vacío significa "precio de lista de esa habitación", sin
+  // cambio de tarifa.
+  const [priceByRoom, setPriceByRoom] = useState<Record<string, string>>({})
+  // Justificación ÚNICA para toda el alta (decisión de usuario): se pide
+  // una sola vez cuando AL MENOS UNA habitación tiene un precio pactado
+  // distinto de su propio precio de lista, y se graba igual en la
+  // auditoría de cada habitación que difiera.
+  const [priceReason, setPriceReason] = useState('')
 
   // Reserva institucional (stage 6, group-billing) — decisión #339.
   const [payerMode, setPayerMode] = useState<'each_stay' | 'client'>('each_stay')
@@ -250,8 +261,8 @@ export function BulkReservation({
     setPhone('')
     setEmail('')
     setMethod('phone')
-    setRateBs('')
-    setRateReason('')
+    setPriceByRoom({})
+    setPriceReason('')
     setPayerMode('each_stay')
     setRateMode('room')
     setAgreedUnitPriceBs('')
@@ -272,13 +283,38 @@ export function BulkReservation({
       ? Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)
       : 0
 
+  // Precio pactado efectivo de una habitación: el que cargó el usuario en
+  // el paso 2, o si lo dejó vacío, el precio de lista de su tipo efectivo
+  // (sin cambio de tarifa para esa habitación).
+  const agreedPriceOf = (roomId: string): number => {
+    const entered = priceByRoom[roomId]?.trim()
+    if (entered) return Number(entered)
+    const room = results?.find((r) => r.roomId === roomId)
+    if (!room) return 0
+    const guests = guestsByRoom[roomId] ?? 1
+    return effectiveRoomType(room, guests)?.basePriceBs ?? 0
+  }
+
+  // Al menos una habitación seleccionada tiene un precio pactado distinto
+  // de su PROPIO precio de lista -> la justificación (única para toda el
+  // alta) pasa a ser obligatoria.
+  const anyRoomPriceDeviates = [...selected].some((roomId) => {
+    const entered = priceByRoom[roomId]?.trim()
+    if (!entered) return false
+    const room = results?.find((r) => r.roomId === roomId)
+    if (!room) return false
+    const guests = guestsByRoom[roomId] ?? 1
+    const listPrice = effectiveRoomType(room, guests)?.basePriceBs ?? 0
+    return Number(entered) !== listPrice
+  })
+
   const contractPreview =
     payerMode === 'client'
       ? computeContractPreview({
           rooms: [...selected].map((roomId) => ({
             isCourtesy: courtesyByRoom[roomId] ?? false,
             numGuests: guestsByRoom[roomId] ?? 0,
-            roomTotalBs: rateBs.trim() ? Number(rateBs) * Math.max(nights, 0) : 0,
+            roomTotalBs: agreedPriceOf(roomId) * Math.max(nights, 0),
           })),
           rateMode,
           nights: Math.max(nights, 0),
@@ -301,8 +337,8 @@ export function BulkReservation({
       setError('Cargá al menos un contacto: celular o correo')
       return
     }
-    if (rateBs.trim() && !rateReason.trim()) {
-      setError('La justificación es obligatoria si cambiás la tarifa')
+    if (anyRoomPriceDeviates && !priceReason.trim()) {
+      setError('La justificación es obligatoria si cambiás el precio pactado de alguna habitación')
       return
     }
     if (
@@ -349,6 +385,10 @@ export function BulkReservation({
               payerMode === 'client' && courtesyByRoom[r.roomId]
                 ? (courtesyReasonByRoom[r.roomId] ?? '').trim()
                 : null,
+            // Precio pactado POR HABITACIÓN (sdd/per-room-rate-in-bulk):
+            // vacío significa "precio de lista de esa habitación", nunca
+            // se aplana con el de otras habitaciones del mismo grupo.
+            rateBs: priceByRoom[r.roomId]?.trim() ? Number(priceByRoom[r.roomId]) : null,
           }
         }),
         firstName: firstName.trim(),
@@ -358,8 +398,7 @@ export function BulkReservation({
         checkIn,
         checkOut,
         method,
-        rateBs: rateBs.trim() ? Number(rateBs) : null,
-        reason: rateReason.trim() || null,
+        reason: priceReason.trim() || null,
         payerMode,
         rateMode: payerMode === 'client' ? rateMode : undefined,
         agreedUnitPriceBs:
@@ -527,6 +566,26 @@ export function BulkReservation({
                         </label>
                       )}
                     </div>
+                    {on && (
+                      // Precio pactado de ESTA habitación (sdd/per-room-
+                      // rate-in-bulk): reemplaza el viejo campo "Tarifa"
+                      // a nivel de toda la reserva -- cada habitación
+                      // tiene su propio precio, opcional. Vacío = precio
+                      // de lista de esta habitación (placeholder).
+                      <label className="mt-2 block text-xs text-slate-500">
+                        Precio pactado (Bs/noche, opcional)
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder={String(type?.basePriceBs ?? '')}
+                          value={priceByRoom[room.roomId] ?? ''}
+                          onChange={(e) =>
+                            setPriceByRoom((p) => ({ ...p, [room.roomId]: e.target.value }))
+                          }
+                          className="mt-1 w-full rounded border border-slate-300 p-1 text-xs"
+                        />
+                      </label>
+                    )}
                     {/* DEFECT 2: más de una ficha de tipo alcanza para
                         esta cantidad de huéspedes (ej. Simple 1px vs.
                         Matrimonial 2px sobre la misma habitación física)
@@ -661,22 +720,16 @@ export function BulkReservation({
                 ))}
               </select>
             </label>
-            <div className="flex gap-2">
-              <label className="w-1/2 text-sm">
-                <span className="text-slate-600">Tarifa (Bs/noche, opcional)</span>
-                <input type="number" min={0} placeholder="Precio de lista" value={rateBs}
-                  onChange={(e) => setRateBs(e.target.value)}
+            {anyRoomPriceDeviates && (
+              <label className="block text-sm">
+                <span className="text-slate-600">Motivo del precio pactado</span>
+                <input placeholder="Motivo del descuento o precio negociado" value={priceReason}
+                  onChange={(e) => setPriceReason(e.target.value)}
                   className="mt-1 w-full rounded border border-slate-300 p-2" />
               </label>
-              <label className="w-1/2 text-sm">
-                <span className="text-slate-600">Justificación (si cambia la tarifa)</span>
-                <input placeholder="Motivo del descuento" value={rateReason}
-                  onChange={(e) => setRateReason(e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 p-2" />
-              </label>
-            </div>
+            )}
             <p className="text-xs text-slate-500">
-              La tarifa (si la ponés) se aplica a todas las habitaciones del grupo. El
+              El precio pactado (si lo ponés) se carga por habitación en el paso 2. El
               perfil de cada huésped se completa en el check-in.
             </p>
             {canManagePayerMode(role) && (

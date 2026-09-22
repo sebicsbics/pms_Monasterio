@@ -302,6 +302,87 @@ describe('BulkReservation — errores reales por habitación (DEFECT 3a)', () =>
   })
 })
 
+describe('BulkReservation — precio pactado POR HABITACIÓN (sdd/per-room-rate-in-bulk)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('cada habitación seleccionada tiene su propio input de precio pactado, con el precio de lista como placeholder', async () => {
+    render(<BulkReservation role="reception" />)
+    await searchTwoRoomsAndSelectBoth()
+
+    const priceInputs = screen.getAllByLabelText(/Precio pactado \(Bs\/noche, opcional\)/) as HTMLInputElement[]
+    expect(priceInputs).toHaveLength(2)
+    expect(priceInputs[0].placeholder).toBe('200')
+    expect(priceInputs[1].placeholder).toBe('200')
+
+    // Ya no existe el viejo campo booking-level "Tarifa".
+    expect(screen.queryByLabelText(/^Tarifa \(Bs\/noche, opcional\)/)).not.toBeInTheDocument()
+  })
+
+  it('no pide motivo si ninguna habitación cambia de precio, y envía rate_bs=null por habitación', async () => {
+    render(<BulkReservation role="reception" />)
+    await searchTwoRoomsAndSelectBoth()
+
+    expect(screen.queryByLabelText(/Motivo del precio pactado/)).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Juan' } })
+    fireEvent.change(screen.getByPlaceholderText('Apellido'), { target: { value: 'Pérez' } })
+    fireEvent.change(screen.getByPlaceholderText('Celular'), { target: { value: '70000000' } })
+    fireEvent.click(screen.getByRole('button', { name: /Crear 2 reserva/ }))
+
+    await waitFor(() => {
+      expect(createBulkReservation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: null,
+          rooms: [
+            expect.objectContaining({ roomId: 'room-1', rateBs: null }),
+            expect.objectContaining({ roomId: 'room-2', rateBs: null }),
+          ],
+        }),
+      )
+    })
+  })
+
+  it('dos habitaciones con precio propio distinto: un solo motivo compartido viaja a cada una', async () => {
+    render(<BulkReservation role="reception" />)
+    await searchTwoRoomsAndSelectBoth()
+
+    const priceInputs = screen.getAllByLabelText(/Precio pactado \(Bs\/noche, opcional\)/) as HTMLInputElement[]
+    fireEvent.change(priceInputs[0], { target: { value: '250' } })
+    fireEvent.change(priceInputs[1], { target: { value: '180' } })
+
+    // Al menos una habitación difiere de su lista (200) -> motivo único obligatorio.
+    await screen.findByLabelText(/Motivo del precio pactado/)
+
+    fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Juan' } })
+    fireEvent.change(screen.getByPlaceholderText('Apellido'), { target: { value: 'Pérez' } })
+    fireEvent.change(screen.getByPlaceholderText('Celular'), { target: { value: '70000000' } })
+    fireEvent.click(screen.getByRole('button', { name: /Crear 2 reserva/ }))
+
+    // Sin motivo, no debe llamar al servicio.
+    expect(createBulkReservation).not.toHaveBeenCalled()
+    await screen.findByText(/La justificación es obligatoria/)
+
+    fireEvent.change(screen.getByLabelText(/Motivo del precio pactado/), {
+      target: { value: 'Convenio institucional negociado' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Crear 2 reserva/ }))
+
+    await waitFor(() => {
+      expect(createBulkReservation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: 'Convenio institucional negociado',
+          rooms: expect.arrayContaining([
+            expect.objectContaining({ roomId: 'room-1', rateBs: 250 }),
+            expect.objectContaining({ roomId: 'room-2', rateBs: 180 }),
+          ]),
+        }),
+      )
+    })
+  })
+})
+
 describe('BulkReservation — enlace a cuenta por cobrar (R10.1–R10.5)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
