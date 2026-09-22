@@ -197,6 +197,13 @@ export interface BulkReservationInput {
     // cortesía después de creada.
     isCourtesy?: boolean
     courtesyReason?: string | null
+    // Precio pactado por NOCHE para ESTA habitación (sdd/per-room-rate-in-
+    // bulk): es una propiedad de la estadía de esa habitación, no de la
+    // reserva grupal. Si difiere del precio de lista de su propio tipo,
+    // la justificación (reason, a nivel de todo el alta) es obligatoria
+    // — se valida en la RPC. Si se omite, esa habitación se factura a su
+    // propio precio de lista (sin cambio de tarifa para ella).
+    rateBs?: number | null
   }[]
   firstName: string
   lastName: string
@@ -205,7 +212,12 @@ export interface BulkReservationInput {
   checkIn: string
   checkOut: string
   method: string
-  rateBs?: number | null
+  // Justificación ÚNICA para todo el alta (decisión de usuario,
+  // sdd/per-room-rate-in-bulk): se pide una sola vez y se graba tal cual
+  // en la auditoría de CADA habitación cuyo precio pactado (rooms[].rateBs)
+  // difiera de su propio precio de lista. Ya NO existe un precio a nivel
+  // de toda la reserva (rateBs booking-level) — cada habitación trae el
+  // suyo en rooms[].rateBs.
   reason?: string | null
   // Reserva institucional (stage 6, group-billing): quién paga. Ver
   // ReservationInput para la semántica completa (idéntica acá).
@@ -243,6 +255,7 @@ export async function createBulkReservation(
       ...(r.occupancyReason ? { occupancy_reason: r.occupancyReason } : {}),
       is_courtesy: r.isCourtesy ?? false,
       courtesy_reason: r.courtesyReason ?? null,
+      rate_bs: r.rateBs ?? null,
     })),
     p_first_name: data.firstName,
     p_last_name: data.lastName,
@@ -251,7 +264,10 @@ export async function createBulkReservation(
     p_check_in: data.checkIn,
     p_check_out: data.checkOut,
     p_method: data.method,
-    p_rate_bs: data.rateBs ?? null,
+    // Ya no hay tarifa booking-level desde la UI: cada habitación trae la
+    // suya en p_rooms[].rate_bs (el fallback p_rate_bs de la RPC queda
+    // para llamadas que todavía no migraron, no para este caller).
+    p_rate_bs: null,
     p_reason: data.reason ?? null,
     p_payer_mode: data.payerMode ?? 'each_stay',
     p_rate_mode: data.rateMode ?? 'room',

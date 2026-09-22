@@ -231,6 +231,7 @@ describe('createBulkReservation', () => {
         occupants: [],
         is_courtesy: false,
         courtesy_reason: null,
+        rate_bs: null,
       },
     ])
   })
@@ -270,6 +271,7 @@ describe('createBulkReservation', () => {
         ],
         is_courtesy: false,
         courtesy_reason: null,
+        rate_bs: null,
       },
     ])
   })
@@ -296,6 +298,7 @@ describe('createBulkReservation', () => {
           occupants: [],
           is_courtesy: false,
           courtesy_reason: null,
+          rate_bs: null,
         },
       ],
       p_first_name: 'Org',
@@ -316,6 +319,38 @@ describe('createBulkReservation', () => {
       p_new_account_contact: null,
       p_new_account_notes: null,
     })
+  })
+
+  // sdd/per-room-rate-in-bulk: el precio pactado es una propiedad de CADA
+  // habitación, no de la reserva completa. p_rate_bs booking-level ya NO
+  // se envía desde este servicio (siempre null) -- cada habitación trae
+  // el suyo (o ninguno) en p_rooms[].rate_bs.
+  it('forwards a different rate_bs per room and never sends a booking-level p_rate_bs', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: { created: [], failed: [] }, error: null })
+    await createBulkReservation({
+      rooms: [
+        { roomId: 'room-1', roomTypeId: 'type-1', numGuests: 2, rateBs: 400 },
+        { roomId: 'room-2', roomTypeId: 'type-2', numGuests: 1, rateBs: 300 },
+        { roomId: 'room-3', roomTypeId: 'type-3', numGuests: 1 },
+      ],
+      firstName: 'Precio',
+      lastName: 'PorHabitacion',
+      phone: '555',
+      email: '',
+      checkIn: '2026-08-06',
+      checkOut: '2026-08-08',
+      method: 'phone',
+      reason: 'Convenio institucional negociado',
+    })
+    const payload = rpcMock.mock.calls[0][1] as {
+      p_rooms: Record<string, unknown>[]
+      p_rate_bs: unknown
+      p_reason: unknown
+    }
+    expect(payload.p_rooms.map((r) => r.rate_bs)).toEqual([400, 300, null])
+    expect(payload.p_rate_bs).toBeNull()
+    expect(payload.p_reason).toBe('Convenio institucional negociado')
   })
 
   it('forwards payer_mode=client with rate_mode=person, a new account and per-room courtesy', async () => {
@@ -355,6 +390,7 @@ describe('createBulkReservation', () => {
           occupants: [],
           is_courtesy: false,
           courtesy_reason: null,
+          rate_bs: null,
         },
         {
           room_id: 'room-2',
@@ -363,6 +399,7 @@ describe('createBulkReservation', () => {
           occupants: [],
           is_courtesy: true,
           courtesy_reason: 'Cortesía de gerencia',
+          rate_bs: null,
         },
       ],
       p_first_name: 'Hotel',
