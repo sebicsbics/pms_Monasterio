@@ -21,6 +21,8 @@ interface ArrivalRow {
   anticipo_total_bs: number | string | null
   holder_first_name: string | null
   holder_last_name: string | null
+  account_name: string | null
+  account_kind: string | null
 }
 
 // Llegadas (reservas confirmadas sin check-in) dentro de un rango de
@@ -51,6 +53,8 @@ export async function fetchArrivals(
     anticipoTotalBs: Number(r.anticipo_total_bs ?? 0),
     holderFirstName: r.holder_first_name,
     holderLastName: r.holder_last_name,
+    accountName: r.account_name ?? null,
+    accountKind: (r.account_kind as Arrival['accountKind']) ?? null,
   }))
 }
 

@@ -26,7 +26,7 @@ import { CompanionFields } from '../checkin/CompanionFields'
 import { DocumentLookupField } from '../checkin/DocumentLookupField'
 import { COUNTRIES } from '../../shared/data/countries'
 import { TRAVEL_PURPOSES } from '../../shared/data/travelPurposes'
-import { CHANNELS, DEFAULT_CHANNEL_CODE } from '../../shared/data/channels'
+import { CHANNELS, DEFAULT_CHANNEL_CODE, channelCodeForAccountKind } from '../../shared/data/channels'
 import type { UserRole } from '../../domain/auth/profile'
 import { canEditRate as canEditRateGate } from '../../domain/auth/rateGates'
 import { canWrite } from '../../domain/auth/profile'
@@ -67,8 +67,18 @@ function CheckInModal({
   const [city, setCity] = useState('')
   const [wantsOffers, setWantsOffers] = useState(false)
   const [originCity, setOriginCity] = useState('')
-  const [agencyName, setAgencyName] = useState('')
-  const [channelCode, setChannelCode] = useState(DEFAULT_CHANNEL_CODE)
+  // Reserva institucional (payer_mode='client') con cuenta por cobrar ya
+  // cargada: la agencia/empresa/persona responsable no la escribe
+  // recepción, ya la conoce la reserva -- se precarga y se BLOQUEA
+  // (locked), porque la cuenta es la autoridad de facturación del grupo
+  // (fix/institutional-ui-coherence). Si más adelante hiciera falta
+  // corregirla acá, el lugar correcto es la cuenta por cobrar, no un
+  // texto libre que se desalinea del contrato.
+  const accountLocked = arrival.accountName !== null
+  const [agencyName, setAgencyName] = useState(arrival.accountName ?? '')
+  const [channelCode, setChannelCode] = useState(
+    arrival.accountKind ? channelCodeForAccountKind(arrival.accountKind) : DEFAULT_CHANNEL_CODE,
+  )
   const [travelPurpose, setTravelPurpose] = useState('')
   const [occupation, setOccupation] = useState('')
   const [transportMeans, setTransportMeans] = useState('')
@@ -570,12 +580,14 @@ function CheckInModal({
               placeholder="Agencia / empresa (opcional)"
               value={agencyName}
               onChange={(e) => setAgencyName(e.target.value)}
-              className="w-1/2 rounded border border-slate-300 p-2"
+              disabled={accountLocked}
+              className="w-1/2 rounded border border-slate-300 p-2 disabled:bg-slate-100 disabled:text-slate-500"
             />
             <select
               value={channelCode}
               onChange={(e) => setChannelCode(e.target.value)}
-              className="w-1/2 rounded border border-slate-300 p-2 text-slate-700"
+              disabled={accountLocked}
+              className="w-1/2 rounded border border-slate-300 p-2 text-slate-700 disabled:bg-slate-100 disabled:text-slate-500"
             >
               {CHANNELS.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -584,6 +596,12 @@ function CheckInModal({
               ))}
             </select>
           </div>
+          {accountLocked && (
+            <p className="text-xs text-slate-400">
+              Agencia/empresa y canal vienen de la cuenta por cobrar de la reserva institucional;
+              no se pueden editar acá. Para corregirlos, actualizá la cuenta.
+            </p>
+          )}
           <label className="block text-sm">
             <span className="text-slate-600">Fecha de nacimiento</span>
             <input

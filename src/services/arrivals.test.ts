@@ -110,6 +110,68 @@ describe('fetchArrivals', () => {
     expect(arrival.holderLastName).toBe('Titular')
   })
 
+  it('maps null account fields for an each_stay reservation without an account row', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          reservation_id: 'res-3',
+          room_id: 'room-3',
+          room_number: '103',
+          room_type: 'Simple',
+          first_name: 'Luis',
+          last_name: 'Gómez',
+          phone: '555',
+          email: null,
+          check_in_date: '2026-07-27',
+          check_out_date: '2026-07-28',
+          num_guests: 1,
+          max_occupancy: 2,
+          method: 'walk_in',
+          anticipo_total_bs: null,
+          holder_first_name: 'Luis',
+          holder_last_name: 'Gómez',
+          account_name: null,
+          account_kind: null,
+        },
+      ],
+      error: null,
+    })
+    const [arrival] = await fetchArrivals('2026-07-27', '2026-07-27')
+    expect(arrival.accountName).toBeNull()
+    expect(arrival.accountKind).toBeNull()
+  })
+
+  it('maps the receivable account of an institutional (client) reservation', async () => {
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          reservation_id: 'res-4',
+          room_id: 'room-4',
+          room_number: '104',
+          room_type: 'Doble',
+          first_name: 'Org',
+          last_name: 'Anizador',
+          phone: '555',
+          email: null,
+          check_in_date: '2026-07-27',
+          check_out_date: '2026-07-29',
+          num_guests: 2,
+          max_occupancy: 2,
+          method: 'web',
+          anticipo_total_bs: null,
+          holder_first_name: null,
+          holder_last_name: null,
+          account_name: 'Viajes del Sur',
+          account_kind: 'agencia',
+        },
+      ],
+      error: null,
+    })
+    const [arrival] = await fetchArrivals('2026-07-27', '2026-07-27')
+    expect(arrival.accountName).toBe('Viajes del Sur')
+    expect(arrival.accountKind).toBe('agencia')
+  })
+
   it('surfaces the RPC error message unchanged', async () => {
     rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'boom' } })
     await expect(fetchArrivals('2026-07-27', '2026-07-27')).rejects.toThrow('boom')

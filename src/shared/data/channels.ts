@@ -17,3 +17,13 @@ export const CHANNELS: Channel[] = [
 ]
 
 export const DEFAULT_CHANNEL_CODE = 'DIRECTO'
+
+// Canal sugerido cuando el check-in viene de una reserva institucional
+// con cuenta por cobrar ya cargada (fix/institutional-ui-coherence):
+// 'persona' no tiene un canal propio en esta lista, así que se deja el
+// default en vez de inventar una categoría que la cuenta no dice.
+export function channelCodeForAccountKind(kind: 'empresa' | 'agencia' | 'persona'): string {
+  if (kind === 'empresa') return 'EMPRESA'
+  if (kind === 'agencia') return 'AGENCIA'
+  return DEFAULT_CHANNEL_CODE
+}
