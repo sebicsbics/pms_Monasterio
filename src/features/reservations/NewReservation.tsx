@@ -6,6 +6,9 @@ import { fetchPendingForReservation } from '../../services/rateDiscountRequestsS
 import { BulkReservation, type BulkReservationPrefill } from './BulkReservation'
 import { canWrite, type UserRole } from '../../domain/auth/profile'
 import { computeContractPreview } from '../../domain/reservations/groupContractPreview'
+import { findSimilarAccountName } from '../../domain/receivables/accountNameSimilarity'
+import { listReceivableAccounts } from '../../services/receivables'
+import type { ReceivableAccount, ReceivableAccountKind } from '../../domain/receivables/receivable'
 
 // Precarga que llega desde la grilla de Disponibilidad: fecha (1 noche) y
 // habitación a preseleccionar.
@@ -96,6 +99,17 @@ function NewReservationForm({
   const [isCourtesy, setIsCourtesy] = useState(false)
   const [courtesyReason, setCourtesyReason] = useState('')
 
+  // Enlace a cuenta por cobrar (R10.1–R10.5): la creación de cuenta NO es
+  // un llamado aparte, viaja como p_new_account_* dentro de create_reservation
+  // (atomicidad garantizada por _resolve_receivable_account).
+  const [accounts, setAccounts] = useState<ReceivableAccount[]>([])
+  const [linkMode, setLinkMode] = useState<'existing' | 'new'>('existing')
+  const [receivableAccountId, setReceivableAccountId] = useState('')
+  const [newAccountName, setNewAccountName] = useState('')
+  const [newAccountKind, setNewAccountKind] = useState<ReceivableAccountKind>('empresa')
+  const [newAccountContact, setNewAccountContact] = useState('')
+  const [newAccountNotes, setNewAccountNotes] = useState('')
+
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -160,6 +174,12 @@ function NewReservationForm({
     setContractGuests('')
     setIsCourtesy(false)
     setCourtesyReason('')
+    setLinkMode('existing')
+    setReceivableAccountId('')
+    setNewAccountName('')
+    setNewAccountKind('empresa')
+    setNewAccountContact('')
+    setNewAccountNotes('')
     setError(null)
     setSuccess(null)
     setPendingBanner(null)
@@ -212,6 +232,26 @@ function NewReservationForm({
     if (bulkPrefill) setMode('group')
   }, [bulkPrefill])
 
+  // Cuentas por cobrar disponibles para "Enlazar a cuenta" (R10.1): sólo se
+  // necesitan si se activa el modo institucional.
+  useEffect(() => {
+    if (payerMode !== 'client') return
+    let active = true
+    listReceivableAccounts(true)
+      .then((list) => {
+        if (active) setAccounts(list)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [payerMode])
+
+  const similarAccountName =
+    payerMode === 'client' && linkMode === 'new' && newAccountName.trim()
+      ? findSimilarAccountName(newAccountName, accounts.map((a) => a.name))
+      : null
+
   async function handleCreate() {
     if (!selected) return
     if (!firstName.trim() || !lastName.trim()) {
@@ -228,6 +268,14 @@ function NewReservationForm({
     }
     if (payerMode === 'client' && isCourtesy && !courtesyReason.trim()) {
       setError('La justificación de cortesía es obligatoria')
+      return
+    }
+    if (payerMode === 'client' && linkMode === 'existing' && !receivableAccountId) {
+      setError('Elegí una cuenta existente o cambiá a Crear cuenta nueva')
+      return
+    }
+    if (payerMode === 'client' && linkMode === 'new' && !newAccountName.trim()) {
+      setError('El nombre de la cuenta nueva es obligatorio')
       return
     }
     setBusy(true)
@@ -257,6 +305,17 @@ function NewReservationForm({
             : null,
         isCourtesy: payerMode === 'client' ? isCourtesy : false,
         courtesyReason: payerMode === 'client' && isCourtesy ? courtesyReason.trim() : null,
+        receivableAccountId:
+          payerMode === 'client' && linkMode === 'existing' ? receivableAccountId : null,
+        newAccountName:
+          payerMode === 'client' && linkMode === 'new' ? newAccountName.trim() : null,
+        newAccountKind: payerMode === 'client' && linkMode === 'new' ? newAccountKind : null,
+        newAccountContact:
+          payerMode === 'client' && linkMode === 'new'
+            ? newAccountContact.trim() || null
+            : null,
+        newAccountNotes:
+          payerMode === 'client' && linkMode === 'new' ? newAccountNotes.trim() || null : null,
       })
       setSuccess(
         `Reserva creada para la habitación ${selected.roomNumber} (${checkIn} → ${checkOut}).`,
@@ -286,6 +345,12 @@ function NewReservationForm({
       setContractGuests('')
       setIsCourtesy(false)
       setCourtesyReason('')
+      setLinkMode('existing')
+      setReceivableAccountId('')
+      setNewAccountName('')
+      setNewAccountKind('empresa')
+      setNewAccountContact('')
+      setNewAccountNotes('')
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -588,6 +653,90 @@ function NewReservationForm({
                         Total del contrato: {contractPreview} Bs
                       </p>
                     )}
+                    <div className="space-y-2 rounded border border-slate-200 p-3">
+                      <p className="text-sm font-medium text-slate-700">Enlazar a cuenta</p>
+                      <div className="flex gap-4 text-sm">
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="radio"
+                            name="link-mode"
+                            checked={linkMode === 'existing'}
+                            onChange={() => setLinkMode('existing')}
+                          />
+                          Existente
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="radio"
+                            name="link-mode"
+                            checked={linkMode === 'new'}
+                            onChange={() => setLinkMode('new')}
+                          />
+                          Crear
+                        </label>
+                      </div>
+                      {linkMode === 'existing' && (
+                        <label className="block text-sm">
+                          <span className="text-slate-600">Cuenta por cobrar</span>
+                          <select
+                            value={receivableAccountId}
+                            onChange={(e) => setReceivableAccountId(e.target.value)}
+                            className="mt-1 w-full rounded border border-slate-300 p-2"
+                          >
+                            <option value="">Seleccioná una cuenta</option>
+                            {accounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {linkMode === 'new' && (
+                        <div className="space-y-2">
+                          <label className="block text-sm">
+                            <span className="text-slate-600">Nombre de la cuenta</span>
+                            <input
+                              value={newAccountName}
+                              onChange={(e) => setNewAccountName(e.target.value)}
+                              className="mt-1 w-full rounded border border-slate-300 p-2"
+                            />
+                          </label>
+                          {similarAccountName && (
+                            <p className="rounded bg-amber-50 p-2 text-xs text-amber-800">
+                              Ya existe una cuenta con un nombre parecido: "{similarAccountName}".
+                              Podés continuar si son distintas.
+                            </p>
+                          )}
+                          <label className="block text-sm">
+                            <span className="text-slate-600">Tipo</span>
+                            <select
+                              value={newAccountKind}
+                              onChange={(e) =>
+                                setNewAccountKind(e.target.value as ReceivableAccountKind)
+                              }
+                              className="mt-1 w-full rounded border border-slate-300 p-2"
+                            >
+                              <option value="empresa">Empresa</option>
+                              <option value="agencia">Agencia</option>
+                              <option value="persona">Persona</option>
+                            </select>
+                          </label>
+                          <input
+                            placeholder="Contacto (opcional)"
+                            value={newAccountContact}
+                            onChange={(e) => setNewAccountContact(e.target.value)}
+                            className="w-full rounded border border-slate-300 p-2 text-sm"
+                          />
+                          <input
+                            placeholder="Notas (opcional)"
+                            value={newAccountNotes}
+                            onChange={(e) => setNewAccountNotes(e.target.value)}
+                            className="w-full rounded border border-slate-300 p-2 text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
