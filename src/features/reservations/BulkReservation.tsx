@@ -10,6 +10,8 @@ import {
 import { occupantCountWarning } from '../../domain/reservations/occupants'
 import { occupancyReasonParam } from '../../domain/reservations/occupancyReason'
 import { computeContractPreview } from '../../domain/reservations/groupContractPreview'
+import { fittingRoomTypes, selectDefaultRoomType } from '../../domain/reservations/roomTypeSelection'
+import type { RoomType } from '../../domain/rooms/room'
 import { findSimilarAccountName } from '../../domain/receivables/accountNameSimilarity'
 import { listReceivableAccounts } from '../../services/receivables'
 import type { ReceivableAccount, ReceivableAccountKind } from '../../domain/receivables/receivable'
@@ -64,6 +66,14 @@ export function BulkReservation({
   // Sin motivo, esa habitación puntual queda en `failed` (el resto de la
   // reserva grupal no se ve afectada).
   const [occupancyReasonByRoom, setOccupancyReasonByRoom] = useState<Record<string, string>>({})
+  // Tipo elegido a mano por el usuario cuando más de una ficha de
+  // room_type_options alcanza para la cantidad de huéspedes cargada
+  // (DEFECT 2: una misma habitación física puede venderse a varios
+  // precios/capacidades — ej. Simple Estándar 1px vs. Matrimonial 2px
+  // sobre la habitación 7). Si no hay elección manual (o dejó de estar
+  // entre las opciones vigentes), se recalcula el default con
+  // selectDefaultRoomType en cada render.
+  const [roomTypeByRoom, setRoomTypeByRoom] = useState<Record<string, string>>({})
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -77,10 +87,6 @@ export function BulkReservation({
   const [payerMode, setPayerMode] = useState<'each_stay' | 'client'>('each_stay')
   const [rateMode, setRateMode] = useState<'room' | 'person'>('room')
   const [agreedUnitPriceBs, setAgreedUnitPriceBs] = useState('')
-  // Personas por habitación PARA EL CONTRATO (rateMode='person'), en blanco
-  // por default — no se comparte con guestsByRoom porque ese sí se precarga
-  // con la capacidad del tipo (R9.3/R2.5: acá no debe precargarse).
-  const [contractGuestsByRoom, setContractGuestsByRoom] = useState<Record<string, string>>({})
   const [courtesyByRoom, setCourtesyByRoom] = useState<Record<string, boolean>>({})
   const [courtesyReasonByRoom, setCourtesyReasonByRoom] = useState<Record<string, string>>({})
 
@@ -165,6 +171,19 @@ export function BulkReservation({
     }
   }
 
+  // Tipo efectivo para una habitación dada la cantidad de huéspedes
+  // actual (DEFECT 2): el elegido a mano si sigue siendo una opción
+  // válida de esa habitación, si no el default (el más barato que
+  // alcanza — ver domain/reservations/roomTypeSelection).
+  const effectiveRoomType = (room: AvailableRoom, guests: number): RoomType | null => {
+    const manual = roomTypeByRoom[room.roomId]
+    if (manual) {
+      const found = room.suitableTypes.find((t) => t.id === manual)
+      if (found) return found
+    }
+    return selectDefaultRoomType(room.suitableTypes, guests)
+  }
+
   const capacityOf = (roomId: string) =>
     results?.find((r) => r.roomId === roomId)?.suitableTypes[0]?.maxOccupancy ?? 1
 
@@ -225,6 +244,7 @@ export function BulkReservation({
     setGuestsByRoom({})
     setOccupantsByRoom({})
     setOccupancyReasonByRoom({})
+    setRoomTypeByRoom({})
     setFirstName('')
     setLastName('')
     setPhone('')
@@ -235,7 +255,6 @@ export function BulkReservation({
     setPayerMode('each_stay')
     setRateMode('room')
     setAgreedUnitPriceBs('')
-    setContractGuestsByRoom({})
     setCourtesyByRoom({})
     setCourtesyReasonByRoom({})
     setLinkMode('existing')
@@ -258,7 +277,7 @@ export function BulkReservation({
       ? computeContractPreview({
           rooms: [...selected].map((roomId) => ({
             isCourtesy: courtesyByRoom[roomId] ?? false,
-            numGuests: Number(contractGuestsByRoom[roomId] ?? 0) || 0,
+            numGuests: guestsByRoom[roomId] ?? 0,
             roomTotalBs: rateBs.trim() ? Number(rateBs) * Math.max(nights, 0) : 0,
           })),
           rateMode,
@@ -288,14 +307,6 @@ export function BulkReservation({
     }
     if (
       payerMode === 'client' &&
-      rateMode === 'person' &&
-      chosen.some((r) => !(contractGuestsByRoom[r.roomId] ?? '').trim())
-    ) {
-      setError('Personas es obligatorio con tarifa por persona en todas las habitaciones')
-      return
-    }
-    if (
-      payerMode === 'client' &&
       chosen.some((r) => courtesyByRoom[r.roomId] && !(courtesyReasonByRoom[r.roomId] ?? '').trim())
     ) {
       setError('La justificación de cortesía es obligatoria')
@@ -314,27 +325,32 @@ export function BulkReservation({
     setResult(null)
     try {
       const res = await createBulkReservation({
-        rooms: chosen.map((r) => ({
-          roomId: r.roomId,
-          roomTypeId: r.suitableTypes[0]?.id ?? '',
-          numGuests:
-            payerMode === 'client' && rateMode === 'person'
-              ? Number(contractGuestsByRoom[r.roomId])
-              : guestsByRoom[r.roomId] ?? 1,
-          occupants: (occupantsByRoom[r.roomId] ?? []).filter(
-            (o) => o.firstName.trim() !== '' && o.lastName.trim() !== '',
-          ),
-          ...occupancyReasonParam(
-            guestsByRoom[r.roomId] ?? 1,
-            r.suitableTypes[0]?.maxOccupancy ?? null,
-            occupancyReasonByRoom[r.roomId] ?? '',
-          ),
-          isCourtesy: payerMode === 'client' ? courtesyByRoom[r.roomId] ?? false : false,
-          courtesyReason:
-            payerMode === 'client' && courtesyByRoom[r.roomId]
-              ? (courtesyReasonByRoom[r.roomId] ?? '').trim()
-              : null,
-        })),
+        rooms: chosen.map((r) => {
+          // DEFECT 1: una sola cantidad de huéspedes por habitación, la
+          // misma que se envía y la que decide si hace falta motivo de
+          // sobre-ocupación — antes había dos fuentes (guestsByRoom vs.
+          // contractGuestsByRoom) que podían desincronizarse.
+          const guests = guestsByRoom[r.roomId] ?? 1
+          const type = effectiveRoomType(r, guests)
+          return {
+            roomId: r.roomId,
+            roomTypeId: type?.id ?? '',
+            numGuests: guests,
+            occupants: (occupantsByRoom[r.roomId] ?? []).filter(
+              (o) => o.firstName.trim() !== '' && o.lastName.trim() !== '',
+            ),
+            ...occupancyReasonParam(
+              guests,
+              type?.maxOccupancy ?? null,
+              occupancyReasonByRoom[r.roomId] ?? '',
+            ),
+            isCourtesy: payerMode === 'client' ? courtesyByRoom[r.roomId] ?? false : false,
+            courtesyReason:
+              payerMode === 'client' && courtesyByRoom[r.roomId]
+                ? (courtesyReasonByRoom[r.roomId] ?? '').trim()
+                : null,
+          }
+        }),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim(),
@@ -391,11 +407,20 @@ export function BulkReservation({
             {checkIn} → {checkOut}
           </p>
           {result.failed.length > 0 && (
-            <p className="mt-1 text-amber-800">
-              No se pudieron crear {result.failed.length}: {' '}
-              {result.failed.map((f) => `Hab. ${roomNumberOf(f.roomId)}`).join(', ')}{' '}
-              (probablemente se ocuparon).
-            </p>
+            <div className="mt-1 text-amber-800">
+              <p>No se pudieron crear {result.failed.length}:</p>
+              {/* DEFECT 3(a): la RPC ya devuelve el motivo REAL por
+                  habitación (sqlerrm) — mostrarlo tal cual en vez de
+                  inventar "probablemente se ocuparon", que muchas veces
+                  es directamente falso. */}
+              <ul className="list-disc pl-4">
+                {result.failed.map((f) => (
+                  <li key={f.roomId}>
+                    Hab. {roomNumberOf(f.roomId)}: {f.error}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}
@@ -457,11 +482,17 @@ export function BulkReservation({
           ) : (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {results.map((room) => {
-                const type = room.suitableTypes[0]
                 const on = selected.has(room.roomId)
+                // capacity/guests con el valor "de referencia" (más
+                // barato) hasta que se sepa cuántos van; una vez elegida
+                // la habitación, se usa el tipo EFECTIVO para esa
+                // cantidad de huéspedes (DEFECT 2).
+                const referenceCapacity = room.suitableTypes[0]?.maxOccupancy ?? 1
+                const guests = guestsByRoom[room.roomId] ?? referenceCapacity
+                const type = effectiveRoomType(room, guests)
                 const capacity = type?.maxOccupancy ?? 1
-                const guests = guestsByRoom[room.roomId] ?? capacity
                 const overCapacity = on && guests > capacity
+                const fitting = fittingRoomTypes(room.suitableTypes, guests)
                 const occupants = occupantsByRoom[room.roomId] ?? []
                 const countWarning = on ? occupantCountWarning(guests, occupants.length) : null
                 return (
@@ -476,7 +507,7 @@ export function BulkReservation({
                         <span>
                           <span className="font-bold">Hab. {room.roomNumber}</span>
                           <span className="block text-xs text-slate-500">
-                            {type ? `${type.name} · hasta ${capacity}` : 'Sin tipo'}
+                            {type ? `${type.name} · hasta ${capacity} · ${type.basePriceBs} Bs` : 'Sin tipo'}
                           </span>
                         </span>
                       </button>
@@ -496,6 +527,29 @@ export function BulkReservation({
                         </label>
                       )}
                     </div>
+                    {/* DEFECT 2: más de una ficha de tipo alcanza para
+                        esta cantidad de huéspedes (ej. Simple 1px vs.
+                        Matrimonial 2px sobre la misma habitación física)
+                        — dejamos elegir, mostrando el precio de cada
+                        una, en vez de tomar la más barata a ciegas. */}
+                    {on && fitting.length > 1 && (
+                      <label className="mt-2 block text-xs text-slate-500">
+                        Tipo/tarifa
+                        <select
+                          value={type?.id ?? ''}
+                          onChange={(e) =>
+                            setRoomTypeByRoom((r) => ({ ...r, [room.roomId]: e.target.value }))
+                          }
+                          className="mt-1 w-full rounded border border-slate-300 p-1 text-xs"
+                        >
+                          {fitting.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} · hasta {t.maxOccupancy} · {t.basePriceBs} Bs
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     {on && (
                       <div className="mt-2 space-y-2 border-t border-slate-200 pt-2">
                         <div className="flex items-center justify-between">
@@ -563,7 +617,12 @@ export function BulkReservation({
               })}
             </div>
           )}
-          {[...selected].some((id) => (guestsByRoom[id] ?? 1) > capacityOf(id)) && (
+          {[...selected].some((id) => {
+            const room = results?.find((r) => r.roomId === id)
+            if (!room) return false
+            const guests = guestsByRoom[id] ?? 1
+            return guests > (effectiveRoomType(room, guests)?.maxOccupancy ?? capacityOf(id))
+          }) && (
             <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-800">
               Hay habitaciones por encima de su capacidad: se asume cama extra.
             </p>
@@ -751,17 +810,24 @@ export function BulkReservation({
                             Hab. {roomNumberOf(roomId)}
                           </p>
                           {rateMode === 'person' && (
+                            // DEFECT 1: MISMA fuente de verdad que "Personas"
+                            // del paso 2 (guestsByRoom) — antes este campo
+                            // tenía su propio estado (contractGuestsByRoom)
+                            // que se enviaba al crear, mientras que el
+                            // aviso de sobre-ocupación y el motivo miraban
+                            // guestsByRoom: podían desincronizarse y la RPC
+                            // terminaba pidiendo un motivo que la pantalla
+                            // nunca ofreció.
                             <label className="block text-xs">
                               <span className="text-slate-500">Personas (contrato)</span>
                               <input
                                 type="number"
                                 min={1}
-                                placeholder="Obligatorio"
-                                value={contractGuestsByRoom[roomId] ?? ''}
+                                value={guestsByRoom[roomId] ?? 1}
                                 onChange={(e) =>
-                                  setContractGuestsByRoom((g) => ({
+                                  setGuestsByRoom((g) => ({
                                     ...g,
-                                    [roomId]: e.target.value,
+                                    [roomId]: Math.max(1, Number(e.target.value)),
                                   }))
                                 }
                                 className="mt-1 w-full rounded border border-slate-300 p-1"
