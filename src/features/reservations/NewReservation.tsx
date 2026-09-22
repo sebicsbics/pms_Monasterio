@@ -5,6 +5,7 @@ import { searchAvailableRooms, createReservation } from '../../services/reservat
 import { fetchPendingForReservation } from '../../services/rateDiscountRequestsService'
 import { BulkReservation, type BulkReservationPrefill } from './BulkReservation'
 import { canWrite, type UserRole } from '../../domain/auth/profile'
+import { computeContractPreview } from '../../domain/reservations/groupContractPreview'
 
 // Precarga que llega desde la grilla de Disponibilidad: fecha (1 noche) y
 // habitación a preseleccionar.
@@ -44,15 +45,24 @@ export function NewReservation({
       </div>
     )
   }
-  return <NewReservationForm prefill={prefill} bulkPrefill={bulkPrefill} />
+  return <NewReservationForm prefill={prefill} bulkPrefill={bulkPrefill} role={role} />
+}
+
+// Rol gate para la modalidad de pago institucional (decisión #339): sólo
+// root/reception_admin ven la opción 'client'; reception jamás la ve (no
+// puede crear reservas institucionales, gate replicado en create_reservation).
+function canManagePayerMode(role?: UserRole | null): boolean {
+  return role === 'root' || role === 'reception_admin'
 }
 
 function NewReservationForm({
   prefill,
   bulkPrefill,
+  role,
 }: {
   prefill?: ReservationPrefill | null
   bulkPrefill?: BulkReservationPrefill | null
+  role?: UserRole | null
 }) {
   // Paso 1: búsqueda
   const [checkIn, setCheckIn] = useState('')
@@ -75,6 +85,16 @@ function NewReservationForm({
   // El contacto se hospeda por defecto (caso más común). Si se apaga, la
   // habitación queda sin titular hasta que se registre en el check-in.
   const [contactStays, setContactStays] = useState(true)
+
+  // Reserva institucional (stage 6, group-billing) — decisión #339.
+  const [payerMode, setPayerMode] = useState<'each_stay' | 'client'>('each_stay')
+  const [rateMode, setRateMode] = useState<'room' | 'person'>('room')
+  const [agreedUnitPriceBs, setAgreedUnitPriceBs] = useState('')
+  // Blank por default: NO se precarga con la capacidad de la habitación
+  // (a diferencia de guestsByRoom en BulkReservation) — R9.3/R2.5.
+  const [contractGuests, setContractGuests] = useState('')
+  const [isCourtesy, setIsCourtesy] = useState(false)
+  const [courtesyReason, setCourtesyReason] = useState('')
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -134,10 +154,37 @@ function NewReservationForm({
     setRateBs('')
     setRateReason('')
     setContactStays(true)
+    setPayerMode('each_stay')
+    setRateMode('room')
+    setAgreedUnitPriceBs('')
+    setContractGuests('')
+    setIsCourtesy(false)
+    setCourtesyReason('')
     setError(null)
     setSuccess(null)
     setPendingBanner(null)
   }
+
+  const nights =
+    checkIn && checkOut
+      ? Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)
+      : 0
+
+  const contractPreview =
+    payerMode === 'client'
+      ? computeContractPreview({
+          rooms: [
+            {
+              isCourtesy,
+              numGuests: Number(contractGuests) || 0,
+              roomTotalBs: rateBs.trim() ? Number(rateBs) * Math.max(nights, 0) : 0,
+            },
+          ],
+          rateMode,
+          nights: Math.max(nights, 0),
+          agreedUnitPriceBs: agreedUnitPriceBs.trim() ? Number(agreedUnitPriceBs) : null,
+        })
+      : null
 
   function selectRoom(room: AvailableRoom) {
     setSelected(room)
@@ -175,6 +222,14 @@ function NewReservationForm({
       setError('Cargá al menos un contacto: celular o correo')
       return
     }
+    if (payerMode === 'client' && rateMode === 'person' && !contractGuests.trim()) {
+      setError('Personas es obligatorio con tarifa por persona')
+      return
+    }
+    if (payerMode === 'client' && isCourtesy && !courtesyReason.trim()) {
+      setError('La justificación de cortesía es obligatoria')
+      return
+    }
     setBusy(true)
     setError(null)
     setPendingBanner(null)
@@ -188,11 +243,20 @@ function NewReservationForm({
         email: email.trim(),
         checkIn,
         checkOut,
-        numGuests: pax,
+        numGuests:
+          payerMode === 'client' && rateMode === 'person' ? Number(contractGuests) : pax,
         method,
         rateBs: rateBs.trim() ? Number(rateBs) : null,
         reason: rateReason.trim() || null,
         contactStays,
+        payerMode,
+        rateMode: payerMode === 'client' ? rateMode : undefined,
+        agreedUnitPriceBs:
+          payerMode === 'client' && rateMode === 'person' && agreedUnitPriceBs.trim()
+            ? Number(agreedUnitPriceBs)
+            : null,
+        isCourtesy: payerMode === 'client' ? isCourtesy : false,
+        courtesyReason: payerMode === 'client' && isCourtesy ? courtesyReason.trim() : null,
       })
       setSuccess(
         `Reserva creada para la habitación ${selected.roomNumber} (${checkIn} → ${checkOut}).`,
@@ -216,6 +280,12 @@ function NewReservationForm({
       setRateBs('')
       setRateReason('')
       setContactStays(true)
+      setPayerMode('each_stay')
+      setRateMode('room')
+      setAgreedUnitPriceBs('')
+      setContractGuests('')
+      setIsCourtesy(false)
+      setCourtesyReason('')
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -248,7 +318,7 @@ function NewReservationForm({
         </button>
       </div>
 
-      {mode === 'group' && <BulkReservation prefill={bulkPrefill} />}
+      {mode === 'group' && <BulkReservation prefill={bulkPrefill} role={role} />}
 
       {mode === 'individual' && (
         <>
@@ -444,6 +514,84 @@ function NewReservationForm({
                 />
               </label>
             </div>
+            {canManagePayerMode(role) && (
+              <div className="space-y-3 rounded border border-slate-200 p-3">
+                <label className="block text-sm">
+                  <span className="text-slate-600">Modalidad de pago</span>
+                  <select
+                    value={payerMode}
+                    onChange={(e) => setPayerMode(e.target.value as 'each_stay' | 'client')}
+                    className="mt-1 w-full rounded border border-slate-300 p-2"
+                  >
+                    <option value="each_stay">Cada habitación paga la suya</option>
+                    <option value="client">Institución/agencia paga el paquete</option>
+                  </select>
+                </label>
+                {payerMode === 'client' && (
+                  <>
+                    <label className="block text-sm">
+                      <span className="text-slate-600">Modalidad de tarifa</span>
+                      <select
+                        value={rateMode}
+                        onChange={(e) => setRateMode(e.target.value as 'room' | 'person')}
+                        className="mt-1 w-full rounded border border-slate-300 p-2"
+                      >
+                        <option value="room">Tarifa de lista/editable</option>
+                        <option value="person">Precio pactado por persona/noche</option>
+                      </select>
+                    </label>
+                    {rateMode === 'person' && (
+                      <div className="flex gap-2">
+                        <label className="w-1/2 text-sm">
+                          <span className="text-slate-600">
+                            Precio pactado por persona/noche (Bs)
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={agreedUnitPriceBs}
+                            onChange={(e) => setAgreedUnitPriceBs(e.target.value)}
+                            className="mt-1 w-full rounded border border-slate-300 p-2"
+                          />
+                        </label>
+                        <label className="w-1/2 text-sm">
+                          <span className="text-slate-600">Personas (contrato)</span>
+                          <input
+                            type="number"
+                            min={1}
+                            placeholder="Obligatorio"
+                            value={contractGuests}
+                            onChange={(e) => setContractGuests(e.target.value)}
+                            className="mt-1 w-full rounded border border-slate-300 p-2"
+                          />
+                        </label>
+                      </div>
+                    )}
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={isCourtesy}
+                        onChange={(e) => setIsCourtesy(e.target.checked)}
+                      />
+                      Cortesía (no se puede revertir después)
+                    </label>
+                    {isCourtesy && (
+                      <input
+                        placeholder="Motivo de la cortesía (obligatorio)"
+                        value={courtesyReason}
+                        onChange={(e) => setCourtesyReason(e.target.value)}
+                        className="w-full rounded border border-slate-300 p-2 text-sm"
+                      />
+                    )}
+                    {contractPreview !== null && (
+                      <p className="rounded bg-slate-50 p-2 text-sm font-medium text-slate-700">
+                        Total del contrato: {contractPreview} Bs
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
               <input
                 placeholder="Celular"
