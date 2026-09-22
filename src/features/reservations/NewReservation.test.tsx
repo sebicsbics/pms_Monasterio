@@ -22,6 +22,10 @@ vi.mock('../../services/rateDiscountRequestsService', () => ({
   fetchPendingForReservation: vi.fn(async () => null),
 }))
 
+vi.mock('../../services/receivables', () => ({
+  listReceivableAccounts: vi.fn(async () => []),
+}))
+
 async function searchAndSelectRoom() {
   fireEvent.change(screen.getByLabelText('Entrada'), { target: { value: '2026-10-01' } })
   fireEvent.change(screen.getByLabelText('Salida'), { target: { value: '2026-10-03' } })
@@ -99,5 +103,39 @@ describe('NewReservationForm — modalidad de pago (R9.1, R9.2, decisión #339)'
     })
     // 2 noches (2026-10-01 -> 2026-10-03) × 2 personas × 100 Bs = 400
     await screen.findByText(/400/)
+  })
+})
+
+describe('NewReservationForm — enlace a cuenta por cobrar (R10.1–R10.5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('con payerMode each_stay no muestra la sección Enlazar a cuenta', async () => {
+    render(<NewReservation role="root" />)
+    await searchAndSelectRoom()
+    expect(screen.queryByText(/Enlazar a cuenta/i)).not.toBeInTheDocument()
+  })
+
+  it('en modo client con Existente bloquea el envío sin cuenta elegida', async () => {
+    render(<NewReservation role="root" />)
+    await searchAndSelectRoom()
+    fireEvent.change(screen.getByLabelText(/Modalidad de pago/i), {
+      target: { value: 'client' },
+    })
+    await screen.findByText(/Enlazar a cuenta/i)
+
+    fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Juan' } })
+    fireEvent.change(screen.getByPlaceholderText('Apellido'), { target: { value: 'Pérez' } })
+    fireEvent.change(screen.getByPlaceholderText('Celular'), { target: { value: '70000000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Crear reserva/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Eleg[ií].*cuenta/i)).toBeInTheDocument()
+    })
+
+    const { createReservation } = await import('../../services/reservations')
+    expect(createReservation).not.toHaveBeenCalled()
   })
 })

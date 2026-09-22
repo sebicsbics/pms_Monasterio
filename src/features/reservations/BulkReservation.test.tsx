@@ -40,6 +40,12 @@ vi.mock('../../services/reservations', () => ({
   createBulkReservation: vi.fn(async () => ({ created: [], failed: [] })),
 }))
 
+vi.mock('../../services/receivables', () => ({
+  listReceivableAccounts: vi.fn(async () => [
+    { id: 'acc-1', name: 'hotel abc.', kind: 'empresa', contact: null, notes: null, isActive: true },
+  ]),
+}))
+
 async function search() {
   fireEvent.change(screen.getByLabelText('Entrada'), { target: { value: '2026-10-01' } })
   fireEvent.change(screen.getByLabelText('Salida'), { target: { value: '2026-10-03' } })
@@ -153,5 +159,49 @@ describe('BulkReservation — modalidad de pago (R9.1, R9.2, decisión #339)', (
     // Ahora sólo aporta la habitación 101: 2 noches × 100 Bs × 2 = 400.
     await screen.findByText(/400/)
     expect(screen.queryByText(/600/)).not.toBeInTheDocument()
+  })
+})
+
+describe('BulkReservation — enlace a cuenta por cobrar (R10.1–R10.5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('en Crear cuenta nueva muestra advertencia no bloqueante si el nombre se parece a uno existente', async () => {
+    render(<BulkReservation role="root" />)
+    await searchTwoRoomsAndSelectBoth()
+    fireEvent.change(screen.getByLabelText(/Modalidad de pago/i), {
+      target: { value: 'client' },
+    })
+    await screen.findByText(/Enlazar a cuenta/i)
+    fireEvent.click(screen.getByRole('radio', { name: 'Crear' }))
+    fireEvent.change(screen.getByLabelText('Nombre de la cuenta'), {
+      target: { value: 'Hotel ABC' },
+    })
+    await screen.findByText(/parecido/i)
+  })
+
+  it('un envío client con cuenta Existente elegida llega a createBulkReservation con receivableAccountId', async () => {
+    render(<BulkReservation role="root" />)
+    await searchTwoRoomsAndSelectBoth()
+    fireEvent.change(screen.getByLabelText(/Modalidad de pago/i), {
+      target: { value: 'client' },
+    })
+    await screen.findByLabelText('Cuenta por cobrar')
+    fireEvent.change(screen.getByLabelText('Cuenta por cobrar'), {
+      target: { value: 'acc-1' },
+    })
+
+    fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Juan' } })
+    fireEvent.change(screen.getByPlaceholderText('Apellido'), { target: { value: 'Pérez' } })
+    fireEvent.change(screen.getByPlaceholderText('Celular'), { target: { value: '70000000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Crear 2 reserva/ }))
+
+    await waitFor(() => {
+      expect(createBulkReservation).toHaveBeenCalledWith(
+        expect.objectContaining({ receivableAccountId: 'acc-1' }),
+      )
+    })
   })
 })
