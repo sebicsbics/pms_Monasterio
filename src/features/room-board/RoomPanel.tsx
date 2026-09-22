@@ -1242,7 +1242,13 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 <p className="text-sm text-slate-400">Cargando folio…</p>
               )}
 
-              {canEditRate && folio && !readOnly && (
+              {canEditRate && folio && !readOnly && folio.payerMode === 'client' && (
+                <p className="mt-2 text-xs text-slate-400">
+                  La tarifa está fijada por el contrato de la reserva institucional; no se puede
+                  editar acá.
+                </p>
+              )}
+              {canEditRate && folio && !readOnly && folio.payerMode !== 'client' && (
                 <div className="mt-2">
                   {!rateEditOpen ? (
                     <button
@@ -1311,18 +1317,20 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                 <h4 className="text-sm font-medium text-slate-600">Estadía</h4>
                 {stayAction === null && !readOnly && (
                   <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setStayAction('dates')
-                        setNewCheckOut('')
-                        setStayRate('')
-                        setStayReason('')
-                      }}
-                      className="text-xs font-medium text-brand-700 hover:underline"
-                    >
-                      Modificar fechas
-                    </button>
+                    {folio?.payerMode !== 'client' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStayAction('dates')
+                          setNewCheckOut('')
+                          setStayRate('')
+                          setStayReason('')
+                        }}
+                        className="text-xs font-medium text-brand-700 hover:underline"
+                      >
+                        Modificar fechas
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={openMove}
@@ -1333,6 +1341,12 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
                   </div>
                 )}
               </div>
+              {stayAction === null && !readOnly && folio?.payerMode === 'client' && (
+                <p className="text-xs text-slate-400">
+                  Las fechas están fijadas por el contrato de la reserva institucional. Para
+                  prolongar la estadía, hacé check out y luego un check in personal nuevo.
+                </p>
+              )}
 
               {stayAction === 'dates' && (
                 <div className="space-y-2 rounded border border-slate-200 p-3">
