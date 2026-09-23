@@ -11,8 +11,6 @@ import {
   overrideReservationRate,
 } from '../../services/checkin'
 import { fetchFolio, addFolioCharge } from '../../services/folio'
-import { fetchAssignableStaff, createTask } from '../../services/tasks'
-import type { AssignableStaff } from '../../domain/tasks/task'
 import { fetchPaymentMethods } from '../../services/payments'
 import type { PaymentMethod } from '../../domain/payments/paymentMethod'
 import type { ReceivableAccount } from '../../domain/receivables/receivable'
@@ -207,10 +205,6 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   const canEditRate = canEditRateGate(role)
 
 
-  // Asignación de mucama (solo si la habitación está por limpiar)
-  const [staff, setStaff] = useState<AssignableStaff[]>([])
-  const [staffId, setStaffId] = useState('')
-
   // owner ve el folio y los huéspedes, pero ninguna acción.
   const readOnly = !canWrite(role)
   const isOccupied = room.operationalStatus === 'occupied'
@@ -250,14 +244,6 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
   }, [stayGuests])
 
   useEffect(() => {
-    if (isDirty) {
-      fetchAssignableStaff()
-        .then(setStaff)
-        .catch((e: Error) => setError(e.message))
-    }
-  }, [isDirty])
-
-  useEffect(() => {
     if (isOccupied) {
       fetchPaymentMethods()
         .then(setPaymentMethods)
@@ -278,21 +264,6 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
         .catch((e: Error) => setError(e.message))
     }
   }, [isOccupied])
-
-  function handleAssignCleaning() {
-    if (!staffId) {
-      setError('Elegí a quién asignar la limpieza')
-      return
-    }
-    const assignee = staff.find((s) => s.personId === staffId)?.fullName ?? ''
-    run(() =>
-      createTask({
-        taskType: 'cleaning',
-        assignedToName: assignee,
-        notes: `Limpieza habitación ${room.roomNumber}`,
-      }),
-    )
-  }
 
   async function reloadFolio() {
     const f = await fetchFolio(room.id)
@@ -1647,42 +1618,12 @@ export function RoomPanel({ room, role, onClose, onDone }: Props) {
           </div>
         )}
 
-        {/* POR LIMPIAR → asignar mucama + marcar limpia */}
+        {/* POR LIMPIAR: gestionar desde el módulo de Housekeeping, no acá. */}
         {isDirty && !readOnly && (
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <h3 className="font-semibold text-slate-700">Asignar limpieza</h3>
-              <select
-                value={staffId}
-                onChange={(e) => setStaffId(e.target.value)}
-                className="w-full rounded border border-slate-300 p-2 text-sm"
-              >
-                <option value="">Elegí una mucama…</option>
-                {staff.map((s) => (
-                  <option key={s.personId} value={s.personId}>
-                    {s.fullName} — {s.jobTitle}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={handleAssignCleaning}
-                className="w-full rounded bg-slate-700 py-2 font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-              >
-                {busy ? 'Procesando…' : 'Asignar mucama'}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => run(() => setRoomStatus(room.id, 'available'))}
-              className="w-full rounded bg-green-600 py-2 font-medium text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              Marcar como limpia
-            </button>
-          </div>
+          <p className="text-sm text-slate-500">
+            La limpieza de esta habitación se gestiona desde el módulo de
+            Housekeeping.
+          </p>
         )}
 
         {/* MANTENIMIENTO → volver a disponible */}

@@ -29,11 +29,6 @@ vi.mock('../../services/staySegments', () => ({
   changeRoom: vi.fn(async () => undefined),
 }))
 
-vi.mock('../../services/tasks', () => ({
-  fetchAssignableStaff: vi.fn(async () => []),
-  createTask: vi.fn(async () => undefined),
-}))
-
 vi.mock('../../services/payments', () => ({
   fetchPaymentMethods: vi.fn(async () => []),
 }))
@@ -53,13 +48,13 @@ vi.mock('../../services/checkin', () => ({
   overrideReservationRate: vi.fn(),
 }))
 
-function makeRoom(): Room {
+function makeRoom(operationalStatus: Room['operationalStatus'] = 'occupied'): Room {
   return {
     id: 'room-1',
     roomNumber: '101',
     floor: 1,
     zone: null,
-    operationalStatus: 'occupied',
+    operationalStatus,
     defaultType: { id: 'type-1', name: 'Doble', basePriceBs: 200, maxOccupancy: 2 },
     typeOptions: [{ id: 'type-1', name: 'Doble', basePriceBs: 200, maxOccupancy: 2 }],
   }
@@ -106,5 +101,38 @@ describe('RoomPanel — acciones bloqueadas para reservas institucionales', () =
 
     expect(screen.getByRole('button', { name: 'Editar tarifa' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Modificar fechas' })).toBeInTheDocument()
+  })
+})
+
+// change: housekeeping-owns-room-release — la limpieza se gestiona desde
+// el módulo de Housekeeping, no desde el tablero de habitaciones.
+describe('RoomPanel — la limpieza ya no se gestiona desde el tablero', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('no ofrece "Asignar mucama" ni "Marcar como limpia" para una habitación dirty', async () => {
+    render(
+      <RoomPanel room={makeRoom('dirty')} role="reception_admin" onClose={vi.fn()} onDone={vi.fn()} />,
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/se gestiona desde el módulo de\s*Housekeeping/i),
+      ).toBeInTheDocument(),
+    )
+
+    expect(screen.queryByRole('button', { name: 'Asignar mucama' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Marcar como limpia' })).not.toBeInTheDocument()
+  })
+
+  it('sigue ofreciendo "Marcar como disponible" para una habitación en mantenimiento', async () => {
+    render(
+      <RoomPanel room={makeRoom('maintenance')} role="reception_admin" onClose={vi.fn()} onDone={vi.fn()} />,
+    )
+
+    expect(
+      await screen.findByRole('button', { name: 'Marcar como disponible' }),
+    ).toBeInTheDocument()
   })
 })
