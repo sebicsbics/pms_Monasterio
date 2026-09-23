@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 const selectMock = vi.fn()
 const orderMock = vi.fn()
 const eqMock = vi.fn()
-const rpcMock = vi.fn(async (..._args: unknown[]) => ({ error: null as { message: string } | null }))
+const rpcMock = vi.fn(
+  async (..._args: unknown[]) =>
+    ({ error: null }) as { data?: unknown; error: { message: string } | null },
+)
 const updateMock = vi.fn()
 
 vi.mock('./supabase', () => ({
