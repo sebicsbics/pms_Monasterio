@@ -152,6 +152,10 @@ function RecordAnticipoForm() {
       {message && (
         <p className="mb-4 rounded bg-green-50 p-2 text-sm text-green-700">{message}</p>
       )}
+      <p className="mb-4 rounded bg-slate-50 p-2 text-sm text-slate-600">
+        Las habitaciones de reservas institucionales (agencia/empresa) no aparecen acá:
+        su anticipo se registra contra el contrato del grupo en «Grupos/Instituciones».
+      </p>
       <Card className="p-4">
         <div className="space-y-3">
           <div>
