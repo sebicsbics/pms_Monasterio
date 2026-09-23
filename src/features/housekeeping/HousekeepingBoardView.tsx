@@ -17,9 +17,9 @@ import {
   addAssignmentNote,
   fetchAssignmentEvents,
 } from '../../services/housekeeping'
-import { PageHeader } from '../../components/ui'
-import { formatDate, formatDateTime } from '../../lib/date'
+import { formatDate } from '../../lib/date'
 import { useCanWrite } from '../../shared/lib/canWriteContext'
+import { AssignmentHistory } from './AssignmentHistory'
 
 const STATUSES: AssignmentStatus[] = ['pending', 'in_progress', 'done']
 
@@ -166,9 +166,7 @@ export function HousekeepingBoardView() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <PageHeader title="Housekeeping" />
-
+    <div>
       {error && (
         <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
       )}
@@ -346,53 +344,6 @@ export function HousekeepingBoardView() {
           </tbody>
         </table>
       </div>
-    </div>
-  )
-}
-
-// Historial de la asignación, más reciente primero: muestra los últimos
-// 2 eventos y deja expandir el resto (evita que una limpieza con muchas
-// notas rompa el ancho de la columna).
-const HISTORY_COLLAPSED_COUNT = 2
-
-function AssignmentHistory({
-  events,
-  expanded,
-  onToggle,
-}: {
-  events: HousekeepingAssignmentEvent[]
-  expanded: boolean
-  onToggle: () => void
-}) {
-  if (events.length === 0) return <span>—</span>
-
-  const visible = expanded ? events : events.slice(0, HISTORY_COLLAPSED_COUNT)
-  const hiddenCount = events.length - visible.length
-
-  return (
-    <div className="space-y-1">
-      {visible.map((e) => (
-        <div key={e.id} className="text-xs">
-          <span className="text-slate-400">{formatDateTime(e.createdAt)}</span>{' '}
-          <span className="font-medium text-slate-600">{e.createdByName}</span>
-          {e.fromStatus !== e.toStatus && (
-            <span className="text-slate-500">
-              {' '}
-              ({ASSIGNMENT_STATUS_LABEL[e.fromStatus]} → {ASSIGNMENT_STATUS_LABEL[e.toStatus]})
-            </span>
-          )}
-          {e.note && <p className="text-slate-700">{e.note}</p>}
-        </div>
-      ))}
-      {events.length > HISTORY_COLLAPSED_COUNT && (
-        <button
-          type="button"
-          onClick={onToggle}
-          className="text-xs font-medium text-brand-700 hover:underline"
-        >
-          {expanded ? 'Ver menos' : `Ver ${hiddenCount} más`}
-        </button>
-      )}
     </div>
   )
 }

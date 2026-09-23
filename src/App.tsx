@@ -60,7 +60,7 @@ import { FichajeView } from './features/attendance/FichajeView'
 import { MyProfileView } from './features/profile/MyProfileView'
 import { CajaView } from './features/cash/CajaView'
 import { EventsView } from './features/events/EventsView'
-import { HousekeepingBoardView } from './features/housekeeping/HousekeepingBoardView'
+import { HousekeepingView } from './features/housekeeping/HousekeepingView'
 import { DiscountApprovalQueueView } from './features/reception/DiscountApprovalQueueView'
 import { RecordAnticipoView } from './features/anticipos/RecordAnticipoView'
 import { AnticipoAdminView } from './features/anticipos/AnticipoAdminView'
@@ -325,7 +325,7 @@ function App() {
         {activeTab === 'info' && <InfoLogView />}
         {activeTab === 'receivables' && <ReceivablesView />}
         {activeTab === 'group-bookings' && <GroupBookingsView role={role} />}
-        {activeTab === 'housekeeping' && <HousekeepingBoardView />}
+        {activeTab === 'housekeeping' && <HousekeepingView />}
         {activeTab === 'maintenance' && <MaintenanceView role={role} />}
         {activeTab === 'fichaje' && <FichajeView userId={session.user.id} role={role} />}
         {activeTab === 'profile' && <MyProfileView userId={session.user.id} />}
