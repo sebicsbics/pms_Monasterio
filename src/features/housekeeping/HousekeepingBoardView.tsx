@@ -29,6 +29,7 @@ const STATUS_STYLE: Record<AssignmentStatus, string> = {
 const KIND_STYLE: Record<HousekeepingAssignment['kind'], string> = {
   stayover: 'bg-slate-100 text-slate-700',
   turnover: 'bg-purple-100 text-purple-800',
+  carryover: 'bg-red-100 text-red-800',
 }
 
 function today(): string {

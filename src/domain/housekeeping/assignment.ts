@@ -1,5 +1,5 @@
 export type AssignmentStatus = 'pending' | 'in_progress' | 'done'
-export type AssignmentKind = 'stayover' | 'turnover'
+export type AssignmentKind = 'stayover' | 'turnover' | 'carryover'
 
 export const ASSIGNMENT_STATUS_LABEL: Record<AssignmentStatus, string> = {
   pending: 'Pendiente',
@@ -9,9 +9,12 @@ export const ASSIGNMENT_STATUS_LABEL: Record<AssignmentStatus, string> = {
 
 // stayover = mismo huésped sigue → solo se limpia el cuarto ("Limpieza").
 // turnover = salió el huésped → se prepara para uno nuevo ("Habilitar").
+// carryover = quedó sucia de un día anterior, sin reserva que la explique
+// hoy → nadie la liberó a tiempo ("Pendiente de días anteriores").
 export const ASSIGNMENT_KIND_LABEL: Record<AssignmentKind, string> = {
   stayover: 'Limpieza',
   turnover: 'Habilitar',
+  carryover: 'Pendiente de días anteriores',
 }
 
 export interface HousekeepingAssignment {
