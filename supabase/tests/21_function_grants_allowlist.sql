@@ -57,12 +57,12 @@ select is(
   'add_cash_movement, add_event_payment, add_folio_charge, add_folio_product_charge, '
   || 'add_guests_to_stay, approve_rate_discount_request, arrivals, assignable_staff, '
   || 'available_rooms, cancel_receivable, cancel_reservation, cash_session_history, '
-  || 'change_room, check_in_reservation_with_guests, check_out_room, '
+  || 'change_housekeeping_assignment_status, change_room, check_in_reservation_with_guests, check_out_room, '
   || 'clear_password_change_flag, clock_in, clock_out, close_cash_session, '
   || 'create_bulk_reservation, create_employee, create_reservation, create_staff_member, '
   || 'create_ticket_from_schedule, current_user_role, delete_employee, force_clock_out, '
   || 'generate_housekeeping_assignments, is_staff, list_anticipos, list_client_bookings_brief, '
-  || 'list_info_notes, '
+  || 'list_housekeeping_assignment_events, list_info_notes, '
   || 'list_receivables, list_reservations_brief, list_tasks, lookup_guest_by_document, '
   || 'mark_reservation_courtesy, modify_anticipo, modify_stay_dates, my_profile, net_owed_bs, open_cash_session, '
   || 'open_time_entries, override_reservation_rate, record_anticipo, '
@@ -72,7 +72,8 @@ select is(
   || 'walk_in_check_in_with_guests',
   'authenticated alcanza exactamente las RPC públicas + los 2 helpers de política + '
   || 'net_owed_bs + record_booking_advance + mark_reservation_courtesy + '
-  || 'list_client_bookings_brief (55 funciones) -- ni una interna de más'
+  || 'list_client_bookings_brief + change_housekeeping_assignment_status + '
+  || 'list_housekeeping_assignment_events (57 funciones) -- ni una interna de más'
 );
 
 -- ---------------------------------------------------------------------

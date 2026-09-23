@@ -23,7 +23,7 @@
 -- =====================================================================
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(13);
+select plan(12);
 
 select set_config('request.jwt.claims',
   '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true); -- root
@@ -63,6 +63,7 @@ begin
   select v_room_events as room_events, v_room_release as room_release,
     v_assignment_events as assignment_events, v_assignment_release as assignment_release;
 end $$;
+grant select on fixture_hk_events to authenticated, anon;
 
 -- ---------------------------------------------------------------------
 -- (a)+(d) pending -> in_progress: crea el evento, marca started_at, no
@@ -184,7 +185,7 @@ select throws_ok(
     $$ select public.change_housekeeping_assignment_status(%L, 'done', null) $$,
     (select assignment_events from fixture_hk_events)
   ),
-  'P0001', 'No autorizado',
+  'P0001', 'No autorizado para cambiar el estado de una limpieza',
   '(f) owner no puede cambiar el estado de una limpieza'
 );
 reset role;
