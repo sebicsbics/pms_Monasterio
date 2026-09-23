@@ -41,6 +41,19 @@ export interface HousekeepingAssignment {
   createdAt: string
 }
 
+// IDs de asignaciones que tienen al menos un evento con una nota real
+// (no nula/en blanco) -- alimenta el filtro "Solo con notas/anomalías"
+// del historial de limpieza.
+export function assignmentIdsWithNotes(
+  events: HousekeepingAssignmentEvent[],
+): Set<string> {
+  const ids = new Set<string>()
+  for (const e of events) {
+    if (e.note && e.note.trim()) ids.add(e.assignmentId)
+  }
+  return ids
+}
+
 // Duración entre inicio (en_progreso) y fin (hecha), en texto legible.
 // Devuelve null si falta algún extremo o el rango es inválido.
 export function formatDuration(

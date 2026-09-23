@@ -29,19 +29,11 @@ interface HousekeepingAssignmentRow {
   rooms: { room_number: string } | null
 }
 
-export async function fetchAssignments(
-  serviceDate: string,
-): Promise<HousekeepingAssignment[]> {
-  const { data, error } = await supabase
-    .from('housekeeping_assignments')
-    .select(
-      'id, room_id, service_date, assigned_to_name, kind, status, notes, started_at, completed_at, created_at, rooms ( room_number )',
-    )
-    .eq('service_date', serviceDate)
-    .order('created_at', { ascending: true })
-  if (error) throw new Error(error.message)
+const ASSIGNMENT_SELECT =
+  'id, room_id, service_date, assigned_to_name, kind, status, notes, started_at, completed_at, created_at, rooms ( room_number )'
 
-  return (data as unknown as HousekeepingAssignmentRow[]).map((r) => ({
+function toAssignment(r: HousekeepingAssignmentRow): HousekeepingAssignment {
+  return {
     id: r.id,
     roomId: r.room_id,
     roomNumber: r.rooms?.room_number ?? null,
@@ -53,7 +45,44 @@ export async function fetchAssignments(
     startedAt: r.started_at,
     completedAt: r.completed_at,
     createdAt: r.created_at,
-  }))
+  }
+}
+
+export async function fetchAssignments(
+  serviceDate: string,
+): Promise<HousekeepingAssignment[]> {
+  const { data, error } = await supabase
+    .from('housekeeping_assignments')
+    .select(ASSIGNMENT_SELECT)
+    .eq('service_date', serviceDate)
+    .order('created_at', { ascending: true })
+  if (error) throw new Error(error.message)
+
+  return (data as unknown as HousekeepingAssignmentRow[]).map(toAssignment)
+}
+
+// Historial de limpieza por rango de fechas (y habitación opcional):
+// "¿quién limpió la habitación X hace dos semanas y qué encontraron?".
+// Lectura directa a la tabla -- la RLS ya deja leer a
+// root/reception/reception_admin/owner (housekeeping_assignments_operations
+// + housekeeping_assignments_owner_read), no hace falta una RPC nueva.
+export async function fetchAssignmentHistory(params: {
+  roomId?: string
+  from: string
+  to: string
+}): Promise<HousekeepingAssignment[]> {
+  let query = supabase
+    .from('housekeeping_assignments')
+    .select(ASSIGNMENT_SELECT)
+    .gte('service_date', params.from)
+    .lte('service_date', params.to)
+  if (params.roomId) {
+    query = query.eq('room_id', params.roomId)
+  }
+  const { data, error } = await query.order('service_date', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  return (data as unknown as HousekeepingAssignmentRow[]).map(toAssignment)
 }
 
 export async function generateAssignments(serviceDate: string): Promise<void> {
