@@ -1,8 +1,19 @@
 import { supabase } from './supabase'
 import type {
   HousekeepingAssignment,
+  HousekeepingAssignmentEvent,
   AssignmentStatus,
 } from '../domain/housekeeping/assignment'
+
+interface HousekeepingAssignmentEventRow {
+  id: string
+  assignment_id: string
+  from_status: AssignmentStatus
+  to_status: AssignmentStatus
+  note: string | null
+  created_by_name: string
+  created_at: string
+}
 
 interface HousekeepingAssignmentRow {
   id: string
@@ -52,31 +63,56 @@ export async function generateAssignments(serviceDate: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-// Cambia el estado y mantiene los timestamps para medir la duración:
-//  - en_progreso: marca started_at (arranca el cronómetro).
-//  - hecha: marca completed_at (para el cronómetro).
-//  - pendiente: resetea ambos.
+// Cambia el estado (y deja constancia en la bitácora de eventos) vía
+// change_housekeeping_assignment_status: la lógica de timestamps
+// (started_at/completed_at) ahora vive en la RPC, no acá.
 export async function updateAssignmentStatus(
   assignmentId: string,
   status: AssignmentStatus,
+  note?: string,
 ): Promise<void> {
-  const now = new Date().toISOString()
-  const patch: Record<string, unknown> = { status }
-  if (status === 'in_progress') {
-    patch.started_at = now
-    patch.completed_at = null
-  } else if (status === 'done') {
-    patch.completed_at = now
-  } else {
-    // pendiente: vuelve a foja cero.
-    patch.started_at = null
-    patch.completed_at = null
-  }
-  const { error } = await supabase
-    .from('housekeeping_assignments')
-    .update(patch)
-    .eq('id', assignmentId)
+  const { error } = await supabase.rpc('change_housekeeping_assignment_status', {
+    p_assignment_id: assignmentId,
+    p_status: status,
+    p_note: note ?? null,
+  })
   if (error) throw new Error(error.message)
+}
+
+// Nota suelta, sin cambiar el estado: se pasa el status actual como
+// p_status (la RPC lo trata como evento "solo nota" cuando no cambia).
+export async function addAssignmentNote(
+  assignmentId: string,
+  currentStatus: AssignmentStatus,
+  note: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('change_housekeeping_assignment_status', {
+    p_assignment_id: assignmentId,
+    p_status: currentStatus,
+    p_note: note,
+  })
+  if (error) throw new Error(error.message)
+}
+
+// Historial de eventos (cambios de estado + notas) para el tablero,
+// más reciente primero.
+export async function fetchAssignmentEvents(
+  assignmentIds: string[],
+): Promise<HousekeepingAssignmentEvent[]> {
+  const { data, error } = await supabase.rpc('list_housekeeping_assignment_events', {
+    p_assignment_ids: assignmentIds,
+  })
+  if (error) throw new Error(error.message)
+
+  return (data as unknown as HousekeepingAssignmentEventRow[]).map((r) => ({
+    id: r.id,
+    assignmentId: r.assignment_id,
+    fromStatus: r.from_status,
+    toStatus: r.to_status,
+    note: r.note,
+    createdByName: r.created_by_name,
+    createdAt: r.created_at,
+  }))
 }
 
 // Nombre de la mucama por texto libre (reemplaza al dropdown de empleados).

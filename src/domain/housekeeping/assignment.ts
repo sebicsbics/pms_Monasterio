@@ -17,6 +17,16 @@ export const ASSIGNMENT_KIND_LABEL: Record<AssignmentKind, string> = {
   carryover: 'Pendiente de días anteriores',
 }
 
+export interface HousekeepingAssignmentEvent {
+  id: string
+  assignmentId: string
+  fromStatus: AssignmentStatus
+  toStatus: AssignmentStatus
+  note: string | null
+  createdByName: string
+  createdAt: string
+}
+
 export interface HousekeepingAssignment {
   id: string
   roomId: string

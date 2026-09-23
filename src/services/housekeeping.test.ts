@@ -21,6 +21,8 @@ import {
   generateAssignments,
   updateAssignmentStatus,
   assignStaffName,
+  addAssignmentNote,
+  fetchAssignmentEvents,
 } from './housekeeping'
 
 describe('fetchAssignments', () => {
@@ -91,36 +93,105 @@ describe('generateAssignments', () => {
 })
 
 describe('updateAssignmentStatus', () => {
-  it('sets completed_at when status is done', async () => {
-    const eqUpdate = vi.fn().mockResolvedValueOnce({ error: null })
-    updateMock.mockReturnValueOnce({ eq: eqUpdate })
+  it('calls change_housekeeping_assignment_status with the new status and note', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ error: null })
 
-    await updateAssignmentStatus('a1', 'done')
+    await updateAssignmentStatus('a1', 'done', 'Encontramos la ventana rota')
 
-    expect(updateMock).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'done', completed_at: expect.any(String) }),
-    )
-    expect(eqUpdate).toHaveBeenCalledWith('id', 'a1')
+    expect(rpcMock).toHaveBeenCalledWith('change_housekeeping_assignment_status', {
+      p_assignment_id: 'a1',
+      p_status: 'done',
+      p_note: 'Encontramos la ventana rota',
+    })
   })
 
-  it('starts the timer (started_at) and clears completed_at when in_progress', async () => {
-    const eqUpdate = vi.fn().mockResolvedValueOnce({ error: null })
-    updateMock.mockReturnValueOnce({ eq: eqUpdate })
+  it('sends null as the note when none is given', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ error: null })
 
     await updateAssignmentStatus('a1', 'in_progress')
 
-    expect(updateMock).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'in_progress', started_at: expect.any(String), completed_at: null }),
-    )
+    expect(rpcMock).toHaveBeenCalledWith('change_housekeeping_assignment_status', {
+      p_assignment_id: 'a1',
+      p_status: 'in_progress',
+      p_note: null,
+    })
   })
 
-  it('resets both timestamps when back to pending', async () => {
-    const eqUpdate = vi.fn().mockResolvedValueOnce({ error: null })
-    updateMock.mockReturnValueOnce({ eq: eqUpdate })
+  it('surfaces the RPC error message unchanged', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ error: { message: 'No autorizado para cambiar el estado de una limpieza' } })
 
-    await updateAssignmentStatus('a1', 'pending')
+    await expect(updateAssignmentStatus('a1', 'pending')).rejects.toThrow(
+      'No autorizado para cambiar el estado de una limpieza',
+    )
+  })
+})
 
-    expect(updateMock).toHaveBeenCalledWith({ status: 'pending', started_at: null, completed_at: null })
+describe('addAssignmentNote', () => {
+  it('calls change_housekeeping_assignment_status with the current status and the note', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ error: null })
+
+    await addAssignmentNote('a1', 'in_progress', 'Faltó reponer amenities')
+
+    expect(rpcMock).toHaveBeenCalledWith('change_housekeeping_assignment_status', {
+      p_assignment_id: 'a1',
+      p_status: 'in_progress',
+      p_note: 'Faltó reponer amenities',
+    })
+  })
+
+  it('surfaces the RPC error message unchanged (e.g. blank note)', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ error: { message: 'La nota no puede estar vacía' } })
+
+    await expect(addAssignmentNote('a1', 'done', '   ')).rejects.toThrow('La nota no puede estar vacía')
+  })
+})
+
+describe('fetchAssignmentEvents', () => {
+  it('maps snake_case rows into camelCase domain events', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'e1',
+          assignment_id: 'a1',
+          from_status: 'pending',
+          to_status: 'in_progress',
+          note: 'Empezando',
+          created_by_name: 'María',
+          created_at: '2026-07-22T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    })
+
+    const result = await fetchAssignmentEvents(['a1'])
+
+    expect(rpcMock).toHaveBeenCalledWith('list_housekeeping_assignment_events', {
+      p_assignment_ids: ['a1'],
+    })
+    expect(result).toEqual([
+      {
+        id: 'e1',
+        assignmentId: 'a1',
+        fromStatus: 'pending',
+        toStatus: 'in_progress',
+        note: 'Empezando',
+        createdByName: 'María',
+        createdAt: '2026-07-22T10:00:00.000Z',
+      },
+    ])
+  })
+
+  it('surfaces the RPC error message unchanged', async () => {
+    rpcMock.mockClear()
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: 'boom' } })
+
+    await expect(fetchAssignmentEvents(['a1'])).rejects.toThrow('boom')
   })
 })
 
