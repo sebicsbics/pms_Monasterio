@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 const selectMock = vi.fn()
 const orderMock = vi.fn()
 const eqMock = vi.fn()
+const gteMock = vi.fn()
+const lteMock = vi.fn()
 const rpcMock = vi.fn(
   async (..._args: unknown[]) =>
     ({ error: null }) as { data?: unknown; error: { message: string } | null },
@@ -21,6 +23,7 @@ vi.mock('./supabase', () => ({
 
 import {
   fetchAssignments,
+  fetchAssignmentHistory,
   generateAssignments,
   updateAssignmentStatus,
   assignStaffName,
@@ -76,6 +79,73 @@ describe('fetchAssignments', () => {
     selectMock.mockReturnValueOnce({ eq: eqMock })
 
     await expect(fetchAssignments('2026-07-22')).rejects.toThrow('boom')
+  })
+})
+
+describe('fetchAssignmentHistory', () => {
+  it('filters by service_date range (no room) and maps rows the same way as fetchAssignments', async () => {
+    orderMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'a1',
+          room_id: 'r1',
+          service_date: '2026-07-10',
+          assigned_to_name: 'María',
+          kind: 'turnover',
+          status: 'done',
+          notes: null,
+          started_at: '2026-07-10T10:00:00.000Z',
+          completed_at: '2026-07-10T10:25:00.000Z',
+          created_at: '2026-07-10T09:00:00.000Z',
+          rooms: { room_number: '202' },
+        },
+      ],
+      error: null,
+    })
+    lteMock.mockReturnValueOnce({ eq: eqMock, order: orderMock })
+    gteMock.mockReturnValueOnce({ lte: lteMock })
+    selectMock.mockReturnValueOnce({ gte: gteMock })
+
+    const result = await fetchAssignmentHistory({ from: '2026-07-01', to: '2026-07-31' })
+
+    expect(gteMock).toHaveBeenCalledWith('service_date', '2026-07-01')
+    expect(lteMock).toHaveBeenCalledWith('service_date', '2026-07-31')
+    expect(result).toEqual([
+      {
+        id: 'a1',
+        roomId: 'r1',
+        roomNumber: '202',
+        serviceDate: '2026-07-10',
+        assignedToName: 'María',
+        kind: 'turnover',
+        status: 'done',
+        notes: null,
+        startedAt: '2026-07-10T10:00:00.000Z',
+        completedAt: '2026-07-10T10:25:00.000Z',
+        createdAt: '2026-07-10T09:00:00.000Z',
+      },
+    ])
+  })
+
+  it('adds a room_id filter when roomId is given', async () => {
+    orderMock.mockResolvedValueOnce({ data: [], error: null })
+    eqMock.mockReturnValueOnce({ order: orderMock })
+    lteMock.mockReturnValueOnce({ eq: eqMock, order: orderMock })
+    gteMock.mockReturnValueOnce({ lte: lteMock })
+    selectMock.mockReturnValueOnce({ gte: gteMock })
+
+    await fetchAssignmentHistory({ roomId: 'r1', from: '2026-07-01', to: '2026-07-31' })
+
+    expect(eqMock).toHaveBeenCalledWith('room_id', 'r1')
+  })
+
+  it('surfaces the query error message unchanged', async () => {
+    orderMock.mockResolvedValueOnce({ data: null, error: { message: 'boom' } })
+    lteMock.mockReturnValueOnce({ eq: eqMock, order: orderMock })
+    gteMock.mockReturnValueOnce({ lte: lteMock })
+    selectMock.mockReturnValueOnce({ gte: gteMock })
+
+    await expect(fetchAssignmentHistory({ from: '2026-07-01', to: '2026-07-31' })).rejects.toThrow('boom')
   })
 })
 

@@ -3,8 +3,10 @@ import {
   ASSIGNMENT_STATUS_LABEL,
   ASSIGNMENT_KIND_LABEL,
   formatDuration,
+  assignmentIdsWithNotes,
   type AssignmentStatus,
   type AssignmentKind,
+  type HousekeepingAssignmentEvent,
 } from './assignment'
 
 describe('ASSIGNMENT_STATUS_LABEL', () => {
@@ -58,5 +60,40 @@ describe('formatDuration', () => {
 
   it('returns null for an inverted range', () => {
     expect(formatDuration('2026-07-29T11:00:00Z', '2026-07-29T10:00:00Z')).toBeNull()
+  })
+})
+
+function event(overrides: Partial<HousekeepingAssignmentEvent>): HousekeepingAssignmentEvent {
+  return {
+    id: 'e1',
+    assignmentId: 'a1',
+    fromStatus: 'pending',
+    toStatus: 'pending',
+    note: null,
+    createdByName: 'María',
+    createdAt: '2026-07-29T10:00:00Z',
+    ...overrides,
+  }
+}
+
+describe('assignmentIdsWithNotes', () => {
+  it('returns the ids of assignments that have at least one event with a non-null note', () => {
+    const result = assignmentIdsWithNotes([
+      event({ assignmentId: 'a1', note: 'Ventana rota' }),
+      event({ assignmentId: 'a2', note: null }),
+    ])
+
+    expect(result.has('a1')).toBe(true)
+    expect(result.has('a2')).toBe(false)
+  })
+
+  it('excludes assignments whose notes are all blank/null, and dedupes repeats', () => {
+    const result = assignmentIdsWithNotes([
+      event({ id: 'e1', assignmentId: 'a3', note: null }),
+      event({ id: 'e2', assignmentId: 'a3', note: 'Faltó amenities' }),
+      event({ id: 'e3', assignmentId: 'a3', note: 'Otra nota' }),
+    ])
+
+    expect(Array.from(result)).toEqual(['a3'])
   })
 })
