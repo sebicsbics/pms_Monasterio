@@ -122,6 +122,36 @@ def test_full_year_coverage_does_not_mark_es_parcial(occupancy_db):
     assert r["capacidad"] == 36 * 365
 
 
+def test_stay_crossing_year_boundary_splits_nights_per_calendar_year(occupancy_db):
+    # bug crítico: sumar `nights` agrupado por extract(year from check_in)
+    # con capacidad acotada a ESE año puede superar el 100% cuando la
+    # estadía cruza fin de año (todas las noches caían en el año de
+    # check_in). 36 habitaciones, check_in 2023-12-20, 30 noches ->
+    # check_out 2024-01-19 -> last_night 2024-01-18. Deben repartirse:
+    # 2023 recibe 12 noches (20..31 dic), 2024 recibe 18 (1..18 ene).
+    rows = [
+        (f"G{room}", room, "2023-12-20", "2024-01-19", 30) for room in range(1, 37)
+    ]
+    _insert(occupancy_db, rows)
+    data = _fetch(occupancy_db)
+
+    assert data[2023]["noches"] == 36 * 12
+    assert data[2023]["capacidad"] == 36 * 12
+    assert data[2023]["pct"] == 100.0
+    assert data[2023]["desde"] == "2023-12-20"
+    assert data[2023]["hasta"] == "2023-12-31"
+
+    assert data[2024]["noches"] == 36 * 18
+    assert data[2024]["capacidad"] == 36 * 18  # único dato de 2024: cobertura == ocupación real
+    assert data[2024]["pct"] == 100.0
+    assert data[2024]["desde"] == "2024-01-01"
+    assert data[2024]["hasta"] == "2024-01-18"
+    assert data[2024]["es_parcial"] is True
+
+    for year in data:
+        assert data[year]["pct"] <= 100.0
+
+
 def test_null_quality_flags_row_is_counted_not_silently_excluded(occupancy_db):
     # bug: `quality_flags not like '%room_invalid%'` da NULL (falso) cuando
     # quality_flags es NULL -> excluía en silencio las filas MÁS limpias
