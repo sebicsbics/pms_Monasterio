@@ -122,6 +122,27 @@ def test_full_year_coverage_does_not_mark_es_parcial(occupancy_db):
     assert r["capacidad"] == 36 * 365
 
 
+def test_null_quality_flags_row_is_counted_not_silently_excluded(occupancy_db):
+    # bug: `quality_flags not like '%room_invalid%'` da NULL (falso) cuando
+    # quality_flags es NULL -> excluía en silencio las filas MÁS limpias
+    # (sin flags). Debe usar coalesce(quality_flags, '').
+    r = _psql(occupancy_db, "-c",
+        "insert into public.historical_stays "
+        "(guest_name, room, check_in, check_out, nights, quality_flags) "
+        "values ('sinflags', 1, '2018-03-01', '2018-03-05', 4, null)")
+    assert r.returncode == 0, r.stderr
+    rows = _fetch(occupancy_db)
+    assert rows[2018]["noches"] == 4
+
+    r2 = subprocess.run(
+        ["psql", occupancy_db, "-t", "-A", "-c",
+         "select noches from public.v_room_performance where room = 1"],
+        capture_output=True, text=True,
+    )
+    assert r2.returncode == 0, r2.stderr
+    assert r2.stdout.strip() == "4"
+
+
 def test_unreliable_row_with_year_typo_range_is_excluded_from_covered_range(occupancy_db):
     # fila con nights null (como el typo real de md) no debe entrar al
     # cálculo ni de noches ni del rango desde/hasta.

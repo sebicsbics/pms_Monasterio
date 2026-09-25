@@ -23,6 +23,15 @@
 -- 2015-05-30 -> 2017-06-01, nights null) ya queda fuera del cálculo:
 -- el filtro `nights is not null` de la vista la excluye, así que tampoco
 -- puede distorsionar `desde`/`hasta`.
+--
+-- BUG preexistente encontrado en verificación (heredado por esta misma
+-- migración en su primera versión, corregido acá): `quality_flags not
+-- like '%room_invalid%'` da NULL (falso) cuando `quality_flags` es NULL,
+-- así que las filas MÁS limpias (sin ninguna flag) quedaban excluidas en
+-- silencio — 1.932 filas de md y 1.031 del archivo. Afectaba
+-- v_occupancy_by_year (20260703160000_analytics_views.sql:32) y
+-- v_room_performance (:104). Fix: `coalesce(quality_flags, '') not like
+-- '%room_invalid%'` en ambas vistas.
 -- =====================================================================
 
 create or replace view public.v_occupancy_by_year as
@@ -42,7 +51,7 @@ with base as (
     ) as last_night
   from public.historical_stays
   where nights is not null and room is not null
-    and quality_flags not like '%room_invalid%' and check_in is not null
+    and coalesce(quality_flags, '') not like '%room_invalid%' and check_in is not null
 ),
 agg as (
   select
@@ -86,3 +95,23 @@ alter view public.v_occupancy_by_year set (security_invoker = on);
 -- authenticated para que quede explícito y no dependa de que create or
 -- replace view preserve el ACL previo.
 grant select on public.v_occupancy_by_year to authenticated;
+
+-- ---------- v_room_performance: mismo bug de quality_flags NULL ----------
+-- Mismas columnas/orden/tipos que 20260703160000_analytics_views.sql,
+-- único cambio: coalesce(quality_flags, '') en el filtro.
+create or replace view public.v_room_performance as
+select
+  room,
+  count(*)                                        as estadias,
+  sum(nights)                                     as noches,
+  round(sum(total_bs))                            as ingreso_bs,
+  case when sum(nights) > 0
+       then round(sum(total_bs) / sum(nights)) end as adr_bs
+from public.historical_stays
+where room is not null
+  and coalesce(quality_flags, '') not like '%room_invalid%'
+group by 1
+order by ingreso_bs desc nulls last;
+
+alter view public.v_room_performance set (security_invoker = on);
+grant select on public.v_room_performance to authenticated;
