@@ -111,17 +111,33 @@ conocimiento de dominio, no con más reglas.
 
 Los datos llegan al app vía Supabase (NO se leen los CSV en el front):
 
-1. La migración `20260703150000` crea `historical_stays` (solo esquema).
-   `python3 etl/gen_historical_stays.py` genera la carga de datos (7.782
-   estadías) en `etl/output/load_historical_stays.sql`, y se aplica aparte:
+1. La migración `20260703150000` crea `historical_stays` (solo esquema);
+   `20260925000000` le agrega la columna `source` (default `'md'`) para poder
+   cargar/rollback por fuente sin truncar la tabla completa (PR3a).
+   `python3 -m etl.gen_historical_stays --source {md,hotel_archive}` genera,
+   vía `etl/loader.py` (loader genérico, reusado por fuentes futuras), la
+   carga de datos de esa fuente en
+   `etl/output/load_historical_stays_<source>.sql`, y se aplica aparte:
 
    ```bash
    # local (Supabase CLI)
    psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
-     -v ON_ERROR_STOP=1 -f etl/output/load_historical_stays.sql
+     -v ON_ERROR_STOP=1 -f etl/output/load_historical_stays_md.sql
+   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+     -v ON_ERROR_STOP=1 -f etl/output/load_historical_stays_hotel_archive.sql
    ```
 
-   Es un snapshot idempotente (`truncate` + inserts en una transacción).
+   Cada archivo es idempotente por fuente (`delete from historical_stays
+   where source = '<source>'` + inserts, en una transacción) — nunca
+   `truncate`, así una fuente no se pisa con otra. Rollback de una fuente:
+   `delete from historical_stays where source = '<source>'`.
+
+   `--source hotel_archive` primero deduplica localmente (sin tocar la DB)
+   contra `etl/output/stg_estadias.csv` (md): estadías con la misma `room`
+   y rango `[check_in, check_out)` que se solapa con una estadía de md se
+   excluyen (md siempre gana, ya es el dataset cargado y canónico) y quedan
+   documentadas en `etl/output/dedupe_report.csv`. El solape real cae en
+   2015-2016 (md arranca en 2015).
 2. `supabase/migrations/20260703160000_analytics_views.sql` → 7 vistas `v_*` que
    replican `analytics.py` en SQL (cálculo en vivo), con grants a anon/authenticated.
 3. App: `src/services/analytics.ts` (fetch de las vistas), `src/features/analytics/`
