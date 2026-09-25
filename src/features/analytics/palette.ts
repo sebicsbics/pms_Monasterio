@@ -51,3 +51,20 @@ export const MONTHS = [
   '', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
   'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
 ]
+
+const MONTHS_LOWER = MONTHS.map((m) => m.toLowerCase())
+
+// "parcial: sep–dic" a partir de fechas ISO (YYYY-MM-DD). null si falta
+// alguna fecha; mismo mes en ambas puntas colapsa a un solo mes.
+export const formatPartialRange = (
+  desde: string | null,
+  hasta: string | null,
+): string | null => {
+  if (!desde || !hasta) return null
+  const mDesde = Number(desde.slice(5, 7))
+  const mHasta = Number(hasta.slice(5, 7))
+  if (!mDesde || !mHasta) return null
+  const from = MONTHS_LOWER[mDesde]
+  const to = MONTHS_LOWER[mHasta]
+  return from === to ? `parcial: ${from}` : `parcial: ${from}–${to}`
+}

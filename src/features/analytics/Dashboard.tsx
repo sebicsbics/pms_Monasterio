@@ -34,6 +34,7 @@ import {
   fmtBs,
   fmtInt,
   fmtPct,
+  formatPartialRange,
   INK,
   MONTHS,
 } from './palette'
@@ -93,11 +94,13 @@ function Tip({
   fmt,
 }: {
   active?: boolean
-  payload?: { name: string; value: number; color?: string }[]
+  payload?: { name: string; value: number; color?: string; payload?: OccupancyByYear }[]
   label?: string | number
   fmt: (n: number | null) => string
 }) {
   if (!active || !payload?.length) return null
+  const occ = payload[0]?.payload
+  const partial = occ?.esParcial ? formatPartialRange(occ.desde, occ.hasta) : null
   return (
     <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
       {label != null && <p className="mb-1 font-semibold text-slate-700">{label}</p>}
@@ -106,7 +109,33 @@ function Tip({
           {p.name}: <span className="font-medium">{fmt(p.value)}</span>
         </p>
       ))}
+      {partial && <p className="mt-1 text-amber-600">Año parcial ({partial})</p>}
     </div>
+  )
+}
+
+// Punto del gráfico de ocupación: años parciales se dibujan huecos/claros
+// para no confundirlos con un año completo (marcador visual + texto,
+// nunca color solo).
+function OccupancyDot(props: {
+  cx?: number
+  cy?: number
+  payload?: OccupancyByYear
+}) {
+  const { cx, cy, payload } = props
+  if (cx == null || cy == null) return null
+  const partial = Boolean(payload?.esParcial)
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4}
+      fill={partial ? '#fff' : CATEGORICAL[1]}
+      stroke={CATEGORICAL[1]}
+      strokeWidth={2}
+      strokeDasharray={partial ? '2 2' : undefined}
+      aria-label={partial ? 'año parcial' : undefined}
+    />
   )
 }
 
@@ -153,6 +182,10 @@ export function Dashboard() {
   const ocupProm = data.occupancy.length
     ? data.occupancy.reduce((s, o) => s + o.ocupacionPct, 0) / data.occupancy.length
     : 0
+
+  const partialYears = data.occupancy
+    .filter((o) => o.esParcial)
+    .map((o) => `${o.year} (${formatPartialRange(o.desde, o.hasta) ?? 'parcial'})`)
 
   const channelData = data.channel.map((c) => ({
     ...c,
@@ -204,7 +237,10 @@ export function Dashboard() {
         </ChartCard>
 
         {/* Ocupación por año */}
-        <ChartCard title="Ocupación por año" subtitle="% sobre 36 habitaciones">
+        <ChartCard
+          title="Ocupación por año"
+          subtitle="% sobre 36 habitaciones · círculo hueco = año parcial (dato incompleto)"
+        >
           <LineChart data={data.occupancy} margin={{ top: 8, right: 12, bottom: 0, left: 8 }}>
             <CartesianGrid stroke={INK.grid} vertical={false} />
             <XAxis dataKey="year" tick={AXIS} tickLine={false} axisLine={{ stroke: INK.grid }} />
@@ -212,9 +248,15 @@ export function Dashboard() {
               tickFormatter={(v) => `${v}%`} />
             <Tooltip content={<Tip fmt={fmtPct} />} />
             <Line dataKey="ocupacionPct" name="Ocupación" stroke={CATEGORICAL[1]}
-              strokeWidth={2} dot={{ r: 3 }} />
+              strokeWidth={2} dot={<OccupancyDot />} />
           </LineChart>
         </ChartCard>
+        {partialYears.length > 0 && (
+          <p className="col-span-full -mt-2 text-xs text-slate-500" role="note">
+            Años con datos parciales: {partialYears.join(' · ')}. La capacidad de esos
+            años se calcula solo sobre el período con datos, no sobre el año completo.
+          </p>
+        )}
 
         {/* Estacionalidad */}
         <ChartCard title="Estacionalidad" subtitle="Estadías por mes (todos los años)">

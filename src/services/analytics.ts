@@ -13,6 +13,9 @@ export interface RevenueByYear {
 export interface OccupancyByYear {
   year: number
   ocupacionPct: number
+  esParcial: boolean
+  desde: string | null
+  hasta: string | null
 }
 export interface Seasonality {
   month: number
@@ -66,7 +69,13 @@ export async function fetchRevenueByYear(): Promise<RevenueByYear[]> {
 export async function fetchOccupancyByYear(): Promise<OccupancyByYear[]> {
   const r = await rows<Record<string, unknown>>('v_occupancy_by_year')
   return r
-    .map((x) => ({ year: num(x.year), ocupacionPct: num(x.ocupacion_pct) }))
+    .map((x) => ({
+      year: num(x.year),
+      ocupacionPct: num(x.ocupacion_pct),
+      esParcial: Boolean(x.es_parcial),
+      desde: x.desde == null ? null : String(x.desde),
+      hasta: x.hasta == null ? null : String(x.hasta),
+    }))
     .sort((a, b) => a.year - b.year)
 }
 
