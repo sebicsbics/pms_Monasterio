@@ -113,6 +113,46 @@ def test_build_inventory_same_name_identical_content_uses_hash_dedupe_not_varian
     assert discarded[0].variant_group is None
 
 
+def test_build_inventory_canonical_of_exact_dup_still_joins_variant_group(tmp_path):
+    # 2014 y 2015: mismo hash ("A") -> 2015 es duplicado exacto de 2014.
+    # 2016: hash distinto ("B") pero mismo documento lógico (mismo nombre
+    # normalizado) -> 2014 (el canónico del grupo de hash) Y 2016 deben
+    # quedar needs_manual_review con el mismo variant_group. El repro del
+    # bug: el 2014 quedaba canonical/None porque el paso 2 lo excluía por
+    # estar ya en `resolved` (aunque fuera el representante canónico).
+    root = tmp_path / "Hotel"
+    _write(root / "2014" / "Frigobar" / "frigobar agosto.xls", "A")
+    _write(root / "2015" / "Frigobar" / "frigobar agosto.xls", "A")
+    _write(root / "2016" / "Frigobar" / "frigobar agosto (2).xls", "B")
+
+    records = build_inventory(root)
+    by_year = {r.year: r for r in records}
+
+    assert by_year[2015].is_canonical is False
+    assert by_year[2015].reason == "duplicate_of_identical_hash"
+    assert by_year[2015].variant_group is None
+
+    assert by_year[2014].is_canonical is False
+    assert by_year[2014].reason == "needs_manual_review"
+    assert by_year[2016].is_canonical is False
+    assert by_year[2016].reason == "needs_manual_review"
+    assert by_year[2014].variant_group == by_year[2016].variant_group
+    assert by_year[2014].variant_group is not None
+
+
+def test_build_inventory_canonical_tie_break_is_deterministic_by_path(tmp_path):
+    root = tmp_path / "Hotel"
+    same_content = "contenido identico mismo anio"
+    _write(root / "2015" / "caja" / "z_ultimo.xlsx", same_content)
+    _write(root / "2015" / "caja" / "a_primero.xlsx", same_content)
+
+    records = build_inventory(root)
+    canonical = [r for r in records if r.is_canonical]
+
+    assert len(canonical) == 1
+    assert canonical[0].path.name == "a_primero.xlsx"
+
+
 def test_guard_output_path_rejects_paths_outside_etl_output(tmp_path):
     allowed = tmp_path / "etl" / "output"
     outside = tmp_path / "supabase" / "migrations" / "leak.sql"

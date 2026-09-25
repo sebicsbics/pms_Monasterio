@@ -132,20 +132,28 @@ def build_inventory(root: Path) -> list[InventoryRecord]:
         by_hash.setdefault(entry[1], []).append(entry)
 
     resolved: dict[Path, tuple[bool, str | None]] = {}
+    discarded_as_duplicate: set[Path] = set()
     for md5, entries in by_hash.items():
         if len(entries) > 1:
-            entries_sorted = sorted(entries, key=lambda e: (e[4] is None, e[4]))
+            entries_sorted = sorted(
+                entries,
+                key=lambda e: (e[4] is None, e[4], str(e[0].relative_to(root))),
+            )
             canonical_path = entries_sorted[0][0]
             for entry in entries_sorted:
                 if entry[0] == canonical_path:
                     resolved[entry[0]] = (True, None)
                 else:
                     resolved[entry[0]] = (False, "duplicate_of_identical_hash")
+                    discarded_as_duplicate.add(entry[0])
 
     # 2) variantes del MISMO documento lógico (mismo nombre normalizado)
-    #    con hash distinto entre sí, tras resolver duplicados exactos.
+    #    con hash distinto entre sí. Incluye el representante canónico de
+    #    cada grupo de hash (NO solo los archivos sin resolver): un
+    #    duplicado exacto descartado (`duplicate_of_identical_hash`) es la
+    #    única categoría que queda afuera de esta segunda pasada.
     #    Archivos con nombres distintos (ej. un mes cada uno) no se agrupan.
-    remaining = [e for e in raw if e[0] not in resolved]
+    remaining = [e for e in raw if e[0] not in discarded_as_duplicate]
     by_variant_key: dict[str, list] = {}
     for entry in remaining:
         path, _md5, _size, family, _year = entry
