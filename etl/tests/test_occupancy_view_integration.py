@@ -83,16 +83,19 @@ def _fetch(dsn: str) -> dict[int, dict]:
     r = subprocess.run(
         ["psql", dsn, "-t", "-A", "-F", "|", "-c",
          "select year, noches_vendidas, capacidad, ocupacion_pct, es_parcial, "
-         "desde, hasta from public.v_occupancy_by_year order by year"],
+         "desde, hasta, cobertura_dias, datos_suficientes "
+         "from public.v_occupancy_by_year order by year"],
         capture_output=True, text=True,
     )
     assert r.returncode == 0, r.stderr
     out: dict[int, dict] = {}
     for line in r.stdout.strip().splitlines():
-        year, noches, cap, pct, parcial, desde, hasta = line.split("|")
+        (year, noches, cap, pct, parcial, desde, hasta,
+         cobertura, suficientes) = line.split("|")
         out[int(year)] = {
             "noches": int(noches), "capacidad": int(cap), "pct": float(pct),
             "es_parcial": parcial == "t", "desde": desde, "hasta": hasta,
+            "cobertura_dias": int(cobertura), "datos_suficientes": suficientes == "t",
         }
     return out
 
@@ -150,6 +153,21 @@ def test_stay_crossing_year_boundary_splits_nights_per_calendar_year(occupancy_d
 
     for year in data:
         assert data[year]["pct"] <= 100.0
+
+
+def test_year_with_few_covered_days_marks_datos_insuficientes(occupancy_db):
+    _insert(occupancy_db, [("solo", 1, "2022-01-01", "2022-01-03", 2)])
+    r = _fetch(occupancy_db)[2022]
+    assert r["cobertura_dias"] == 2
+    assert r["datos_suficientes"] is False
+    assert r["noches"] == 2  # las noches se siguen contando igual
+
+
+def test_year_with_enough_covered_days_marks_datos_suficientes(occupancy_db):
+    _insert(occupancy_db, [("full", 1, "2023-01-01", "2023-05-01", 120)])
+    r = _fetch(occupancy_db)[2023]
+    assert r["cobertura_dias"] == 120
+    assert r["datos_suficientes"] is True
 
 
 def test_null_quality_flags_row_is_counted_not_silently_excluded(occupancy_db):

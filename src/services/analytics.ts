@@ -16,6 +16,7 @@ export interface OccupancyByYear {
   esParcial: boolean
   desde: string | null
   hasta: string | null
+  datosSuficientes: boolean
 }
 export interface Seasonality {
   month: number
@@ -66,17 +67,23 @@ export async function fetchRevenueByYear(): Promise<RevenueByYear[]> {
     .sort((a, b) => a.year - b.year)
 }
 
+// Pura, sin I/O: extraída para poder testear el mapeo sin mockear supabase.
+export function mapOccupancyRow(x: Record<string, unknown>): OccupancyByYear {
+  return {
+    year: num(x.year),
+    ocupacionPct: num(x.ocupacion_pct),
+    esParcial: Boolean(x.es_parcial),
+    desde: x.desde == null ? null : String(x.desde),
+    hasta: x.hasta == null ? null : String(x.hasta),
+    // DB vieja sin la columna (antes de esta migración): se trata como
+    // suficiente para no ocultar años ya existentes por error.
+    datosSuficientes: x.datos_suficientes == null ? true : Boolean(x.datos_suficientes),
+  }
+}
+
 export async function fetchOccupancyByYear(): Promise<OccupancyByYear[]> {
   const r = await rows<Record<string, unknown>>('v_occupancy_by_year')
-  return r
-    .map((x) => ({
-      year: num(x.year),
-      ocupacionPct: num(x.ocupacion_pct),
-      esParcial: Boolean(x.es_parcial),
-      desde: x.desde == null ? null : String(x.desde),
-      hasta: x.hasta == null ? null : String(x.hasta),
-    }))
-    .sort((a, b) => a.year - b.year)
+  return r.map(mapOccupancyRow).sort((a, b) => a.year - b.year)
 }
 
 export async function fetchSeasonality(): Promise<Seasonality[]> {

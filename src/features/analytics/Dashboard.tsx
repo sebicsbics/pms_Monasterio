@@ -34,6 +34,7 @@ import {
   fmtBs,
   fmtInt,
   fmtPct,
+  formatInsufficientLabel,
   formatPartialRange,
   INK,
   MONTHS,
@@ -100,15 +101,22 @@ function Tip({
 }) {
   if (!active || !payload?.length) return null
   const occ = payload[0]?.payload
-  const partial = occ?.esParcial ? formatPartialRange(occ.desde, occ.hasta) : null
+  const insuficiente = occ?.datosSuficientes === false
+  const partial = !insuficiente && occ?.esParcial ? formatPartialRange(occ.desde, occ.hasta) : null
   return (
     <div className="rounded border border-slate-200 bg-white px-3 py-2 text-xs shadow-md">
       {label != null && <p className="mb-1 font-semibold text-slate-700">{label}</p>}
-      {payload.map((p) => (
-        <p key={p.name} className="text-slate-600">
-          {p.name}: <span className="font-medium">{fmt(p.value)}</span>
+      {insuficiente ? (
+        <p className="text-slate-500">
+          {payload[0]?.name}: {formatInsufficientLabel(occ?.desde ?? null, occ?.hasta ?? null)}
         </p>
-      ))}
+      ) : (
+        payload.map((p) => (
+          <p key={p.name} className="text-slate-600">
+            {p.name}: <span className="font-medium">{fmt(p.value)}</span>
+          </p>
+        ))
+      )}
       {partial && <p className="mt-1 text-amber-600">Año parcial ({partial})</p>}
     </div>
   )
@@ -116,7 +124,9 @@ function Tip({
 
 // Punto del gráfico de ocupación: años parciales se dibujan huecos/claros
 // para no confundirlos con un año completo (marcador visual + texto,
-// nunca color solo).
+// nunca color solo). Años con datos insuficientes (< 30 días cubiertos)
+// no dibujan punto — el % no es representativo, mejor un hueco visible
+// en la línea que un número engañoso.
 function OccupancyDot(props: {
   cx?: number
   cy?: number
@@ -124,6 +134,7 @@ function OccupancyDot(props: {
 }) {
   const { cx, cy, payload } = props
   if (cx == null || cy == null) return null
+  if (payload?.datosSuficientes === false) return null
   const partial = Boolean(payload?.esParcial)
   return (
     <circle
@@ -179,13 +190,25 @@ export function Dashboard() {
   const totalEstadias = data.revenue.reduce((s, r) => s + r.estadias, 0)
   const totalNoches = data.revenue.reduce((s, r) => s + r.noches, 0)
   const adrGlobal = totalNoches ? totalIngreso / totalNoches : 0
-  const ocupProm = data.occupancy.length
-    ? data.occupancy.reduce((s, o) => s + o.ocupacionPct, 0) / data.occupancy.length
+  const occupancyWithData = data.occupancy.filter((o) => o.datosSuficientes)
+  const ocupProm = occupancyWithData.length
+    ? occupancyWithData.reduce((s, o) => s + o.ocupacionPct, 0) / occupancyWithData.length
     : 0
 
+  // ocupacionPct en null para años sin datos suficientes: el Line no
+  // dibuja ni conecta ese punto (connectNulls no está activado acá).
+  const occupancyChartData = data.occupancy.map((o) => ({
+    ...o,
+    ocupacionPct: o.datosSuficientes ? o.ocupacionPct : null,
+  }))
+
   const partialYears = data.occupancy
-    .filter((o) => o.esParcial)
+    .filter((o) => o.esParcial && o.datosSuficientes)
     .map((o) => `${o.year} (${formatPartialRange(o.desde, o.hasta) ?? 'parcial'})`)
+
+  const insufficientYears = data.occupancy
+    .filter((o) => !o.datosSuficientes)
+    .map((o) => `${o.year} (${formatInsufficientLabel(o.desde, o.hasta)})`)
 
   const channelData = data.channel.map((c) => ({
     ...c,
@@ -239,9 +262,9 @@ export function Dashboard() {
         {/* Ocupación por año */}
         <ChartCard
           title="Ocupación por año"
-          subtitle="% sobre 36 habitaciones · círculo hueco = año parcial (dato incompleto)"
+          subtitle="% sobre 36 habitaciones · círculo hueco = año parcial · sin punto = datos insuficientes"
         >
-          <LineChart data={data.occupancy} margin={{ top: 8, right: 12, bottom: 0, left: 8 }}>
+          <LineChart data={occupancyChartData} margin={{ top: 8, right: 12, bottom: 0, left: 8 }}>
             <CartesianGrid stroke={INK.grid} vertical={false} />
             <XAxis dataKey="year" tick={AXIS} tickLine={false} axisLine={{ stroke: INK.grid }} />
             <YAxis tick={AXIS} tickLine={false} axisLine={false} width={40}
@@ -255,6 +278,13 @@ export function Dashboard() {
           <p className="col-span-full -mt-2 text-xs text-slate-500" role="note">
             Años con datos parciales: {partialYears.join(' · ')}. La capacidad de esos
             años se calcula solo sobre el período con datos, no sobre el año completo.
+          </p>
+        )}
+        {insufficientYears.length > 0 && (
+          <p className="col-span-full -mt-2 text-xs text-slate-500" role="note">
+            Sin % de ocupación por datos insuficientes (menos de 30 días cubiertos):{' '}
+            {insufficientYears.join(' · ')}. Las noches de esos años igual se cuentan en
+            el resto de las métricas.
           </p>
         )}
 

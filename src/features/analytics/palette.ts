@@ -68,3 +68,25 @@ export const formatPartialRange = (
   const to = MONTHS_LOWER[mHasta]
   return from === to ? `parcial: ${from}` : `parcial: ${from}–${to}`
 }
+
+// "datos insuficientes (1–2 ene)" cuando el año tiene menos de 30 días
+// cubiertos: a diferencia de formatPartialRange (rango de meses, para
+// años con semanas/meses de datos) acá el rango suele caber en unos
+// pocos días, así que se muestra día + mes de cada punta.
+export const formatInsufficientLabel = (
+  desde: string | null,
+  hasta: string | null,
+): string => {
+  if (!desde || !hasta) return 'datos insuficientes'
+  const dDesde = Number(desde.slice(8, 10))
+  const mDesde = Number(desde.slice(5, 7))
+  const dHasta = Number(hasta.slice(8, 10))
+  const mHasta = Number(hasta.slice(5, 7))
+  if (!dDesde || !mDesde || !dHasta || !mHasta) return 'datos insuficientes'
+  const mesDesde = MONTHS_LOWER[mDesde]
+  const mesHasta = MONTHS_LOWER[mHasta]
+  const range = mesDesde === mesHasta
+    ? `${dDesde}–${dHasta} ${mesDesde}`
+    : `${dDesde} ${mesDesde}–${dHasta} ${mesHasta}`
+  return `datos insuficientes (${range})`
+}

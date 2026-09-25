@@ -46,6 +46,18 @@
 -- noches — no se suma `nights` (el total de la estadía), se cuenta el
 -- tramo ya acotado por año. `desde`/`hasta` de cada año salen del mismo
 -- tramo acotado (no del check_in/checkout global de la estadía).
+--
+-- Regla de cobertura mínima (aprobada por el usuario): un año con menos
+-- de 30 días cubiertos (`hasta - desde + 1 < 30`) no tiene datos
+-- suficientes para calcular un % de ocupación representativo — el
+-- dashboard no debe mostrar el porcentaje, solo el rango cubierto. Se
+-- agregan `cobertura_dias` y `datos_suficientes` AL FINAL (create or
+-- replace view no puede reordenar/quitar columnas existentes). La regla
+-- vive acá, en la vista (única fuente de verdad) — el frontend solo lee
+-- `datos_suficientes`, no reimplementa el umbral. `noches_vendidas`,
+-- `capacidad` y `ocupacion_pct` NO cambian de semántica: se siguen
+-- calculando igual, el frontend decide no mostrar `ocupacion_pct` cuando
+-- `datos_suficientes` es falso.
 -- =====================================================================
 
 create or replace view public.v_occupancy_by_year as
@@ -94,7 +106,9 @@ select
   round(100.0 * noches_vendidas / (36 * (hasta - desde + 1)), 1) as ocupacion_pct,
   (desde <> make_date(year, 1, 1) or hasta <> make_date(year, 12, 31)) as es_parcial,
   desde,
-  hasta
+  hasta,
+  (hasta - desde + 1)::int          as cobertura_dias,
+  (hasta - desde + 1) >= 30         as datos_suficientes
 from agg
 order by year;
 
