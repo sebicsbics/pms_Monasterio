@@ -3,6 +3,13 @@
 Pipeline que convierte los archivos `md/*.md` (exportados de Excel, con drift de
 formato año a año) en datos limpios y canónicos.
 
+## Datos personales (PII)
+
+Los insumos (`md/`, `Hotel/`) y todo `etl/output/` llevan nombres de huéspedes y
+están en `.gitignore`: viven solo en la máquina de quien corre el ETL. Las
+migraciones de `supabase/migrations/` llevan **solo esquema**; los datos se
+cargan con un SQL generado en `etl/output/`, nunca con una migración.
+
 ## Capa canónica: `stg_estadias`
 
 `python3 etl/stg_estadias.py`
@@ -77,8 +84,17 @@ conocimiento de dominio, no con más reglas.
 
 Los datos llegan al app vía Supabase (NO se leen los CSV en el front):
 
-1. `python3 etl/gen_historical_stays.py` → migración `20260703150000` que crea
-   y carga `historical_stays` (7.782 estadías).
+1. La migración `20260703150000` crea `historical_stays` (solo esquema).
+   `python3 etl/gen_historical_stays.py` genera la carga de datos (7.782
+   estadías) en `etl/output/load_historical_stays.sql`, y se aplica aparte:
+
+   ```bash
+   # local (Supabase CLI)
+   psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+     -v ON_ERROR_STOP=1 -f etl/output/load_historical_stays.sql
+   ```
+
+   Es un snapshot idempotente (`truncate` + inserts en una transacción).
 2. `supabase/migrations/20260703160000_analytics_views.sql` → 7 vistas `v_*` que
    replican `analytics.py` en SQL (cálculo en vivo), con grants a anon/authenticated.
 3. App: `src/services/analytics.ts` (fetch de las vistas), `src/features/analytics/`

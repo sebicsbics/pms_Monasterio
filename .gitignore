@@ -28,3 +28,9 @@ assets/
 
 # Herramientas locales de agentes
 .atl/
+
+# Datos de huéspedes (PII) — insumos crudos y salidas del ETL, nunca se commitean.
+# Se regeneran localmente: ver etl/README.md.
+md/
+Hotel/
+etl/output/
