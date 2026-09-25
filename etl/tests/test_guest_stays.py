@@ -9,9 +9,11 @@ from datetime import date
 from etl.parsers.guest_nights import NightObservation
 from etl.parsers.guest_stays import (
     dedupe_nights,
+    guest_over_status_conflicts,
     invalid_room_stays,
     merge_nights_into_stays,
     nights_per_year_report,
+    unplaced_guest_nights,
 )
 
 
@@ -53,6 +55,44 @@ def test_dedupe_nights_flags_conflict_when_names_differ():
     b = _obs(date(2016, 4, 1), 5, "MARIA LOPEZ", "HUESPEDES NOVIEMBRE 2016.xls")
     _, report = dedupe_nights([a, b])
     assert report[0]["night_conflict"] is True
+
+
+def test_dedupe_nights_prefers_guest_over_status_placeholder_even_if_status_matches_nominal_month():
+    # sin la prioridad guest-sobre-estado, "HABILITAR" ganaría por mes
+    # nominal coincidente (abril); con la prioridad, el huésped real gana
+    # aunque su archivo no coincida en mes.
+    guest = _obs(date(2016, 4, 1), 5, "JUAN PEREZ", "HUESPEDES MARZO 2016.xls")
+    status = _obs(date(2016, 4, 1), 5, "HABILITAR", "HUESPEDES ABRIL 2016.xls")
+    kept, report = dedupe_nights([guest, status])
+    assert kept == [guest]
+    assert report[0]["discarded_source"] == "HUESPEDES ABRIL 2016.xls"
+
+
+def test_dedupe_nights_status_vs_status_still_uses_nominal_month():
+    a = _obs(date(2016, 4, 1), 5, "BLOQUEADA", "HUESPEDES MARZO 2016.xls")
+    b = _obs(date(2016, 4, 1), 5, "HABILITAR", "HUESPEDES ABRIL 2016.xls")
+    kept, _ = dedupe_nights([a, b])
+    assert kept == [b]  # ninguno es huésped: sigue el criterio de mes nominal
+
+
+def test_guest_over_status_conflicts_counts_resolved_groups():
+    guest = _obs(date(2016, 4, 1), 5, "JUAN PEREZ", "HUESPEDES MARZO 2016.xls")
+    status = _obs(date(2016, 4, 1), 5, "HABILITAR", "HUESPEDES ABRIL 2016.xls")
+    _, report = dedupe_nights([guest, status])
+    assert guest_over_status_conflicts(report) == 1
+
+
+def test_guest_over_status_conflicts_is_zero_when_no_status_involved():
+    a = _obs(date(2016, 4, 1), 5, "JUAN PEREZ", "HUESPEDES ABRIL 2016.xls")
+    b = _obs(date(2016, 4, 1), 5, "JUAN PEREZ", "HUESPEDES NOVIEMBRE 2016.xls")
+    _, report = dedupe_nights([a, b])
+    assert guest_over_status_conflicts(report) == 0
+
+
+def test_unplaced_guest_nights_returns_nights_without_room():
+    with_room = _obs(date(2016, 4, 1), 5, "JUAN PEREZ", "f.xlsx")
+    without_room = _obs(date(2016, 4, 1), None, "MARIA LOPEZ", "f.xlsx")
+    assert unplaced_guest_nights([with_room, without_room]) == [without_room]
 
 
 def test_merge_nights_into_stays_consecutive_same_room_guest():

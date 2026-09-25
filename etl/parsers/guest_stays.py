@@ -14,8 +14,15 @@ hueco/cambio de huésped, flag `room_change`; `rate_varies` si la tarifa
 cambia entre noches de la misma estadía (se toma igual la tarifa de la
 primera noche).
 
+En el dedupe, un huésped real siempre le gana a un placeholder de estado de
+habitación en la misma (night_date, room), sin importar el mes nominal del
+archivo (ver `dedupe_nights`). Las noches de huésped que no se pueden ubicar
+en una estadía (sin `room` o sin `night_date`) tampoco se pierden en
+silencio: van a `etl/output/unplaced_guest_nights.csv`.
+
 Salida: `etl/output/stg_estadias_archive.csv` (mismas columnas que hoy) +
-`etl/output/night_dedupe_report.csv` + `etl/output/stg_room_blocks.csv`.
+`etl/output/night_dedupe_report.csv` + `etl/output/stg_room_blocks.csv` +
+`etl/output/unplaced_guest_nights.csv`.
 """
 from __future__ import annotations
 
@@ -29,6 +36,7 @@ from collections import Counter
 from etl.parsers.guest_nights import NightObservation, MONTHS, _MONTH_ABBR
 from etl.parsers.room_blocks import (
     BLOCK_COLUMNS,
+    classify_room_status,
     is_curated_non_person_guest,
     split_room_blocks,
 )
@@ -58,8 +66,21 @@ def normalize_guest_key(name: str) -> str:
     return re.sub(r"\s+", " ", _strip_accents_lower(name or "")).strip()
 
 
+def _is_guest_text(guest_name: str) -> bool:
+    """True si `guest_name` NO es texto de estado de habitación (reusa el
+    clasificador de `room_blocks.py`, no se duplica la normalización)."""
+    return classify_room_status(guest_name) is None
+
+
 def dedupe_nights(observations: list[NightObservation]) -> tuple[list[NightObservation], list[dict]]:
-    """Una observación por (night_date, room). Ver docstring del módulo."""
+    """Una observación por (night_date, room). Ver docstring del módulo.
+
+    Prioridad de desempate: un huésped REAL le gana a un placeholder de
+    estado de habitación (BLOQUEADA/HABILITAR/etc.) sin importar el mes
+    nominal del archivo -- un placeholder nunca debería tapar una noche de
+    huésped real solo porque su archivo "declara" el mes correcto. Entre dos
+    observaciones del mismo tipo (huésped vs huésped, o estado vs estado), se
+    sigue el criterio de mes nominal / más tardío / ruta de siempre."""
     groups: dict[tuple, list[NightObservation]] = {}
     for o in observations:
         groups.setdefault((o.night_date, o.room), []).append(o)
@@ -74,10 +95,12 @@ def dedupe_nights(observations: list[NightObservation]) -> tuple[list[NightObser
         def rank(o: NightObservation):
             nominal = _nominal_month(o.source_file)
             month_match = 1 if nominal == night_date.month else 0
-            return (month_match, nominal or 0, o.source_file)
+            is_guest = 1 if _is_guest_text(o.guest_name) else 0
+            return (is_guest, month_match, nominal or 0, o.source_file)
 
         winner = max(group, key=rank)
         kept.append(winner)
+        winner_is_guest = _is_guest_text(winner.guest_name)
         winner_key = normalize_guest_key(winner.guest_name)
         for o in group:
             if o is winner:
@@ -88,8 +111,21 @@ def dedupe_nights(observations: list[NightObservation]) -> tuple[list[NightObser
                 "kept_source": winner.source_file, "kept_guest": winner.guest_name,
                 "discarded_source": o.source_file, "discarded_guest": o.guest_name,
                 "night_conflict": conflict,
+                "winner_is_guest": winner_is_guest,
+                "discarded_is_status": not _is_guest_text(o.guest_name),
             })
     return kept, report
+
+
+def guest_over_status_conflicts(dedupe_report: list[dict]) -> int:
+    """Cantidad de (night_date, room) donde un huésped real le ganó a un
+    placeholder de estado de habitación gracias a la prioridad
+    guest-sobre-estado de `dedupe_nights` (ver su docstring)."""
+    groups: set[tuple] = set()
+    for r in dedupe_report:
+        if r.get("winner_is_guest") and r.get("discarded_is_status"):
+            groups.add((r["night_date"], r["room"]))
+    return len(groups)
 
 
 @dataclass
@@ -144,6 +180,15 @@ def _stay_from_nights(recs: list[NightObservation]) -> Stay:
     if is_curated_non_person_guest(first.guest_name):
         s.flag("name_not_person")
     return s
+
+
+def unplaced_guest_nights(nights: list[NightObservation]) -> list[NightObservation]:
+    """Noches de huésped que `merge_nights_into_stays` no puede fusionar en
+    una estadía por falta de `room` o `night_date`. Se listan acá (en vez de
+    perderse en silencio en el filtro de `merge_nights_into_stays`) para que
+    la cuenta cierre: noches de huésped tras el split = noches en estadías +
+    noches sin ubicar."""
+    return [n for n in nights if n.room is None or n.night_date is None]
 
 
 def merge_nights_into_stays(nights: list[NightObservation]) -> list[Stay]:
@@ -257,9 +302,17 @@ def run() -> None:
 
     kept, dedupe_report = dedupe_nights(observations)
     guest_nights, blocks = split_room_blocks(kept)
+    unplaced = unplaced_guest_nights(guest_nights)
     stays = merge_nights_into_stays(guest_nights)
 
     os.makedirs(OUT_DIR, exist_ok=True)
+    with open(OUT_DIR / "unplaced_guest_nights.csv", "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["source_file", "sheet_name", "night_date", "room", "reason"])
+        for o in unplaced:
+            reason = "room_missing" if o.room is None else "date_missing"
+            w.writerow([o.source_file, o.sheet_name, o.night_date, o.room, reason])
+
     with open(OUT_DIR / "stg_room_blocks.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(BLOCK_COLUMNS)
@@ -300,11 +353,21 @@ def run() -> None:
     blocks_by_reason = Counter(b.reason for b in blocks)
     remaining_name_counts = Counter(s.guest_name for s in stays).most_common(20)
     name_not_person_count = sum(1 for s in stays if "name_not_person" in s.quality_flags)
+    stay_nights_total = sum(s.nights or 0 for s in stays)
+    guest_over_status = guest_over_status_conflicts(dedupe_report)
 
     print(f"OK -> {csv_path}  ({len(stays):,} estadías)")
     print(f"Observaciones de noche: {len(observations):,} antes -> {len(kept):,} después de dedupe")
     print(f"night_conflict: {conflicts} / {len(dedupe_report)} descartadas ({conflict_pct:.1f}%)")
+    print(f"conflicts resolved guest-over-status: {guest_over_status}")
     print(f"Noches de placeholder de estado de habitación excluidas: {len(blocks)} -> {dict(blocks_by_reason)}")
+    print(f"Noches de huésped sin ubicar (room/fecha faltante, ver unplaced_guest_nights.csv): {len(unplaced)}")
+    print(
+        "Cuenta: noches de huésped tras split "
+        f"({len(guest_nights):,}) = noches en estadías ({stay_nights_total:,}) "
+        f"+ sin ubicar ({len(unplaced)})"
+        f" -> {'OK' if len(guest_nights) == stay_nights_total + len(unplaced) else 'DESCUADRADO'}"
+    )
     print(f"Estadías con nombre curado no-persona (name_not_person, cuentan como ocupación): {name_not_person_count}")
     print("Top 20 guest_name entre las estadías restantes (para detectar placeholders nuevos):")
     for name, count in remaining_name_counts:
