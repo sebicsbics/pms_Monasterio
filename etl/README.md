@@ -10,6 +10,33 @@ están en `.gitignore`: viven solo en la máquina de quien corre el ETL. Las
 migraciones de `supabase/migrations/` llevan **solo esquema**; los datos se
 cargan con un SQL generado en `etl/output/`, nunca con una migración.
 
+## Extractor del archivo histórico (`Hotel/`, 2013-2017)
+
+`Hotel/` es un árbol separado de `md/`: contiene el archivo físico del hotel
+(huéspedes, caja, telefonía, frigobar, informes) escaneado por año/familia.
+Antes de parsear nada, el extractor recorre el árbol y calcula un inventario:
+
+```bash
+etl/.venv/bin/python -m etl.extractor.inventory
+```
+
+Produce `etl/output/inventory.json` (gitignorado, con PII: rutas de archivos
+reales) con una fila por archivo: `path`, `md5`, `size`, `family`, `year`,
+`is_canonical`, `reason`.
+
+Reglas de precedencia (documentadas y testeadas en `etl/tests/test_inventory.py`):
+
+- **Duplicados byte-idénticos** (mismo md5, ej. mirror 2015→2016): se procesa
+  uno solo (el más antiguo), el resto queda `is_canonical=false`,
+  `reason="duplicate_of_identical_hash"`.
+- **Variantes sin hash idéntico** dentro de la misma familia+año (ej. 3
+  versiones de frigobar): NO se resuelven en automático. Quedan
+  `is_canonical=false`, `reason="needs_manual_review"` para reconciliación
+  manual en un PR posterior.
+- **Guard de PII**: ninguna función de `etl/extractor/inventory.py` escribe
+  fuera de `etl/output/`; un intento de escribir afuera lanza
+  `OutputPathViolation` antes de tocar el filesystem.
+
 ## Capa canónica: `stg_estadias`
 
 `python3 etl/stg_estadias.py`
