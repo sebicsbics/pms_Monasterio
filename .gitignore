@@ -34,3 +34,8 @@ assets/
 md/
 Hotel/
 etl/output/
+
+# Entorno del ETL
+etl/.venv/
+__pycache__/
+.pytest_cache/
