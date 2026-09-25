@@ -35,26 +35,46 @@ def _normalize_status_text(text: str | None) -> str:
     return re.sub(r"\s+", " ", stripped).strip().upper()
 
 
+_MIN_SPACED_LETTERS = 3
+
+
+def _collapse_spaced_letters(words: list[str]) -> list[str]:
+    """Algunas celdas quedaron con letras sueltas separadas por espacios
+    (ej. 'B L O Q U E A D A', typeo de tipeo letra a letra). Si TODAS las
+    palabras son de una sola letra y hay al menos `_MIN_SPACED_LETTERS`
+    (evita colapsar iniciales de persona tipo 'A B'), se juntan en una sola
+    palabra antes de clasificar."""
+    if len(words) >= _MIN_SPACED_LETTERS and all(len(w) == 1 for w in words):
+        return ["".join(words)]
+    return words
+
+
 def classify_room_status(raw_text: str | None) -> str | None:
     """Categoría de bloqueo ('blocked' / 'to_prepare' / 'storage' /
     'occupied_unnamed') si `raw_text` es texto de estado de habitación, o
     `None` si parece un huésped real.
 
     Solo clasifica por la PRIMERA palabra normalizada (mayúsculas, sin
-    acentos ni puntuación) o por un prefijo de frase completa -- nunca por
-    substring en cualquier posición, para no atrapar nombres/apellidos
+    acentos ni puntuación, y con letras sueltas colapsadas -- ver
+    `_collapse_spaced_letters`) o por un prefijo de frase completa -- nunca
+    por substring en cualquier posición, para no atrapar nombres/apellidos
     reales que casualmente contengan un token de estado (ver tests con
-    'MARIA DEPOSITO GARCIA' -> None)."""
+    'MARIA DEPOSITO GARCIA' -> None). Vocabulario nuevo no confirmado por el
+    usuario (DELEGACIÓN, NOCHE DE BODAS, HOTEL PLAZA, RESERVADA...) se deja
+    deliberadamente sin clasificar."""
     norm = _normalize_status_text(raw_text)
     if not norm:
         return None
     if norm.startswith(_MAINTENANCE_PREFIXES):
         return "blocked"
-    words = norm.split(" ")
+    words = _collapse_spaced_letters(norm.split(" "))
     first = words[0]
-    if first.startswith("BLOQUE"):
+    # 'BLOC' cubre el truncado real ('bloc'); 'BLOQUE' cubre
+    # BLOQUEADA/BLOQUEADO/BLOQUEADAS/etc. Decisión conservadora: cualquier
+    # primera palabra que arranque con estos prefijos se toma como bloqueo.
+    if first.startswith(("BLOQUE", "BLOC")):
         return "blocked"
-    if norm.startswith("FALTA HABILITAR"):
+    if first == "FALTA":
         return "to_prepare"
     if first in _TO_PREPARE_FIRST_WORDS:
         return "to_prepare"

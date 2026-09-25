@@ -62,6 +62,39 @@ def test_classify_room_status_empty_or_none_is_none():
     assert classify_room_status(None) is None
 
 
+def test_classify_room_status_collapses_spaced_out_letters():
+    # celdas con letras sueltas separadas por espacios (>=3 letras) se
+    # colapsan antes de clasificar.
+    assert classify_room_status("B L O Q U E A D A") == "blocked"
+    assert classify_room_status("H A B I L I T A R") == "to_prepare"
+    assert classify_room_status("B L O  Q U E A D O") == "blocked"
+
+
+def test_classify_room_status_does_not_collapse_short_letter_sequences():
+    # menos de 3 letras sueltas (ej. iniciales de una persona) no se
+    # colapsa: no se clasifica como bloqueo.
+    assert classify_room_status("A B") is None
+
+
+def test_classify_room_status_falta_prefix_is_to_prepare():
+    assert classify_room_status("FALTA PAPEL") == "to_prepare"
+    assert classify_room_status("FALTA TOALLAS") == "to_prepare"
+    assert classify_room_status("FALTA HABILITAR") == "to_prepare"
+
+
+def test_classify_room_status_bloc_truncated_is_blocked():
+    assert classify_room_status("bloc") == "blocked"
+    assert classify_room_status("BLOC") == "blocked"
+
+
+def test_classify_room_status_leaves_ambiguous_new_vocab_untouched():
+    # decisión explícita del usuario: estos NO se tocan en este fix.
+    assert classify_room_status("DELEGACIÓN") is None
+    assert classify_room_status("NOCHE DE BODAS") is None
+    assert classify_room_status("HOTEL PLAZA") is None
+    assert classify_room_status("RESERVADA 30 OCT-01NOV") is None
+
+
 def test_split_room_blocks_separates_guest_and_block_nights():
     nights = [
         _obs("JUAN PEREZ", room=5),
