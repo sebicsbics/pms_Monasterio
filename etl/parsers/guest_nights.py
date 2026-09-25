@@ -120,6 +120,16 @@ def _filter_by_weekday(candidates: list[date], weekday: int | None) -> tuple[lis
     return candidates, True
 
 def _pick_anchor(candidates: list[date], hint_year: int | None) -> date:
+    """Elige el candidato ANCLA. `hint_year` es el año declarado en el
+    NOMBRE del archivo (ver `process_workbook`); el docstring del módulo ya
+    advierte que el nombre de archivo NO es confiable (los libros son
+    acumulativos y se siguieron llenando años después de su nombre nominal).
+    Por eso `hint_year` se usa solo como DESEMPATE DE ÚLTIMA INSTANCIA
+    cuando el weekday declarado no alcanza para elegir entre varios
+    candidatos día/mes igualmente válidos dentro de la ventana -- es una
+    excepción aceptada explícitamente (no una fuente de verdad), documentada
+    acá porque es la única función que todavía consulta el año del nombre
+    de archivo."""
     if hint_year is not None:
         exact = [d for d in candidates if d.year == hint_year]
         if exact:

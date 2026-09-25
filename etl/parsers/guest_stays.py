@@ -4,12 +4,18 @@ Los workbooks son acumulativos (`guest_nights.py`): la misma noche aparece en
 varios archivos. Acá se resuelve UNA observación por (night_date, room),
 prefiriendo el archivo cuyo mes nominal (del nombre) coincide con la noche;
 si ninguno coincide, el archivo "más tardío" (mes nominal mayor); empate por
-ruta. Las descartadas van a `etl/output/night_dedupe_report.csv`. Luego se
-fusionan noches consecutivas de (room, guest) en estadías, igual criterio que
-la Slice 2 original: corte por hueco/cambio de huésped, flag `room_change`.
+ruta. Las descartadas van a `etl/output/night_dedupe_report.csv`. Sobre las
+noches ya dedupeadas se separan los placeholders de ESTADO de habitación
+(bloqueada, por habilitar, en depósito, ocupada sin nombre -- ver
+`etl/parsers/room_blocks.py`) hacia `etl/output/stg_room_blocks.csv`; no son
+estadías reales. Con las noches restantes se fusionan noches consecutivas de
+(room, guest) en estadías, igual criterio que la Slice 2 original: corte por
+hueco/cambio de huésped, flag `room_change`; `rate_varies` si la tarifa
+cambia entre noches de la misma estadía (se toma igual la tarifa de la
+primera noche).
 
 Salida: `etl/output/stg_estadias_archive.csv` (mismas columnas que hoy) +
-`etl/output/night_dedupe_report.csv`.
+`etl/output/night_dedupe_report.csv` + `etl/output/stg_room_blocks.csv`.
 """
 from __future__ import annotations
 
@@ -18,7 +24,10 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import date, timedelta
 from pathlib import Path
 
+from collections import Counter
+
 from etl.parsers.guest_nights import NightObservation, MONTHS, _MONTH_ABBR
+from etl.parsers.room_blocks import BLOCK_COLUMNS, split_room_blocks
 from etl.stg_estadias import VALID_ROOMS, normalize_payment
 
 ETL_DIR = Path(__file__).resolve().parent.parent
@@ -120,6 +129,12 @@ def _stay_from_nights(recs: list[NightObservation]) -> Stay:
     )
     if payment is None:
         s.flag("payment_missing")
+    # `rate_bs`/`total_bs` siempre toman la tarifa de la PRIMERA noche (no
+    # se promedia ni se recalcula por noche); `rate_varies` solo advierte
+    # que hubo más de una tarifa no-nula entre las noches de la estadía.
+    non_null_rates = {r.rate for r in recs if r.rate is not None}
+    if len(non_null_rates) > 1:
+        s.flag("rate_varies")
     return s
 
 
@@ -233,9 +248,16 @@ def run() -> None:
             ))
 
     kept, dedupe_report = dedupe_nights(observations)
-    stays = merge_nights_into_stays(kept)
+    guest_nights, blocks = split_room_blocks(kept)
+    stays = merge_nights_into_stays(guest_nights)
 
     os.makedirs(OUT_DIR, exist_ok=True)
+    with open(OUT_DIR / "stg_room_blocks.csv", "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(BLOCK_COLUMNS)
+        for b in blocks:
+            w.writerow([getattr(b, c) for c in BLOCK_COLUMNS])
+
     with open(OUT_DIR / "night_dedupe_report.csv", "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["night_date", "room", "kept_source", "kept_guest",
@@ -267,9 +289,16 @@ def run() -> None:
     conflicts = sum(1 for r in dedupe_report if r["night_conflict"])
     nights_by_year = nights_per_year_report(stays)
 
+    blocks_by_reason = Counter(b.reason for b in blocks)
+    remaining_name_counts = Counter(s.guest_name for s in stays).most_common(20)
+
     print(f"OK -> {csv_path}  ({len(stays):,} estadías)")
     print(f"Observaciones de noche: {len(observations):,} antes -> {len(kept):,} después de dedupe")
     print(f"night_conflict: {conflicts} / {len(dedupe_report)} descartadas ({conflict_pct:.1f}%)")
+    print(f"Noches de placeholder de estado de habitación excluidas: {len(blocks)} -> {dict(blocks_by_reason)}")
+    print("Top 20 guest_name entre las estadías restantes (para detectar placeholders nuevos):")
+    for name, count in remaining_name_counts:
+        print(f"  - {name!r}: {count}")
     print(f"Estadías por año: {[(y, by_year[y]['stays'], by_year[y]['nights']) for y in sorted(by_year)]}")
     print(f"Habitaciones inválidas (fuera de VALID_ROOMS): {len(invalid_rooms)}")
     for s in invalid_rooms[:20]:

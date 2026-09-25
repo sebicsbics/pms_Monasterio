@@ -78,6 +78,26 @@ def test_merge_breaks_on_gap_and_guest_change():
     assert len(stays) == 3
 
 
+def test_merge_flags_rate_varies_when_nights_have_different_rates():
+    nights = [
+        _obs(date(2014, 4, 1), 5, "JUAN PEREZ", "f.xlsx", rate=100),
+        _obs(date(2014, 4, 2), 5, "JUAN PEREZ", "f.xlsx", rate=150),
+    ]
+    stays = merge_nights_into_stays(nights)
+    assert len(stays) == 1
+    assert "rate_varies" in stays[0].quality_flags
+    assert stays[0].rate_bs == 100  # se toma la tarifa de la primera noche
+
+
+def test_merge_does_not_flag_rate_varies_when_rate_is_constant():
+    nights = [
+        _obs(date(2014, 4, 1), 5, "JUAN PEREZ", "f.xlsx", rate=100),
+        _obs(date(2014, 4, 2), 5, "JUAN PEREZ", "f.xlsx", rate=100),
+    ]
+    stays = merge_nights_into_stays(nights)
+    assert "rate_varies" not in stays[0].quality_flags
+
+
 def test_merge_flags_room_change_for_same_guest_next_night():
     nights = [
         _obs(date(2014, 4, 1), 5, "JUAN PEREZ", "f.xlsx"),
