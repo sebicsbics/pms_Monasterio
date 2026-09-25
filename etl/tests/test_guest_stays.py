@@ -98,6 +98,19 @@ def test_merge_does_not_flag_rate_varies_when_rate_is_constant():
     assert "rate_varies" not in stays[0].quality_flags
 
 
+def test_merge_flags_name_not_person_for_curated_override():
+    nights = [_obs(date(2014, 4, 1), 5, "DELEGACIÓN", "f.xlsx")]
+    stays = merge_nights_into_stays(nights)
+    assert len(stays) == 1
+    assert "name_not_person" in stays[0].quality_flags
+
+
+def test_merge_does_not_flag_name_not_person_for_real_guest():
+    nights = [_obs(date(2014, 4, 1), 5, "JUAN PEREZ", "f.xlsx")]
+    stays = merge_nights_into_stays(nights)
+    assert "name_not_person" not in stays[0].quality_flags
+
+
 def test_merge_flags_room_change_for_same_guest_next_night():
     nights = [
         _obs(date(2014, 4, 1), 5, "JUAN PEREZ", "f.xlsx"),

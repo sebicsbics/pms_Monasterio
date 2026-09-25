@@ -8,7 +8,11 @@ from __future__ import annotations
 from datetime import date
 
 from etl.parsers.guest_nights import NightObservation
-from etl.parsers.room_blocks import classify_room_status, split_room_blocks
+from etl.parsers.room_blocks import (
+    classify_room_status,
+    is_curated_non_person_guest,
+    split_room_blocks,
+)
 
 
 def _obs(guest_name, night_date=date(2016, 4, 1), room=5, source_file="f.xls"):
@@ -87,12 +91,32 @@ def test_classify_room_status_bloc_truncated_is_blocked():
     assert classify_room_status("BLOC") == "blocked"
 
 
-def test_classify_room_status_leaves_ambiguous_new_vocab_untouched():
-    # decisión explícita del usuario: estos NO se tocan en este fix.
+def test_classify_room_status_curated_overrides_are_guest_not_block():
+    # decisión de usuario #463 (última revisión): esto NO es un bloqueo,
+    # es una estadía real de un huésped "no-persona" (delegación, evento,
+    # cuarto propio del hotel) -> classify_room_status no lo bloquea.
     assert classify_room_status("DELEGACIÓN") is None
     assert classify_room_status("NOCHE DE BODAS") is None
     assert classify_room_status("HOTEL PLAZA") is None
-    assert classify_room_status("RESERVADA 30 OCT-01NOV") is None
+    assert classify_room_status("PRESIDENCIAL") is None
+
+
+def test_is_curated_non_person_guest_flags_the_override_list():
+    assert is_curated_non_person_guest("DELEGACIÓN") is True
+    assert is_curated_non_person_guest("noche de bodas") is True
+    assert is_curated_non_person_guest("Hotel Plaza") is True
+    assert is_curated_non_person_guest("PRESIDENCIAL") is True
+    assert is_curated_non_person_guest("JUAN PEREZ") is False
+
+
+def test_classify_room_status_reservad_prefix_is_reserved():
+    assert classify_room_status("reservada 30 oct-01nov") == "reserved"
+    assert classify_room_status("RESERVADO PARA EVENTO") == "reserved"
+
+
+def test_classify_room_status_curated_to_prepare_overrides():
+    assert classify_room_status("EDREDONES ESTAN SIENDO LAVADOS") == "to_prepare"
+    assert classify_room_status("SOLO FALTA PRE CINTO") == "to_prepare"
 
 
 def test_split_room_blocks_separates_guest_and_block_nights():

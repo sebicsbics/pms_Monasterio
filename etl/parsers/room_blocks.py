@@ -25,6 +25,27 @@ _OCCUPIED_WORDS = {"OCUPADO", "OCUPADA"}
 _TO_PREPARE_FIRST_WORDS = {"HABILITAR"}
 _MAINTENANCE_PREFIXES = ("FUERA DE SERVICIO", "MANTENIMIENTO")
 
+# Curaduría manual (como ALIAS_OVERRIDES en etl/classify_channels.py): texto
+# EXACTO (ya normalizado) que ninguna regla general puede resolver bien.
+# Se chequea ANTES que las reglas generales. Dos tipos de veredicto:
+#   - "GUEST": no es un bloqueo, es una noche real de huésped "no-persona"
+#     (delegación, evento, cuarto propio del hotel) -> se marca la estadía
+#     con `name_not_person` en vez de excluirla.
+#   - una razón de bloqueo (str) para casos puntuales que las reglas
+#     generales no capturan (texto libre que no empieza con un token de
+#     estado conocido).
+# Para agregar un caso nuevo: correr `python -m etl.parsers.guest_stays`,
+# revisar el "Top 20 guest_name" del resumen, y agregar la entrada acá con
+# el texto en MAYÚSCULAS sin acentos/puntuación (ver `_normalize_status_text`).
+ROOM_STATUS_OVERRIDES: dict[str, str] = {
+    "DELEGACION": "GUEST",
+    "NOCHE DE BODAS": "GUEST",
+    "HOTEL PLAZA": "GUEST",
+    "PRESIDENCIAL": "GUEST",
+    "EDREDONES ESTAN SIENDO LAVADOS": "to_prepare",
+    "SOLO FALTA PRE CINTO": "to_prepare",
+}
+
 
 def _normalize_status_text(text: str | None) -> str:
     if not text:
@@ -59,12 +80,16 @@ def classify_room_status(raw_text: str | None) -> str | None:
     `_collapse_spaced_letters`) o por un prefijo de frase completa -- nunca
     por substring en cualquier posición, para no atrapar nombres/apellidos
     reales que casualmente contengan un token de estado (ver tests con
-    'MARIA DEPOSITO GARCIA' -> None). Vocabulario nuevo no confirmado por el
-    usuario (DELEGACIÓN, NOCHE DE BODAS, HOTEL PLAZA, RESERVADA...) se deja
-    deliberadamente sin clasificar."""
+    'MARIA DEPOSITO GARCIA' -> None). `ROOM_STATUS_OVERRIDES` se chequea
+    PRIMERO por texto exacto; los overrides tipo "GUEST" devuelven `None`
+    acá (no son bloqueo) -- ver `is_curated_non_person_guest` para
+    detectarlos aparte y flaggear la estadía."""
     norm = _normalize_status_text(raw_text)
     if not norm:
         return None
+    if norm in ROOM_STATUS_OVERRIDES:
+        verdict = ROOM_STATUS_OVERRIDES[norm]
+        return None if verdict == "GUEST" else verdict
     if norm.startswith(_MAINTENANCE_PREFIXES):
         return "blocked"
     words = _collapse_spaced_letters(norm.split(" "))
@@ -74,6 +99,8 @@ def classify_room_status(raw_text: str | None) -> str | None:
     # primera palabra que arranque con estos prefijos se toma como bloqueo.
     if first.startswith(("BLOQUE", "BLOC")):
         return "blocked"
+    if first.startswith("RESERVAD"):  # "reservada", "reservado" + texto libre
+        return "reserved"
     if first == "FALTA":
         return "to_prepare"
     if first in _TO_PREPARE_FIRST_WORDS:
@@ -83,6 +110,15 @@ def classify_room_status(raw_text: str | None) -> str | None:
     if first in _OCCUPIED_WORDS:
         return "occupied_unnamed"
     return None
+
+
+def is_curated_non_person_guest(raw_text: str | None) -> bool:
+    """True si `raw_text` matchea un override curado tipo "GUEST" en
+    `ROOM_STATUS_OVERRIDES`: la noche cuenta como huésped real (no se
+    excluye de las estadías), pero el nombre no es una persona -- quien
+    arma la estadía debe flaggearla `name_not_person`."""
+    norm = _normalize_status_text(raw_text)
+    return ROOM_STATUS_OVERRIDES.get(norm) == "GUEST"
 
 
 @dataclass

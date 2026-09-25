@@ -27,7 +27,11 @@ from pathlib import Path
 from collections import Counter
 
 from etl.parsers.guest_nights import NightObservation, MONTHS, _MONTH_ABBR
-from etl.parsers.room_blocks import BLOCK_COLUMNS, split_room_blocks
+from etl.parsers.room_blocks import (
+    BLOCK_COLUMNS,
+    is_curated_non_person_guest,
+    split_room_blocks,
+)
 from etl.stg_estadias import VALID_ROOMS, normalize_payment
 
 ETL_DIR = Path(__file__).resolve().parent.parent
@@ -135,6 +139,10 @@ def _stay_from_nights(recs: list[NightObservation]) -> Stay:
     non_null_rates = {r.rate for r in recs if r.rate is not None}
     if len(non_null_rates) > 1:
         s.flag("rate_varies")
+    # Curaduría manual (ROOM_STATUS_OVERRIDES en room_blocks.py): la noche SÍ
+    # cuenta como ocupada, pero el "nombre" no es una persona.
+    if is_curated_non_person_guest(first.guest_name):
+        s.flag("name_not_person")
     return s
 
 
@@ -291,11 +299,13 @@ def run() -> None:
 
     blocks_by_reason = Counter(b.reason for b in blocks)
     remaining_name_counts = Counter(s.guest_name for s in stays).most_common(20)
+    name_not_person_count = sum(1 for s in stays if "name_not_person" in s.quality_flags)
 
     print(f"OK -> {csv_path}  ({len(stays):,} estadías)")
     print(f"Observaciones de noche: {len(observations):,} antes -> {len(kept):,} después de dedupe")
     print(f"night_conflict: {conflicts} / {len(dedupe_report)} descartadas ({conflict_pct:.1f}%)")
     print(f"Noches de placeholder de estado de habitación excluidas: {len(blocks)} -> {dict(blocks_by_reason)}")
+    print(f"Estadías con nombre curado no-persona (name_not_person, cuentan como ocupación): {name_not_person_count}")
     print("Top 20 guest_name entre las estadías restantes (para detectar placeholders nuevos):")
     for name, count in remaining_name_counts:
         print(f"  - {name!r}: {count}")

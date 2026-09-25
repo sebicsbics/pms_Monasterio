@@ -128,6 +128,34 @@ Los datos llegan al app vía Supabase (NO se leen los CSV en el front):
    (`Dashboard.tsx` con Recharts + `palette.ts` validada por la skill dataviz).
    Tab "Analítica" (rol root/accountant), lazy-loaded para no cargar Recharts a todos.
 
+## Placeholders de estado en `Hotel/` (Slice 2b, `guest_stays.py`)
+
+Algunas hojas de huéspedes tienen el ESTADO de la habitación (bloqueada, por
+habilitar, en depósito, ocupada sin nombre) escrito en la columna de nombre.
+`etl/parsers/room_blocks.py` los separa antes de fusionar noches en estadías
+(`etl/output/stg_room_blocks.csv`), con reglas generales por primera palabra
+(BLOQUE\*/BLOC, HABILITAR, FALTA, DEPOSITO, OCUPADO, RESERVAD\*) más una lista
+curada a mano (`ROOM_STATUS_OVERRIDES`) para casos puntuales, igual patrón
+que `ALIAS_OVERRIDES` en `classify_channels.py`.
+
+Para agregar un caso nuevo después de correr el pipeline:
+
+1. `etl/.venv/bin/python -m etl.parsers.guest_stays` y mirar el "Top 20
+   guest_name" del resumen — ahí aparecen los nombres más repetidos entre
+   las estadías que quedaron.
+2. Si es texto de estado no cubierto por las reglas generales, agregar una
+   entrada a `ROOM_STATUS_OVERRIDES` en `room_blocks.py` con el texto en
+   MAYÚSCULAS sin acentos/puntuación (ver `_normalize_status_text`) y la
+   razón de bloqueo (`blocked`/`to_prepare`/`storage`/`occupied_unnamed`/
+   `reserved`, o una nueva si hace falta).
+3. Si en cambio es un huésped real pero no-persona (delegación, evento,
+   cuarto propio del hotel), usar el veredicto `"GUEST"`: no se excluye de
+   las estadías, pero queda flaggeado `name_not_person` en
+   `quality_flags`.
+4. Agregar un test en `etl/tests/test_room_blocks.py` (fixture sintética,
+   nunca datos reales) y correr `pytest etl/tests` antes de volver a
+   correr el pipeline real.
+
 ## Próximas capas (pendientes)
 
 - Curar la cola larga UNKNOWN (ZEPPELIN, BOOINK, etc.) con criterio del hotel.
