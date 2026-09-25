@@ -52,7 +52,8 @@ def test_run_hotel_archive_dedupes_against_md(tmp_path, monkeypatch):
     stg_md = out_dir / "stg_estadias.csv"
     stg_archive = out_dir / "stg_estadias_archive.csv"
     _write_csv(stg_md, [{"guest_name": "JUAN", "room": "5",
-                          "check_in": "2016-04-01", "check_out": "2016-04-03"}], MD_COLS)
+                          "check_in": "2016-04-01", "check_out": "2016-04-03",
+                          "nights": "2"}], MD_COLS)
     _write_csv(stg_archive, [
         {"guest_name": "JUAN P.", "room": "5",
          "check_in": "2016-04-02", "check_out": "2016-04-04"},  # solapa -> excluida

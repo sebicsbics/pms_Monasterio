@@ -68,12 +68,40 @@ def _overlaps(a_in: date, a_out: date, b_in: date, b_out: date) -> bool:
     return a_in < b_out and b_in < a_out
 
 
+# Flags de anomalía de fecha/noches de stg_estadias.py que hacen que una fila
+# de md NO sea confiable como referencia de solape: su rango de fechas puede
+# ser un typo (ver caso real: check_out.year adelantado 2 años produce un
+# rango [2015-05-30, 2017-06-01] en room 1 que "solapa" con casi cualquier
+# estadía real de esa room). `checkout_year_fixed` NO entra acá: es una
+# corrección exitosa que deja un rango plausible, no una anomalía.
+MD_UNRELIABLE_FLAGS = frozenset({
+    "date_out_of_range",       # check_in/check_out fuera de [MIN_YEAR, MAX_YEAR] -> se anuló la fecha
+    "checkout_before_checkin", # no se pudo corregir el typo de año -> fechas sin confirmar
+    "checkout_unrecoverable",  # la corrección de typo de año daba una estadía implausible
+    "stay_too_long",           # rango de fechas > MAX_NIGHTS -> no se confía, sin `nights`
+    "nights_unknown",          # no se pudo determinar `nights` por ningún camino
+})
+
+
+def _md_row_is_reliable(r: dict) -> bool:
+    """Una fila de md es elegible como match de dedupe solo si tiene
+    check_in/check_out válidos, `nights` no nulo, y ninguna de las flags de
+    anomalía de fecha/noches (ver MD_UNRELIABLE_FLAGS)."""
+    if not r.get("check_in") or not r.get("check_out") or not r.get("nights"):
+        return False
+    flags = set((r.get("quality_flags") or "").split("|"))
+    return not (flags & MD_UNRELIABLE_FLAGS)
+
+
 def local_dedupe(archive_rows: list[dict], md_rows: list[dict]) -> tuple[list[dict], list[dict]]:
     """Excluye de archive_rows las estadías que solapan (misma room + rango de
-    fechas superpuesto) con una estadía de md_rows. md siempre gana: ya está
-    cargado y es el dataset canónico. Filas sin room/check_in/check_out en
-    alguno de los lados no se comparan (se mantienen, no se pierden en
-    silencio). Devuelve (kept, dedupe_report)."""
+    fechas superpuesto) con una estadía CONFIABLE de md_rows (ver
+    `_md_row_is_reliable`). md siempre gana: ya está cargado y es el dataset
+    canónico. Un match contra una fila de md NO confiable no excluye la
+    estadía de archive (se mantiene, `reason='md_row_unreliable'` en el
+    reporte) — nada se pierde en silencio por un typo de fecha en md. Filas
+    sin room/check_in/check_out en alguno de los lados no se comparan (se
+    mantienen). Devuelve (kept, dedupe_report)."""
     by_room: dict[int, list[tuple[int, dict]]] = {}
     for i, r in enumerate(md_rows):
         if not r.get("room") or not r.get("check_in") or not r.get("check_out"):
@@ -98,6 +126,9 @@ def local_dedupe(archive_rows: list[dict], md_rows: list[dict]) -> tuple[list[di
             kept.append(r)
             continue
         i, mr = match
+        reliable = _md_row_is_reliable(mr)
+        if not reliable:
+            kept.append(r)
         report.append({
             "room": room,
             "archive_guest_name": r.get("guest_name"),
@@ -107,13 +138,14 @@ def local_dedupe(archive_rows: list[dict], md_rows: list[dict]) -> tuple[list[di
             "md_guest_name": mr.get("guest_name"),
             "md_check_in": mr["check_in"],
             "md_check_out": mr["check_out"],
+            "reason": "overlap" if reliable else "md_row_unreliable",
         })
     return kept, report
 
 
 def _write_dedupe_report(report: list[dict]) -> None:
     cols = ["room", "archive_guest_name", "archive_check_in", "archive_check_out",
-            "md_row_index", "md_guest_name", "md_check_in", "md_check_out"]
+            "md_row_index", "md_guest_name", "md_check_in", "md_check_out", "reason"]
     with open(DEDUPE_REPORT, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(cols)
@@ -131,8 +163,11 @@ def run(source: str) -> None:
         md_rows = _read_csv(STG_MD)
         rows, report = local_dedupe(archive_rows, md_rows)
         _write_dedupe_report(report)
+        excluded = sum(1 for x in report if x["reason"] == "overlap")
+        unreliable = sum(1 for x in report if x["reason"] == "md_row_unreliable")
         print(f"Dedupe local: {len(archive_rows):,} estadías hotel_archive -> "
-              f"{len(rows):,} tras excluir {len(report):,} solapadas con md "
+              f"{len(rows):,} tras excluir {excluded:,} solapadas con md confiable "
+              f"({unreliable:,} solapes contra filas de md no confiables, no excluidas) "
               f"(reporte: {os.path.normpath(DEDUPE_REPORT)})")
 
     for r in rows:
