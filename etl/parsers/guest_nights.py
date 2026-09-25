@@ -1,13 +1,25 @@
-"""Extractor de NOCHES de huéspedes (`Hotel/`, 2013-2016).
+"""Extractor de NOCHES de huéspedes (`Hotel/`, ~2013-2019).
 
 Workbooks ACUMULATIVOS (una hoja/noche, copiadas de un libro al siguiente):
-la noche se repite entre archivos, muchas hojas sin mes. Cursor (año, mes) en
-orden del libro: mes explícito lo fija; sin mes, hereda y avanza si el día
-retrocede (31->1). Sin deduplicar entre archivos (eso es 2b): `etl/output/stg_guest_nights.csv`.
+la noche se repite entre archivos, muchas hojas sin mes. El nombre de archivo
+NO es una fuente confiable del año (los libros se siguieron llenando durante
+años después de su nombre nominal).
+
+Cada hoja se fecha resolviendo un ANCLA firme (la primera hoja de la
+secuencia con día+mes explícitos, usando el weekday declarado —si lo hay—
+para desambiguar el año entre los candidatos de esa combinación día/mes
+dentro de la ventana plausible [2012-01-01, 2017-12-31]) y propagando esa
+ancla hacia atrás y hacia adelante en el orden del libro, con saltos acotados
+(<=45 días) entre hojas consecutivas. El weekday declarado es una AYUDA de
+desambiguación, no solo una validación: cuando hay varios candidatos de
+calendario posibles para una hoja, se prefiere el que coincide con el
+weekday declarado; si ninguno coincide, se conserva el mejor candidato por
+fecha y se marca `weekday_mismatch`. Sin deduplicar entre archivos (eso es
+2b): `etl/output/stg_guest_nights.csv`.
 """
 from __future__ import annotations
 
-import csv, json, os, re
+import csv, difflib, json, os, re
 from dataclasses import asdict, dataclass, field, fields
 from datetime import date
 from pathlib import Path
@@ -42,8 +54,19 @@ def _month_from_token(tok: str) -> int | None:
 _DIGIT_RE = re.compile(r"\d{1,2}")
 _ALPHA_RE = re.compile(r"[a-z]+")
 
+def _match_weekday(tok: str) -> int | None:
+    """Matchea el token contra WEEKDAYS, tolerando typos frecuentes del archivo
+    ('Domigno', 'Doomingo', 'dOMINGO' -> ya normalizado a minúsculas acá)."""
+    if tok in WEEKDAYS:
+        return WEEKDAYS.index(tok)
+    if len(tok) >= 5:
+        close = difflib.get_close_matches(tok, WEEKDAYS, n=1, cutoff=0.75)
+        if close:
+            return WEEKDAYS.index(close[0])
+    return None
+
 def _parse_sheet_tokens(sheet_name: str) -> tuple[int | None, int | None, int | None]:
-    """Devuelve (día, mes_explícito, weekday_declarado) sin usar cursor."""
+    """Devuelve (día, mes_explícito, weekday_declarado) sin resolver la fecha."""
     norm = _strip_accents_lower(sheet_name).strip()
     if _HOJA_TEMPLATE_RE.match(norm):
         return None, None, None
@@ -52,59 +75,153 @@ def _parse_sheet_tokens(sheet_name: str) -> tuple[int | None, int | None, int | 
     month = None
     weekday = None
     tokens = _ALPHA_RE.findall(norm)
+    weekday_tokens: set[str] = set()
     for tok in tokens:
-        if tok in WEEKDAYS:
-            weekday = WEEKDAYS.index(tok)
+        wd = _match_weekday(tok)
+        if wd is not None:
+            weekday = wd
+            weekday_tokens.add(tok)
     for tok in tokens:
-        if tok in WEEKDAYS:
+        if tok in weekday_tokens:
             continue  # evita que el prefijo de un día de semana matchee un mes (martes ~ mar)
         if month is None:
             month = _month_from_token(tok)
     return day, month, weekday
 
+# Ventana plausible del archivo completo (el hotel cambió de sistema ~2017;
+# los nombres de archivo por sí solos NO son confiables como año).
+_WINDOW_START = date(2012, 1, 1)
+_WINDOW_END = date(2017, 12, 31)
+_MAX_GAP_DAYS = 45
+
+def _day_month_candidates(day: int, month: int | None) -> list[date]:
+    """Fechas de calendario válidas con ese día (y mes, si se conoce) en la ventana."""
+    candidates: list[date] = []
+    months = [month] if month else range(1, 13)
+    for year in range(_WINDOW_START.year, _WINDOW_END.year + 1):
+        for m in months:
+            try:
+                d = date(year, m, day)
+            except ValueError:
+                continue
+            if _WINDOW_START <= d <= _WINDOW_END:
+                candidates.append(d)
+    return sorted(candidates)
+
+def _filter_by_weekday(candidates: list[date], weekday: int | None) -> tuple[list[date], bool]:
+    """Si algún candidato coincide con el weekday declarado, se queda solo con
+    esos (desambiguación); si no hay coincidencia, degrada a todos los
+    candidatos y señala que habrá que marcar `weekday_mismatch`."""
+    if weekday is None:
+        return candidates, False
+    matches = [d for d in candidates if d.weekday() == weekday]
+    if matches:
+        return matches, False
+    return candidates, True
+
+def _pick_anchor(candidates: list[date], hint_year: int | None) -> date:
+    if hint_year is not None:
+        exact = [d for d in candidates if d.year == hint_year]
+        if exact:
+            return exact[0]
+        return min(candidates, key=lambda d: abs(d.year - hint_year))
+    return candidates[0]
+
+def _pick_nearest(
+    candidates: list[date], ref_date: date, weekday: int | None, prefer_forward: bool
+) -> tuple[date | None, bool]:
+    """Candidato más cercano a `ref_date` dentro del salto máximo permitido
+    (o, si ninguno cae en esa ventana, el más cercano de todo el rango). El
+    weekday declarado desambigua ENTRE esos candidatos locales, sin permitir
+    saltar de año. No exige que la fecha avance monótonamente: las hojas
+    reales a veces están fuera de orden (se insertaron días salteados), y
+    forzar solo-adelante producía falsos `weekday_mismatch`; en empates de
+    distancia se prefiere la dirección `prefer_forward` para no perder el
+    sentido general de avance del libro."""
+    if not candidates:
+        return None, False
+    within_gap = [d for d in candidates if abs((d - ref_date).days) <= _MAX_GAP_DAYS]
+    pool = within_gap or candidates
+
+    def sort_key(d: date):
+        distance = abs((d - ref_date).days)
+        tie_break = 0 if (d >= ref_date) == prefer_forward else 1
+        return (distance, tie_break)
+
+    if weekday is None:
+        return min(pool, key=sort_key), False
+    matches = [d for d in pool if d.weekday() == weekday]
+    if matches:
+        return min(matches, key=sort_key), False
+    return min(pool, key=sort_key), True
+
 def sequential_sheet_dates(
     sheet_names: list[str], initial_year: int | None, initial_month: int | None
 ) -> tuple[list[date | None], list[set[str]]]:
-    """Fecha cada hoja en orden con cursor (año, mes); ver docstring del módulo."""
-    dated: list[date | None] = []
-    flags: list[set[str]] = []
-    year, month, last_day = initial_year, initial_month, None
+    """Fecha cada hoja resolviendo un ancla firme y propagándola en ambas
+    direcciones de la secuencia del libro; ver docstring del módulo."""
+    parsed = [_parse_sheet_tokens(name) for name in sheet_names]
+    n = len(parsed)
+    dated: list[date | None] = [None] * n
+    flags: list[set[str]] = [set() for _ in range(n)]
 
-    def unknown():
-        dated.append(None)
-        flags.append({"date_unknown"})
+    anchor_idx = next(
+        (i for i, (day, month, _wd) in enumerate(parsed) if day is not None and month is not None),
+        None,
+    )
+    if anchor_idx is None:
+        for i in range(n):
+            flags[i] = {"date_unknown"}
+        return dated, flags
 
-    for name in sheet_names:
-        day, explicit_month, weekday = _parse_sheet_tokens(name)
-        if day is None or year is None:
-            unknown()
-            continue
+    def _resolve(day: int, month: int | None, weekday: int | None, hint_year: int | None) -> tuple[date | None, bool]:
+        candidates = _day_month_candidates(day, month)
+        if not candidates:
+            return None, False
+        filtered, mismatch = _filter_by_weekday(candidates, weekday)
+        return _pick_anchor(filtered, hint_year), mismatch
 
-        if explicit_month is not None:
-            if month is not None and explicit_month < month:
-                year += 1
-            month = explicit_month
-        elif month is not None:
-            if last_day is not None and day < last_day:
-                month += 1
-                if month > 12:
-                    month, year = 1, year + 1
-        else:
-            unknown()
-            continue
+    day, month, weekday = parsed[anchor_idx]
+    anchor_date, mismatch = _resolve(day, month, weekday, initial_year)
+    if anchor_date is None:
+        flags[anchor_idx] = {"date_unknown"}
+    else:
+        dated[anchor_idx] = anchor_date
+        if mismatch and weekday is not None and anchor_date.weekday() != weekday:
+            flags[anchor_idx].add("weekday_mismatch")
 
-        try:
-            d = date(year, month, day)
-        except ValueError:
-            unknown()
-            continue
+    if anchor_date is not None:
+        next_date = anchor_date
+        for i in range(anchor_idx - 1, -1, -1):
+            day, month, weekday = parsed[i]
+            if day is None:
+                flags[i].add("date_unknown")
+                continue
+            candidates = _day_month_candidates(day, month)
+            picked, mismatch = _pick_nearest(candidates, next_date, weekday, prefer_forward=False)
+            if picked is None:
+                flags[i].add("date_unknown")
+                continue
+            if mismatch:
+                flags[i].add("weekday_mismatch")
+            dated[i] = picked
+            next_date = picked
 
-        f: set[str] = set()
-        if weekday is not None and d.weekday() != weekday:
-            f.add("weekday_mismatch")
-        last_day = day
-        dated.append(d)
-        flags.append(f)
+        prev_date = anchor_date
+        for i in range(anchor_idx + 1, n):
+            day, month, weekday = parsed[i]
+            if day is None:
+                flags[i].add("date_unknown")
+                continue
+            candidates = _day_month_candidates(day, month)
+            picked, mismatch = _pick_nearest(candidates, prev_date, weekday, prefer_forward=True)
+            if picked is None:
+                flags[i].add("date_unknown")
+                continue
+            if mismatch:
+                flags[i].add("weekday_mismatch")
+            dated[i] = picked
+            prev_date = picked
 
     return dated, flags
 
@@ -257,9 +374,17 @@ def process_workbook(path: Path, inventory_year: int | None = None) -> list[Nigh
         ))
     return observations
 
+_EXCLUDED_FAMILY_KEYWORDS = ("movimientos diarios",)
+
 def _is_guest_register_path(rel_path: str) -> bool:
-    norm = _strip_accents_lower(rel_path)
-    return "huesp" in norm or "registro de hu" in norm
+    """El nombre de ARCHIVO (no la carpeta) debe declarar que es un registro
+    de huéspedes. Algunas carpetas se llaman 'HUESPEDES' pero contienen otra
+    familia de archivos (ej. 'MOVIMIENTOS DIARIOS...xls') que hay que excluir
+    explícitamente aunque vivan bajo esa carpeta."""
+    filename = _strip_accents_lower(Path(rel_path).name)
+    if any(kw in filename for kw in _EXCLUDED_FAMILY_KEYWORDS):
+        return False
+    return "huesp" in filename or "registro de hu" in filename
 
 OBS_COLUMNS = [f.name for f in fields(NightObservation)]
 
@@ -269,7 +394,12 @@ def run() -> None:
         raise SystemExit(f"No existe {inventory_path} — correr primero el extractor (PR1)")
 
     inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
-    candidates = [r for r in inventory if r["is_canonical"] and _is_guest_register_path(r["path"])]
+    canonical = [r for r in inventory if r["is_canonical"]]
+    candidates = [r for r in canonical if _is_guest_register_path(r["path"])]
+    excluded_wrong_family = [
+        r["path"] for r in canonical
+        if any(kw in _strip_accents_lower(Path(r["path"]).name) for kw in _EXCLUDED_FAMILY_KEYWORDS)
+    ]
 
     all_obs: list[NightObservation] = []
     unparsed: list[str] = []
@@ -306,10 +436,30 @@ def run() -> None:
     weekday_mismatch = sum(1 for o in all_obs if "weekday_mismatch" in o.quality_flags)
     pct_unknown = 100 * (len(all_obs) - len(dated)) / len(all_obs) if all_obs else 0
 
+    by_file: dict[str, list[NightObservation]] = {}
+    for o in all_obs:
+        by_file.setdefault(o.source_file, []).append(o)
+
     print(f"OK -> {csv_path}  ({len(all_obs):,} observaciones de noche)")
+    print(f"Archivos excluidos por familia incorrecta (ej. 'movimientos diarios'): {len(excluded_wrong_family)}: {excluded_wrong_family}")
     print(f"Archivos sin filas parseables: {len(unparsed)}: {unparsed}")
-    print(f"% date_unknown: {pct_unknown:.1f}%  weekday_mismatch: {weekday_mismatch}")
+    print(f"% date_unknown: {pct_unknown:.1f}%  weekday_mismatch: {weekday_mismatch} ({100 * weekday_mismatch / len(all_obs):.1f}%)" if all_obs else "Sin observaciones")
     print(f"Noches por año: {dict(sorted(by_year.items()))}")
+    print("Peores archivos por % weekday_mismatch:")
+    per_file_stats = sorted(
+        (
+            (
+                src,
+                100 * sum(1 for o in obs if "weekday_mismatch" in o.quality_flags) / len(obs),
+                min((o.night_date for o in obs if o.night_date), default=None),
+                max((o.night_date for o in obs if o.night_date), default=None),
+            )
+            for src, obs in by_file.items()
+        ),
+        key=lambda t: t[1], reverse=True,
+    )
+    for src, pct, dmin, dmax in per_file_stats[:10]:
+        print(f"  - {src}: {pct:.1f}% mismatch, rango {dmin} .. {dmax}")
     print(f"Violaciones de capacidad (>36 hab. mismo día, mismo archivo): {len(violations)}")
     for src, d, n in violations[:20]:
         print(f"  - {src} {d}: {n} habitaciones")
