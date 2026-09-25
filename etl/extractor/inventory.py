@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import unicodedata
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -30,6 +32,7 @@ class InventoryRecord:
     year: int | None
     is_canonical: bool
     reason: str | None
+    variant_group: str | None = None
 
 
 def _md5_of_file(path: Path) -> str:
@@ -57,6 +60,36 @@ def _infer_family_year(path: Path, root: Path) -> tuple[str, int | None]:
     return family, year
 
 
+_COPY_SUFFIX_RE = re.compile(r"\s*\(\d+\)\s*$")
+_COPY_WORD_RE = re.compile(r"\s*-\s*copia\b.*$")
+_COPY_PREFIX_RE = re.compile(r"^copia de\s+")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _strip_accents(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+def _normalize_variant_key(family: str, filename: str) -> str:
+    """Clave de agrupación de variantes del MISMO documento lógico.
+
+    Normaliza nombre de archivo (sin extensión) y familia: minúsculas, sin
+    acentos, sin sufijos de copia (" (2)", " - copia", "copia de ").
+    Archivos con nombres distintos (ej. meses distintos) producen claves
+    distintas y NUNCA se agrupan como variantes.
+    """
+    stem = Path(filename).stem
+    stem = _strip_accents(stem).lower()
+    stem = _COPY_PREFIX_RE.sub("", stem)
+    stem = _COPY_WORD_RE.sub("", stem)
+    stem = _COPY_SUFFIX_RE.sub("", stem)
+    stem = _WHITESPACE_RE.sub(" ", stem).strip()
+
+    family_norm = _strip_accents(family).lower().strip()
+    return f"{family_norm}::{stem}"
+
+
 def _walk_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for dirpath, _dirnames, filenames in os.walk(root):
@@ -72,11 +105,15 @@ def build_inventory(root: Path) -> list[InventoryRecord]:
     - Archivos con hash idéntico: se queda uno solo como canónico (el de
       año más antiguo), el resto se marca `is_canonical=False`,
       `reason="duplicate_of_identical_hash"`.
-    - Archivos que comparten (familia, año-base-de-la-familia) pero NO
-      tienen hash idéntico entre sí y son ≥3 variantes de la misma familia
-      en el mismo año (caso frigobar): se marcan
-      `is_canonical=False`, `reason="needs_manual_review"` — nunca se
-      resuelven en automático.
+    - Archivos que son el MISMO documento lógico (mismo nombre normalizado,
+      ver `_normalize_variant_key`: minúsculas, sin acentos, sin sufijos de
+      copia) pero con hash DISTINTO entre sí (después de resolver los
+      duplicados exactos) son variantes del mismo documento (caso frigobar
+      con distintas versiones). Se marcan `is_canonical=False`,
+      `reason="needs_manual_review"`, `variant_group=<clave normalizada>`
+      — nunca se resuelven en automático. Archivos con nombres DISTINTOS
+      (ej. un archivo por mes) NUNCA se agrupan, aunque compartan
+      familia+año: no son variantes del mismo documento.
     - El resto queda canónico (`is_canonical=True`, `reason=None`).
     """
     root = Path(root)
@@ -105,18 +142,22 @@ def build_inventory(root: Path) -> list[InventoryRecord]:
                 else:
                     resolved[entry[0]] = (False, "duplicate_of_identical_hash")
 
-    # 2) variantes de la misma familia+año sin hash idéntico entre sí
-    #    (ej. frigobar): ≥3 archivos en el mismo (familia, año) que no
-    #    fueron ya resueltos como duplicados exactos → manual review.
+    # 2) variantes del MISMO documento lógico (mismo nombre normalizado)
+    #    con hash distinto entre sí, tras resolver duplicados exactos.
+    #    Archivos con nombres distintos (ej. un mes cada uno) no se agrupan.
     remaining = [e for e in raw if e[0] not in resolved]
-    by_family_year: dict[tuple[str, int | None], list] = {}
+    by_variant_key: dict[str, list] = {}
     for entry in remaining:
-        by_family_year.setdefault((entry[3], entry[4]), []).append(entry)
+        path, _md5, _size, family, _year = entry
+        key = _normalize_variant_key(family, path.name)
+        by_variant_key.setdefault(key, []).append(entry)
 
-    for (_family, _year), entries in by_family_year.items():
-        if len(entries) >= 3:
+    variant_group_by_path: dict[Path, str] = {}
+    for key, entries in by_variant_key.items():
+        if len(entries) >= 2:
             for entry in entries:
                 resolved[entry[0]] = (False, "needs_manual_review")
+                variant_group_by_path[entry[0]] = key
 
     records: list[InventoryRecord] = []
     for path, md5, size, family, year in raw:
@@ -130,6 +171,7 @@ def build_inventory(root: Path) -> list[InventoryRecord]:
                 year=year,
                 is_canonical=is_canonical,
                 reason=reason,
+                variant_group=variant_group_by_path.get(path),
             )
         )
     return records
@@ -149,16 +191,21 @@ def guard_output_path(path: Path, allowed_dir: Path) -> None:
 
 
 def write_inventory_json(
-    records: list[InventoryRecord], out_file: Path, allowed_dir: Path
+    records: list[InventoryRecord], out_file: Path, allowed_dir: Path, root: Path
 ) -> None:
-    """Escribe el manifest plano `inventory.json`. Rechaza rutas fuera de `allowed_dir`."""
+    """Escribe el manifest plano `inventory.json`. Rechaza rutas fuera de `allowed_dir`.
+
+    `path` se escribe RELATIVO a `root` (nunca absoluto): un path absoluto
+    filtraría el home local de quien corrió el extractor.
+    """
     out_file = Path(out_file)
+    root = Path(root)
     guard_output_path(out_file, allowed_dir)
     out_file.parent.mkdir(parents=True, exist_ok=True)
     payload = []
     for record in records:
         row = asdict(record)
-        row["path"] = str(record.path)
+        row["path"] = str(record.path.relative_to(root))
         payload.append(row)
     out_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -174,7 +221,7 @@ def main() -> None:
         raise SystemExit(f"No existe {hotel_root} — nada que inventariar")
 
     records = build_inventory(hotel_root)
-    write_inventory_json(records, out_file, allowed_dir=output_dir)
+    write_inventory_json(records, out_file, allowed_dir=output_dir, root=hotel_root)
 
     total = len(records)
     canonical = sum(1 for r in records if r.is_canonical)

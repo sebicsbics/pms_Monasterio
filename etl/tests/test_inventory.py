@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 import json
+from pathlib import Path
 
 from etl.extractor.inventory import (
     OutputPathViolation,
@@ -60,18 +61,56 @@ def test_build_inventory_resolves_mirror_duplicates_by_hash(tmp_path):
     assert canonical[0].year == 2015
 
 
-def test_build_inventory_flags_frigobar_variants_without_identical_hash(tmp_path):
+def test_build_inventory_keeps_distinct_monthly_files_canonical(tmp_path):
     root = tmp_path / "Hotel"
-    _write(root / "2015" / "frigobar" / "a.xlsx", "variante A")
-    _write(root / "2015" / "frigobar" / "b.xlsx", "variante B")
-    _write(root / "2015" / "frigobar" / "c.xlsx", "variante C")
+    meses = [
+        "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+        "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE",
+    ]
+    for mes in meses:
+        _write(
+            root / "2014" / "huespedes" / f"HUESPEDES {mes}.xlsx",
+            f"contenido real de {mes} 2014, distinto de los demas meses",
+        )
 
     records = build_inventory(root)
 
-    assert len(records) == 3
-    assert all(r.family == "frigobar" for r in records)
+    assert len(records) == 12
+    assert all(r.is_canonical for r in records)
+    assert all(r.reason is None for r in records)
+
+
+def test_build_inventory_flags_same_logical_document_variants_as_manual_review(tmp_path):
+    root = tmp_path / "Hotel"
+    _write(root / "2015" / "FRIGOBAR" / "FRIGOBAR AGOSTO.xls", "version A del frigobar de agosto")
+    _write(root / "2016" / "Frigobar" / "frigobar agosto (2).xls", "version B del frigobar de agosto")
+
+    records = build_inventory(root)
+
+    assert len(records) == 2
     assert all(not r.is_canonical for r in records)
     assert all(r.reason == "needs_manual_review" for r in records)
+    group_keys = {r.variant_group for r in records}
+    assert len(group_keys) == 1
+    assert group_keys != {None}
+
+
+def test_build_inventory_same_name_identical_content_uses_hash_dedupe_not_variant(tmp_path):
+    root = tmp_path / "Hotel"
+    same_content = "reporte identico repetido en dos carpetas"
+    _write(root / "2015" / "frigobar" / "frigobar agosto.xls", same_content)
+    _write(root / "2016" / "frigobar" / "frigobar agosto.xls", same_content)
+
+    records = build_inventory(root)
+
+    canonical = [r for r in records if r.is_canonical]
+    discarded = [r for r in records if not r.is_canonical]
+
+    assert len(canonical) == 1
+    assert len(discarded) == 1
+    assert discarded[0].reason == "duplicate_of_identical_hash"
+    assert canonical[0].year == 2015
+    assert discarded[0].variant_group is None
 
 
 def test_guard_output_path_rejects_paths_outside_etl_output(tmp_path):
@@ -97,7 +136,7 @@ def test_write_inventory_json_writes_manifest_inside_output(tmp_path):
     out_file = output_dir / "inventory.json"
 
     records = build_inventory(root)
-    write_inventory_json(records, out_file, allowed_dir=output_dir)
+    write_inventory_json(records, out_file, allowed_dir=output_dir, root=root)
 
     assert out_file.exists()
     data = json.loads(out_file.read_text(encoding="utf-8"))
@@ -105,6 +144,26 @@ def test_write_inventory_json_writes_manifest_inside_output(tmp_path):
     assert data[0]["family"] == "caja"
     assert data[0]["year"] == 2015
     assert data[0]["is_canonical"] is True
+    # el path debe ser relativo a root, nunca absoluto (no debe filtrar el home local)
+    assert data[0]["path"] == str(Path("2015") / "caja" / "caja.xlsx")
+    assert not Path(data[0]["path"]).is_absolute()
+
+
+def test_write_inventory_json_includes_variant_group_for_manual_review_rows(tmp_path):
+    root = tmp_path / "Hotel"
+    _write(root / "2015" / "FRIGOBAR" / "FRIGOBAR AGOSTO.xls", "version A")
+    _write(root / "2016" / "Frigobar" / "frigobar agosto (2).xls", "version B")
+    output_dir = tmp_path / "etl" / "output"
+    out_file = output_dir / "inventory.json"
+
+    records = build_inventory(root)
+    write_inventory_json(records, out_file, allowed_dir=output_dir, root=root)
+
+    data = json.loads(out_file.read_text(encoding="utf-8"))
+    assert len(data) == 2
+    assert all(row["reason"] == "needs_manual_review" for row in data)
+    assert all(row["variant_group"] is not None for row in data)
+    assert len({row["variant_group"] for row in data}) == 1
 
 
 def test_write_inventory_json_rejects_path_outside_output(tmp_path):
@@ -115,5 +174,5 @@ def test_write_inventory_json_rejects_path_outside_output(tmp_path):
 
     records = build_inventory(root)
     with pytest.raises(OutputPathViolation):
-        write_inventory_json(records, leak_file, allowed_dir=output_dir)
+        write_inventory_json(records, leak_file, allowed_dir=output_dir, root=root)
     assert not leak_file.exists()
