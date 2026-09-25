@@ -19,7 +19,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from etl.parsers.guest_nights import NightObservation, MONTHS, _MONTH_ABBR
-from etl.stg_estadias import normalize_payment
+from etl.stg_estadias import VALID_ROOMS, normalize_payment
 
 ETL_DIR = Path(__file__).resolve().parent.parent
 OUT_DIR = ETL_DIR / "output"
@@ -174,17 +174,37 @@ def merge_nights_into_stays(nights: list[NightObservation]) -> list[Stay]:
     return stays
 
 
-def capacity_violations_final(stays: list[Stay]) -> list[tuple[date, int]]:
-    """(date, count) para fechas con más de 36 habitaciones ocupadas (dato final)."""
-    occ: dict[date, set[int]] = {}
+def invalid_room_stays(stays: list[Stay]) -> list[Stay]:
+    """Estadías cuyo número de habitación no pertenece a `VALID_ROOMS`
+    (etl/stg_estadias.py). Tras el dedupe por (night_date, room), un guard de
+    "<=36 habitaciones ocupadas el mismo día" es tautológico por construcción
+    (ya no puede haber dos estadías compitiendo por la misma noche+habitación)
+    y no prueba nada sobre el fechado; esta comprobación sí es significativa
+    porque detecta números de habitación imposibles que sobrevivieron a la
+    fusión."""
+    return [s for s in stays if s.room is not None and s.room not in VALID_ROOMS]
+
+
+def night_conflict_rate(dedupe_report: list[dict]) -> float:
+    """% de noches descartadas en el dedupe cuyo huésped difiere del que se
+    mantuvo (posible corrupción de datos, no solo duplicado inocuo)."""
+    if not dedupe_report:
+        return 0.0
+    conflicts = sum(1 for r in dedupe_report if r["night_conflict"])
+    return 100 * conflicts / len(dedupe_report)
+
+
+def nights_per_year_report(stays: list[Stay]) -> dict[int, int]:
+    """Noches por año del dato final. Es un REPORTE, no una prueba: que el
+    total no supere 36 * días del año es un límite físico esperado, pero no
+    valida por sí solo que el fechado sea correcto (ver `invalid_room_stays`
+    y el `weekday_mismatch` de la Slice 2a para eso)."""
+    by_year: dict[int, int] = {}
     for s in stays:
-        if s.check_in is None or s.check_out is None or s.room is None:
+        if s.check_in is None or s.nights is None:
             continue
-        d = s.check_in
-        while d < s.check_out:
-            occ.setdefault(d, set()).add(s.room)
-            d += timedelta(days=1)
-    return sorted((d, len(r)) for d, r in occ.items() if len(r) > 36)
+        by_year[s.check_in.year] = by_year.get(s.check_in.year, 0) + s.nights
+    return dict(sorted(by_year.items()))
 
 
 STAY_COLUMNS = [f.name for f in fields(Stay)]
@@ -242,16 +262,21 @@ def run() -> None:
         by_year[y]["stays"] += 1
         by_year[y]["nights"] += s.nights or 0
 
-    violations = capacity_violations_final(stays)
+    invalid_rooms = invalid_room_stays(stays)
+    conflict_pct = night_conflict_rate(dedupe_report)
     conflicts = sum(1 for r in dedupe_report if r["night_conflict"])
+    nights_by_year = nights_per_year_report(stays)
 
     print(f"OK -> {csv_path}  ({len(stays):,} estadías)")
     print(f"Observaciones de noche: {len(observations):,} antes -> {len(kept):,} después de dedupe")
-    print(f"night_conflict: {conflicts} / {len(dedupe_report)} descartadas")
+    print(f"night_conflict: {conflicts} / {len(dedupe_report)} descartadas ({conflict_pct:.1f}%)")
     print(f"Estadías por año: {[(y, by_year[y]['stays'], by_year[y]['nights']) for y in sorted(by_year)]}")
-    print(f"Violaciones de capacidad final (>36 hab. ocupadas el mismo día): {len(violations)}")
-    for d, n in violations[:20]:
-        print(f"  - {d}: {n} habitaciones")
+    print(f"Habitaciones inválidas (fuera de VALID_ROOMS): {len(invalid_rooms)}")
+    for s in invalid_rooms[:20]:
+        print(f"  - {s.source_file} room={s.room} {s.check_in}..{s.check_out}")
+    # Reporte informativo, no una prueba de fechado correcto: ver docstring
+    # de `nights_per_year_report`.
+    print(f"Noches por año (reporte, límite físico 36 x días del año): {nights_by_year}")
 
 
 if __name__ == "__main__":

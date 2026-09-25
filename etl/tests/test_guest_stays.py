@@ -8,9 +8,10 @@ from datetime import date
 
 from etl.parsers.guest_nights import NightObservation
 from etl.parsers.guest_stays import (
-    capacity_violations_final,
     dedupe_nights,
+    invalid_room_stays,
     merge_nights_into_stays,
+    nights_per_year_report,
 )
 
 
@@ -87,15 +88,32 @@ def test_merge_flags_room_change_for_same_guest_next_night():
     assert "room_change" in stays[1].quality_flags
 
 
-def test_capacity_violations_final_flags_over_36_rooms_same_date():
+def _stay(room, check_in=date(2016, 4, 1), check_out=date(2016, 4, 2), nights=1, guest_name="G"):
     from etl.parsers.guest_stays import Stay
+    return Stay(
+        guest_name=guest_name, room=room, pax=1, check_in=check_in, check_out=check_out,
+        nights=nights, rate_bs=100, total_bs=100, total_source="recomputed",
+        payment=None, channel=None, country=None, is_multi_guest=False,
+        source_file="f.xlsx", quality_flags=[],
+    )
+
+
+def test_invalid_room_stays_flags_rooms_outside_valid_set():
+    # 13 no existe (superstición del hotel) y 99 no existe: ambos invalidos.
+    stays = [_stay(5), _stay(13), _stay(99)]
+    invalid = invalid_room_stays(stays)
+    assert {s.room for s in invalid} == {13, 99}
+
+
+def test_invalid_room_stays_empty_when_all_rooms_valid():
+    assert invalid_room_stays([_stay(1), _stay(36)]) == []
+
+
+def test_nights_per_year_report_reports_without_asserting_capacity():
     stays = [
-        Stay(guest_name=f"G{r}", room=r, pax=1, check_in=date(2016, 4, 1),
-             check_out=date(2016, 4, 2), nights=1, rate_bs=100, total_bs=100,
-             total_source="recomputed", payment=None, channel=None, country=None,
-             is_multi_guest=False, source_file="f.xlsx", quality_flags=[])
-        for r in range(1, 38)
+        _stay(1, check_in=date(2016, 4, 1), check_out=date(2016, 4, 3), nights=2),
+        _stay(2, check_in=date(2017, 1, 1), check_out=date(2017, 1, 2), nights=1),
     ]
-    violations = capacity_violations_final(stays)
-    assert len(violations) == 1
-    assert violations[0][1] == 37
+    report = nights_per_year_report(stays)
+    assert report[2016] == 2
+    assert report[2017] == 1
