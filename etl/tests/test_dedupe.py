@@ -82,3 +82,20 @@ def test_local_dedupe_reliable_md_row_still_excludes():
     kept, report = local_dedupe(archive, md)
     assert kept == []
     assert report[0]["reason"] == "overlap"
+
+
+def test_local_dedupe_checks_all_overlapping_md_rows_not_just_first():
+    # Dos filas de md en la misma room solapan la misma estadía de archive:
+    # la primera (índice 0) no es confiable, la segunda (índice 1) sí. No
+    # alcanza con mirar la primera que solapa -- si CUALQUIERA confiable
+    # solapa, se excluye (si no, la estadía queda duplicada en la carga).
+    unreliable = _row(5, "2016-04-01", "2016-04-10", guest_name="TYPO",
+                       nights="", quality_flags="stay_too_long")
+    reliable = _row(5, "2016-04-02", "2016-04-04", guest_name="HUESPED REAL")
+    md = [unreliable, reliable]
+    archive = [_row(5, "2016-04-02", "2016-04-04", guest_name="HUESPED REAL")]
+    kept, report = local_dedupe(archive, md)
+    assert kept == []
+    assert len(report) == 1
+    assert report[0]["reason"] == "overlap"
+    assert report[0]["md_row_index"] == 1

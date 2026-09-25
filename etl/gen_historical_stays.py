@@ -97,10 +97,15 @@ def local_dedupe(archive_rows: list[dict], md_rows: list[dict]) -> tuple[list[di
     """Excluye de archive_rows las estadías que solapan (misma room + rango de
     fechas superpuesto) con una estadía CONFIABLE de md_rows (ver
     `_md_row_is_reliable`). md siempre gana: ya está cargado y es el dataset
-    canónico. Un match contra una fila de md NO confiable no excluye la
-    estadía de archive (se mantiene, `reason='md_row_unreliable'` en el
-    reporte) — nada se pierde en silencio por un typo de fecha en md. Filas
-    sin room/check_in/check_out en alguno de los lados no se comparan (se
+    canónico. Se consideran TODAS las filas de md que solapan la room (no
+    solo la primera): si CUALQUIERA es confiable, se excluye (reason=
+    'overlap', se reporta esa fila confiable). Solo si TODOS los solapes son
+    no confiables se mantiene la estadía (reason='md_row_unreliable',
+    reportando una fila representativa del grupo, la primera por orden de
+    aparición en md — no se listan todas para no inflar el reporte, el
+    dato relevante para triage es "hubo solape no confiable", no cuántos).
+    Nada se pierde en silencio por un typo de fecha en md. Filas sin
+    room/check_in/check_out en alguno de los lados no se comparan (se
     mantienen). Devuelve (kept, dedupe_report)."""
     by_room: dict[int, list[tuple[int, dict]]] = {}
     for i, r in enumerate(md_rows):
@@ -116,17 +121,18 @@ def local_dedupe(archive_rows: list[dict], md_rows: list[dict]) -> tuple[list[di
             continue
         room = int(r["room"])
         a_in, a_out = _parse_date(r["check_in"]), _parse_date(r["check_out"])
-        match = None
-        for i, mr in by_room.get(room, []):
-            b_in, b_out = _parse_date(mr["check_in"]), _parse_date(mr["check_out"])
-            if _overlaps(a_in, a_out, b_in, b_out):
-                match = (i, mr)
-                break
-        if match is None:
+        # Se juntan TODOS los solapes de la room, no solo el primero: si el
+        # primer match resulta no confiable pero uno posterior sí lo es, hay
+        # que excluir igual (si no, la estadía queda duplicada en la carga).
+        overlaps = [(i, mr) for i, mr in by_room.get(room, [])
+                    if _overlaps(a_in, a_out, _parse_date(mr["check_in"]), _parse_date(mr["check_out"]))]
+        if not overlaps:
             kept.append(r)
             continue
+        reliable_match = next(((i, mr) for i, mr in overlaps if _md_row_is_reliable(mr)), None)
+        match = reliable_match or overlaps[0]
         i, mr = match
-        reliable = _md_row_is_reliable(mr)
+        reliable = reliable_match is not None
         if not reliable:
             kept.append(r)
         report.append({
