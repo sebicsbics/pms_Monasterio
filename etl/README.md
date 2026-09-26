@@ -244,6 +244,30 @@ huéspedes pendiente de revisión manual; algunos meses de 2014 con muy poca
 o ninguna cobertura en el archivo `Hotel/`) quedan con `no_reconstruction`
 en vez de mostrar 0% como si fuera un dato real.
 
+## Cómo resolver variantes
+
+`etl/output/inventory.json` marca `needs_manual_review` a los grupos de
+archivos que son el MISMO documento lógico pero con contenido distinto
+(hash distinto) — nunca se resuelven con una regla automática (decisión
+#471): un humano decide.
+
+1. `etl/.venv/bin/python -m etl.extractor.compare_variants` — imprime, por
+   cada grupo, una comparación lado a lado (tamaño, mtime y, para hojas de
+   cálculo: cantidad de hojas, primera/última hoja, el rango de fechas que
+   resuelve el fechado de hojas de la Slice 2a, cantidad de filas de
+   huésped y si un archivo es superconjunto del otro) y escribe
+   `etl/output/variant_comparison.csv`. Nunca imprime nombres de huésped.
+2. Completar `etl/variant_decisions.csv` (trackeado en git, solo rutas
+   relativas, sin PII) con una fila por grupo decidido: `variant_group`
+   (la clave que imprime el comando anterior), `chosen_path` (ruta relativa
+   del archivo elegido), `decided_by`, `decided_on`, `note`.
+3. `python -m etl.extractor.inventory` vuelve a correr honrando esas
+   decisiones: el archivo elegido queda canónico (`chosen_by_review`), el
+   resto del grupo `rejected_by_review`. Grupos sin fila en el csv siguen
+   `needs_manual_review`. Una decisión que apunta a un archivo que no
+   pertenece al grupo es un error explícito (`VariantDecisionError`), nunca
+   se ignora en silencio.
+
 ## Próximas capas (pendientes)
 
 - Curar la cola larga UNKNOWN (ZEPPELIN, BOOINK, etc.) con criterio del hotel.

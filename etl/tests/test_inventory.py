@@ -216,3 +216,72 @@ def test_write_inventory_json_rejects_path_outside_output(tmp_path):
     with pytest.raises(OutputPathViolation):
         write_inventory_json(records, leak_file, allowed_dir=output_dir, root=root)
     assert not leak_file.exists()
+
+
+def test_load_variant_decisions_reads_csv(tmp_path):
+    from etl.extractor.inventory import load_variant_decisions
+
+    csv_path = tmp_path / "variant_decisions.csv"
+    csv_path.write_text(
+        "variant_group,chosen_path,decided_by,decided_on,note\n"
+        "huespedes::a,2015/huespedes/a.xls,sebas,2026-09-26,mas completo\n",
+        encoding="utf-8",
+    )
+
+    decisions = load_variant_decisions(csv_path)
+
+    assert decisions == {"huespedes::a": "2015/huespedes/a.xls"}
+
+
+def test_load_variant_decisions_missing_file_returns_empty(tmp_path):
+    from etl.extractor.inventory import load_variant_decisions
+
+    assert load_variant_decisions(tmp_path / "no_existe.csv") == {}
+
+
+def test_apply_variant_decisions_chosen_becomes_canonical_others_rejected(tmp_path):
+    from etl.extractor.inventory import apply_variant_decisions
+
+    root = tmp_path / "Hotel"
+    _write(root / "2015" / "frigobar" / "frigobar agosto.xls", "version A")
+    _write(root / "2016" / "frigobar" / "frigobar agosto (2).xls", "version B")
+    records = build_inventory(root)
+    group_key = records[0].variant_group
+    chosen_rel = str(records[0].path.relative_to(root))
+
+    result = apply_variant_decisions(records, {group_key: chosen_rel}, root)
+    by_path = {r.path: r for r in result}
+
+    assert by_path[records[0].path].is_canonical is True
+    assert by_path[records[0].path].reason == "chosen_by_review"
+    assert by_path[records[1].path].is_canonical is False
+    assert by_path[records[1].path].reason == "rejected_by_review"
+
+
+def test_apply_variant_decisions_group_without_decision_stays_needs_manual_review(tmp_path):
+    from etl.extractor.inventory import apply_variant_decisions
+
+    root = tmp_path / "Hotel"
+    _write(root / "2015" / "frigobar" / "frigobar agosto.xls", "version A")
+    _write(root / "2016" / "frigobar" / "frigobar agosto (2).xls", "version B")
+    records = build_inventory(root)
+
+    result = apply_variant_decisions(records, {}, root)
+
+    assert all(r.reason == "needs_manual_review" for r in result)
+
+
+def test_apply_variant_decisions_invalid_path_raises_loud_error(tmp_path):
+    from etl.extractor.inventory import VariantDecisionError, apply_variant_decisions
+
+    root = tmp_path / "Hotel"
+    _write(root / "2015" / "frigobar" / "frigobar agosto.xls", "version A")
+    _write(root / "2016" / "frigobar" / "frigobar agosto (2).xls", "version B")
+    records = build_inventory(root)
+    group_key = records[0].variant_group
+
+    try:
+        apply_variant_decisions(records, {group_key: "no/existe/en/el/grupo.xls"}, root)
+        assert False, "debia lanzar VariantDecisionError"
+    except VariantDecisionError:
+        pass

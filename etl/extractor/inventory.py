@@ -10,17 +10,23 @@ Ninguna función de este módulo escribe fuera de `etl/output/` (ver
 """
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import os
 import re
 import unicodedata
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 
 class OutputPathViolation(Exception):
     """Se intentó escribir una salida fuera del directorio permitido (etl/output/)."""
+
+
+class VariantDecisionError(Exception):
+    """Una decisión de `variant_decisions.csv` apunta a un path que no
+    pertenece al grupo de variantes que dice resolver."""
 
 
 @dataclass(frozen=True)
@@ -218,25 +224,99 @@ def write_inventory_json(
     out_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def load_variant_decisions(path: Path) -> dict[str, str]:
+    """Lee `etl/variant_decisions.csv` -> {variant_group: chosen_path (relativo)}.
+
+    Filas sin `variant_group` o sin `chosen_path` se ignoran (la persona
+    todavía no decidió ese grupo). Nunca lee datos reales de Hotel/, solo
+    el csv de decisiones (rutas relativas, sin PII).
+    """
+    path = Path(path)
+    if not path.exists():
+        return {}
+    decisions: dict[str, str] = {}
+    with open(path, encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            group = (row.get("variant_group") or "").strip()
+            chosen = (row.get("chosen_path") or "").strip()
+            if group and chosen:
+                decisions[group] = chosen
+    return decisions
+
+
+def apply_variant_decisions(
+    records: list[InventoryRecord], decisions: dict[str, str], root: Path
+) -> list[InventoryRecord]:
+    """Aplica decisiones humanas (nunca una regla automática, ver #471) a
+    grupos `needs_manual_review`.
+
+    - Grupo CON decisión: el archivo elegido queda canónico
+      (`reason="chosen_by_review"`), el resto del grupo pasa a
+      `reason="rejected_by_review"`.
+    - Grupo SIN decisión: sigue `needs_manual_review` sin cambios.
+    - Una decisión que apunta a un path que no pertenece al grupo que dice
+      resolver es un error explícito (`VariantDecisionError`), nunca se
+      ignora en silencio.
+    """
+    if not decisions:
+        return records
+    root = Path(root)
+    by_group: dict[str, list[InventoryRecord]] = {}
+    for r in records:
+        if r.reason == "needs_manual_review" and r.variant_group is not None:
+            by_group.setdefault(r.variant_group, []).append(r)
+
+    new_status: dict[Path, str] = {}
+    for group, chosen_rel in decisions.items():
+        group_records = by_group.get(group)
+        if not group_records:
+            continue  # decisión para un grupo que ya no existe/no aplica
+        group_paths = {r.path.relative_to(root): r for r in group_records}
+        chosen_key = Path(chosen_rel)
+        if chosen_key not in group_paths:
+            raise VariantDecisionError(
+                f"variant_decisions.csv: '{chosen_rel}' no pertenece al grupo "
+                f"'{group}' (archivos del grupo: {sorted(str(p) for p in group_paths)})"
+            )
+        for rel_path, record in group_paths.items():
+            new_status[record.path] = (
+                "chosen_by_review" if rel_path == chosen_key else "rejected_by_review"
+            )
+
+    result: list[InventoryRecord] = []
+    for r in records:
+        reason = new_status.get(r.path)
+        if reason is None:
+            result.append(r)
+        else:
+            result.append(replace(r, is_canonical=(reason == "chosen_by_review"), reason=reason))
+    return result
+
+
 def main() -> None:
     """CLI: recorre `Hotel/` (raíz del repo) y escribe `etl/output/inventory.json`."""
     base = Path(__file__).resolve().parent.parent.parent  # raíz del repo
     hotel_root = base / "Hotel"
     output_dir = base / "etl" / "output"
     out_file = output_dir / "inventory.json"
+    decisions_file = base / "etl" / "variant_decisions.csv"
 
     if not hotel_root.exists():
         raise SystemExit(f"No existe {hotel_root} — nada que inventariar")
 
     records = build_inventory(hotel_root)
+    decisions = load_variant_decisions(decisions_file)
+    records = apply_variant_decisions(records, decisions, hotel_root)
     write_inventory_json(records, out_file, allowed_dir=output_dir, root=hotel_root)
 
     total = len(records)
     canonical = sum(1 for r in records if r.is_canonical)
     duplicates = sum(1 for r in records if r.reason == "duplicate_of_identical_hash")
     manual_review = sum(1 for r in records if r.reason == "needs_manual_review")
+    decided = sum(1 for r in records if r.reason in ("chosen_by_review", "rejected_by_review"))
     print(f"Inventario: {total} archivos, {canonical} canónicos, "
-          f"{duplicates} duplicados descartados, {manual_review} en revisión manual.")
+          f"{duplicates} duplicados descartados, {manual_review} en revisión manual, "
+          f"{decided} resueltos por decisión humana.")
     print(f"Escrito en {out_file}")
 
 
