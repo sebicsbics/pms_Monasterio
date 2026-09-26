@@ -172,6 +172,53 @@ Para agregar un caso nuevo después de correr el pipeline:
    nunca datos reales) y correr `pytest etl/tests` antes de volver a
    correr el pipeline real.
 
+## Validación de ocupación contra FORM ESTADISTICAS (Slice 3b)
+
+`etl/parsers/form_estadisticas.py` parsea el Formulario Nº 6 (Viceministerio
+de Turismo) que el hotel llenaba mensualmente:
+
+```bash
+etl/.venv/bin/python -m etl.parsers.form_estadisticas   # -> etl/output/stg_form_estadisticas.csv
+etl/.venv/bin/python -m etl.validate                    # -> etl/output/validation_report.csv
+```
+
+**Qué reporta el formulario.** El Nº 6 NO calcula ningún %. Reporta, día a
+día, en la hoja "Ocup. Hotelera": "Habitaciones ocupadas por noche" y
+"Numero de Personas que la Ocuparon", con una fila "Total" mensual. La
+capacidad ("Total Nº de Hb.__36") es fija y no excluye habitaciones
+bloqueadas. Este validador reproduce esa misma definición:
+
+```
+reported_pct = room_nights_reported / (room_count_reported * días_del_mes) * 100
+```
+
+y por eso NO usa `stg_room_blocks.csv` para la reconstrucción — el hotel
+tampoco excluye habitaciones bloqueadas de su propia capacidad declarada.
+
+**Tolerancia relativa, no en puntos porcentuales.** `±5%` es una diferencia
+RELATIVA (`|reconstruido-reportado| / reportado`), no puntos porcentuales:
+2pp de desvío sobre un 8% reportado es un 25% de error relativo (fuera de
+tolerancia), mientras que 2pp sobre un 90% reportado es marginal.
+
+**Duplicados y conflictos.** Si dos archivos canónicos distintos reportan el
+mismo (año, mes), se colapsan a una sola fila de validación
+(`dedupe_form_rows`): valores idénticos → sin marca; valores distintos →
+`conflicting_reports` en la fila y ambos valores listados en
+`etl/output/validation_conflicts.csv` (nunca se promedian ni se descarta
+uno en silencio).
+
+**Hallazgo confirmado por el usuario (2026-09-26).** 2014 (agosto, octubre,
+noviembre) coincide con la reconstrucción dentro de 1% — valida el método.
+De 2015 en adelante el formulario oficial SUBREPORTA sistemáticamente
+frente a los registros de recepción (hasta 2-4x por debajo). El usuario
+confirmó que es un problema de la fuente oficial hacia el Viceministerio,
+no del ETL: los meses de 2015-2017 fuera de ±5% quedan documentados con
+`official_form_underreports_2015_2017` en `notes`, no se tratan como bug.
+Meses sin ninguna noche reconstruida (ej. 2014-09: variante de registro de
+huéspedes pendiente de revisión manual; algunos meses de 2014 con muy poca
+o ninguna cobertura en el archivo `Hotel/`) quedan con `no_reconstruction`
+en vez de mostrar 0% como si fuera un dato real.
+
 ## Próximas capas (pendientes)
 
 - Curar la cola larga UNKNOWN (ZEPPELIN, BOOINK, etc.) con criterio del hotel.
