@@ -13,6 +13,10 @@ truncate) para una fuente a la vez:
   ver `etl/output/dedupe_report.csv`) y carga el resto ->
   `load_historical_stays_hotel_archive.sql`. md siempre gana el solape (ya
   está cargado y es el dataset canónico; hotel_archive es complementario).
+  El resultado deduplicado se persiste en
+  `etl/output/stg_estadias_archive_deduped.csv` -- ÚNICA fuente de verdad de
+  estadías archive: `etl.validate` lo lee tal cual y NUNCA vuelve a aplicar
+  el dedupe en memoria (ver "Orden del pipeline" en `etl/README.md`).
 
 Los datos llevan nombres de huéspedes (PII): la salida va a etl/output/, que
 está en .gitignore. NUNCA escribirla en supabase/migrations/.
@@ -32,6 +36,7 @@ OUT_DIR = os.path.join(BASE, "output")
 STG_MD = os.path.join(OUT_DIR, "stg_estadias.csv")
 STG_ARCHIVE = os.path.join(OUT_DIR, "stg_estadias_archive.csv")
 DEDUPE_REPORT = os.path.join(OUT_DIR, "dedupe_report.csv")
+DEDUPED_ARCHIVE_CSV = os.path.join(OUT_DIR, "stg_estadias_archive_deduped.csv")
 
 # (columna destino en historical_stays, columna origen en el csv, tipo)
 COLS = [
@@ -149,6 +154,24 @@ def local_dedupe(archive_rows: list[dict], md_rows: list[dict]) -> tuple[list[di
     return kept, report
 
 
+def write_deduped_archive_csv(
+    rows: list[dict], fieldnames: list[str], path: str = DEDUPED_ARCHIVE_CSV
+) -> None:
+    """Persiste el resultado de `local_dedupe` (estadías archive SIN solape
+    confiable con md) como ÚNICA fuente de verdad de estadías archive.
+
+    `etl.validate` lee este archivo -- nunca vuelve a aplicar el dedupe en
+    memoria por su cuenta -- para no contar dos veces las noches que
+    solapan con md (bug real: 59 estadías / 123 noches duplicadas en
+    2016-11/12, ver `dedupe_report.csv` y la decisión de modelo "una sola
+    fuente de verdad" documentada en `etl/README.md`)."""
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({k: r.get(k) for k in fieldnames})
+
+
 def _write_dedupe_report(report: list[dict]) -> None:
     cols = ["room", "archive_guest_name", "archive_check_in", "archive_check_out",
             "md_row_index", "md_guest_name", "md_check_in", "md_check_out", "reason"]
@@ -169,6 +192,8 @@ def run(source: str) -> None:
         md_rows = _read_csv(STG_MD)
         rows, report = local_dedupe(archive_rows, md_rows)
         _write_dedupe_report(report)
+        if archive_rows:
+            write_deduped_archive_csv(rows, list(archive_rows[0].keys()), DEDUPED_ARCHIVE_CSV)
         excluded = sum(1 for x in report if x["reason"] == "overlap")
         unreliable = sum(1 for x in report if x["reason"] == "md_row_unreliable")
         print(f"Dedupe local: {len(archive_rows):,} estadías hotel_archive -> "

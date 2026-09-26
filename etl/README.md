@@ -137,7 +137,32 @@ Los datos llegan al app vía Supabase (NO se leen los CSV en el front):
    y rango `[check_in, check_out)` que se solapa con una estadía de md se
    excluyen (md siempre gana, ya es el dataset cargado y canónico) y quedan
    documentadas en `etl/output/dedupe_report.csv`. El solape real cae en
-   2015-2016 (md arranca en 2015).
+   2015-2016 (md arranca en 2015). El resultado deduplicado se PERSISTE en
+   `etl/output/stg_estadias_archive_deduped.csv` — ver "Orden del pipeline"
+   más abajo: es la única fuente de verdad que lee `etl.validate`.
+
+### Orden del pipeline (obligatorio para que `etl.validate` sea correcto)
+
+```
+1. python -m etl.extractor.inventory
+2. python -m etl.parsers.form_estadisticas   (o el parser md/archive que corresponda)
+3. python -m etl.gen_historical_stays --source md
+4. python -m etl.gen_historical_stays --source hotel_archive   <- persiste el dedupe
+5. python -m etl.validate                                       <- lee el dedupe persistido
+```
+
+**Por qué el orden importa (bug real, corregido).** `etl.validate` reconstruye
+ocupación sumando noches de `stg_estadias_archive.csv` (archivo histórico)
+más `stg_estadias.csv` (md). Pero algunas estadías están en AMBAS fuentes
+(el mismo huésped/room/rango capturado dos veces) — el paso 4 ya las excluye
+al generar la carga, pero antes ese dedupe vivía SOLO en memoria y el paso 5
+seguía leyendo el csv archive crudo, contando esas noches el doble (59
+estadías / 123 noches en 2016-11 y 2016-12, ver `dedupe_report.csv`).
+Ahora el paso 4 persiste el resultado en
+`etl/output/stg_estadias_archive_deduped.csv` y el paso 5 SOLO lee ese
+archivo — nunca el crudo, nunca vuelve a aplicar el dedupe por su cuenta. Si
+`etl.validate` corre antes del paso 4 (o ese archivo no existe), falla con
+un error explícito en vez de correr con datos parcialmente deduplicados.
 2. `supabase/migrations/20260703160000_analytics_views.sql` → 7 vistas `v_*` que
    replican `analytics.py` en SQL (cálculo en vivo), con grants a anon/authenticated.
 3. App: `src/services/analytics.ts` (fetch de las vistas), `src/features/analytics/`

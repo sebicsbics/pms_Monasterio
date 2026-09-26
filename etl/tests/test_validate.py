@@ -131,3 +131,48 @@ def test_build_validation_rows_conflicting_month_reports_both_values_in_notes():
     rows = build_validation_rows(form_rows, [], [])
     assert len(rows) == 1
     assert "conflicting_reports" in rows[0].notes
+
+
+def test_estadias_archive_csv_constant_points_to_deduped_file():
+    from etl.validate import ESTADIAS_ARCHIVE_CSV
+
+    # Fuente única de verdad: la ruta cruda ya no se lee directamente acá
+    # (ver decisión: el dedupe archive/md se persiste en
+    # etl/gen_historical_stays.py y AMBOS consumidores leen ese archivo).
+    assert ESTADIAS_ARCHIVE_CSV.name == "stg_estadias_archive_deduped.csv"
+
+
+def test_main_raises_loud_error_when_deduped_archive_missing(tmp_path, monkeypatch):
+    import etl.validate as v
+
+    monkeypatch.setattr(v, "ESTADIAS_ARCHIVE_CSV", tmp_path / "no_existe_deduped.csv")
+    monkeypatch.setattr(v, "FORM_ESTADISTICAS_CSV", tmp_path / "no_existe_form.csv")
+    monkeypatch.setattr(v, "ESTADIAS_MD_CSV", tmp_path / "no_existe_md.csv")
+    monkeypatch.setattr(v, "VALIDATION_REPORT_CSV", tmp_path / "validation_report.csv")
+    monkeypatch.setattr(v, "VALIDATION_CONFLICTS_CSV", tmp_path / "validation_conflicts.csv")
+
+    try:
+        v.main()
+        assert False, "main() debia rechazar la ausencia del archive deduplicado"
+    except SystemExit as exc:
+        assert "gen_historical_stays" in str(exc)
+
+
+def test_build_validation_rows_guards_zero_room_count_without_crashing():
+    form_rows = [
+        {"year": "2016", "month": "1", "room_nights_reported": "10", "room_count_reported": "0", "quality_flags": "", "source_file": "a.xls"},
+        {"year": "2016", "month": "2", "room_nights_reported": "50", "room_count_reported": "36", "quality_flags": "", "source_file": "b.xls"},
+    ]
+    rows = build_validation_rows(form_rows, [], [])
+
+    assert len(rows) == 2
+    january = next(r for r in rows if r.month == 1)
+    february = next(r for r in rows if r.month == 2)
+    assert "invalid_room_count" in january.notes
+    assert february.notes == "" or "invalid_room_count" not in february.notes
+
+
+def test_dedupe_form_rows_is_reexported_from_form_estadisticas():
+    from etl.parsers.form_estadisticas import dedupe_form_rows as fe_dedupe
+
+    assert dedupe_form_rows is fe_dedupe

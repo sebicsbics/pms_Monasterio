@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import defaultdict
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
@@ -205,6 +206,51 @@ def build_record(
     )
 
 
+def dedupe_form_rows(form_rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Colapsa `form_rows` a UNA fila por (year, month) -- ÚNICA implementación
+    de esta regla en el ETL (reusada tal cual por `etl.validate`, que la
+    re-exporta en vez de mantener una copia propia).
+
+    Si dos o más archivos canónicos reportan el mismo mes con el MISMO
+    `room_nights_reported`, se queda con el primero sin marcar nada. Si
+    reportan valores DISTINTOS, se queda con el primero pero le agrega
+    `conflicting_reports` a `quality_flags` (nunca promedia, nunca descarta
+    en silencio) y además devuelve una fila de conflicto listando TODOS los
+    `source_file` y valores vistos para ese mes.
+    """
+    groups: dict[tuple[int, int], list[dict]] = defaultdict(list)
+    passthrough: list[dict] = []
+    for row in form_rows:
+        try:
+            key = (int(row["year"]), int(row["month"]))
+        except (TypeError, ValueError, KeyError):
+            passthrough.append(row)
+            continue
+        groups[key].append(row)
+
+    deduped: list[dict] = list(passthrough)
+    conflicts: list[dict] = []
+    for (year, month), rows in groups.items():
+        if len(rows) == 1:
+            deduped.append(rows[0])
+            continue
+        values = {r.get("room_nights_reported") for r in rows}
+        first = dict(rows[0])
+        if len(values) > 1:
+            existing_flags = first.get("quality_flags") or ""
+            first["quality_flags"] = ";".join(
+                f for f in (existing_flags, "conflicting_reports") if f
+            )
+            conflicts.append({
+                "year": year,
+                "month": month,
+                "source_files": ";".join(r.get("source_file", "") for r in rows),
+                "room_nights_values": ";".join(str(r.get("room_nights_reported")) for r in rows),
+            })
+        deduped.append(first)
+    return deduped, conflicts
+
+
 def _is_form_estadisticas_path(path: str) -> bool:
     return "form estadisticas" in _strip_accents_lower(path)
 
@@ -263,23 +309,13 @@ def parse_all(hotel_root: Path, inventory_path: Path = INVENTORY_PATH) -> tuple[
                 quality_flags=f"parse_error:{exc.__class__.__name__}",
             ))
 
-    by_month: dict[tuple, list[FormEstadisticaRecord]] = {}
-    for rec in records:
-        if rec.year is not None and rec.month is not None:
-            by_month.setdefault((rec.year, rec.month), []).append(rec)
-
-    conflicts = []
-    for (year, month), recs in by_month.items():
-        if len(recs) < 2:
-            continue
-        values = {(r.room_nights_reported, r.pax_reported) for r in recs}
-        if len(values) > 1:
-            conflicts.append({
-                "year": year,
-                "month": month,
-                "source_files": ";".join(r.source_file for r in recs),
-                "room_nights_values": ";".join(str(r.room_nights_reported) for r in recs),
-            })
+    # Detección de meses en conflicto: ÚNICA lógica de agrupación por
+    # (year, month), reusada de `dedupe_form_rows` (la fila deduplicada se
+    # descarta acá a propósito -- `stg_form_estadisticas.csv` sigue
+    # escribiendo una fila POR ARCHIVO, ver `write_csv`; solo se reusa la
+    # detección de conflictos, nunca se duplica esa lógica).
+    dict_rows = [asdict(rec) for rec in records if rec.year is not None and rec.month is not None]
+    _deduped, conflicts = dedupe_form_rows(dict_rows)
 
     return records, conflicts
 

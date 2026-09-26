@@ -37,16 +37,29 @@ marcan con `notes="no_reconstruction"` en vez de mostrar 0% reconstruido
 como si fuera un dato real.
 
 ## Duplicados y conflictos entre archivos FORM ESTADISTICAS del mismo mes
-`etl.parsers.form_estadisticas` ya reporta conflictos de contenido en
-`form_estadisticas_conflicts.csv`, pero sigue emitiendo una fila en
-`stg_form_estadisticas.csv` POR ARCHIVO -- dos archivos canónicos del mismo
-mes (con o sin el mismo contenido) generaban dos filas de validación
-duplicadas para ese mes (bug real detectado en `validation_report.csv`,
-2016-04). `dedupe_form_rows` colapsa por (year, month) ANTES de construir
-las filas: valores idénticos -> una sola fila; valores distintos -> una
-sola fila con `conflicting_reports` en `quality_flags` y AMBOS valores
-listados en el reporte de conflictos (nunca se promedian ni se descarta
-uno en silencio).
+`dedupe_form_rows` (implementada en `etl.parsers.form_estadisticas`, ÚNICA
+copia de esta lógica -- este módulo solo la re-exporta) colapsa por
+(year, month) ANTES de construir las filas: valores idénticos -> una sola
+fila; valores distintos -> una sola fila con `conflicting_reports` en
+`quality_flags` y AMBOS valores listados en el reporte de conflictos (nunca
+se promedian ni se descarta uno en silencio). Bug real que la motivó: dos
+archivos canónicos del mismo mes duplicaban la fila de validación
+(`validation_report.csv`, 2016-04).
+
+## Doble conteo archive/md (bug real, corregido)
+`stg_estadias_archive.csv` (crudo) y `stg_estadias.csv` (md) pueden reportar
+la MISMA estadía (mismo huésped/room/rango de fechas real, capturado en dos
+fuentes distintas del hotel). `etl.gen_historical_stays.local_dedupe` ya
+excluye esos solapes (md gana) al generar la carga -- pero antes esa
+dedupe se aplicaba SOLO en memoria y `validate.py` seguía leyendo el csv
+archive crudo, contando esas noches DOS VECES (59 estadías / 123 noches en
+2016-11 y 2016-12, inflando 2016-12 de ~14.7% real a 25.72% reportado en
+`validation_report.csv`). Corregido: el dedupe se persiste en
+`etl/output/stg_estadias_archive_deduped.csv` (ver "Orden del pipeline" en
+`etl/README.md`) y este módulo lee EXCLUSIVAMENTE ese archivo -- nunca el
+crudo, nunca vuelve a aplicar el dedupe por su cuenta. Si el archivo
+deduplicado no existe, `main()` rechaza correr con un error explícito (no
+corre con datos parcialmente deduplicados en silencio).
 """
 from __future__ import annotations
 
@@ -57,10 +70,16 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
+from etl.parsers.form_estadisticas import dedupe_form_rows
+
 ETL_DIR = Path(__file__).resolve().parent
 OUT_DIR = ETL_DIR / "output"
 FORM_ESTADISTICAS_CSV = OUT_DIR / "stg_form_estadisticas.csv"
-ESTADIAS_ARCHIVE_CSV = OUT_DIR / "stg_estadias_archive.csv"
+# ÚNICA fuente de verdad de estadías archive: el dedupe local contra md
+# (`etl.gen_historical_stays.local_dedupe`) ya se aplicó y persistió acá.
+# NUNCA leer `stg_estadias_archive.csv` (crudo) acá -- eso duplicaba noches
+# que solapan con md (bug real: 59 estadías / 123 noches en 2016-11/12).
+ESTADIAS_ARCHIVE_CSV = OUT_DIR / "stg_estadias_archive_deduped.csv"
 ESTADIAS_MD_CSV = OUT_DIR / "stg_estadias.csv"
 VALIDATION_REPORT_CSV = OUT_DIR / "validation_report.csv"
 VALIDATION_CONFLICTS_CSV = OUT_DIR / "validation_conflicts.csv"
@@ -117,49 +136,6 @@ def compute_diff(reported_pct: float, reconstructed_pct: float) -> tuple[float, 
     return diff_pp, diff_pct, within_tolerance
 
 
-def dedupe_form_rows(form_rows: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Colapsa `form_rows` a UNA fila por (year, month).
-
-    Si dos o más archivos canónicos reportan el mismo mes con el MISMO
-    `room_nights_reported`, se queda con el primero sin marcar nada. Si
-    reportan valores DISTINTOS, se queda con el primero pero le agrega
-    `conflicting_reports` a `quality_flags` (nunca promedia, nunca descarta
-    en silencio) y además devuelve una fila de conflicto listando TODOS los
-    `source_file` y valores vistos para ese mes.
-    """
-    groups: dict[tuple[int, int], list[dict]] = defaultdict(list)
-    passthrough: list[dict] = []
-    for row in form_rows:
-        try:
-            key = (int(row["year"]), int(row["month"]))
-        except (TypeError, ValueError, KeyError):
-            passthrough.append(row)
-            continue
-        groups[key].append(row)
-
-    deduped: list[dict] = list(passthrough)
-    conflicts: list[dict] = []
-    for (year, month), rows in groups.items():
-        if len(rows) == 1:
-            deduped.append(rows[0])
-            continue
-        values = {r.get("room_nights_reported") for r in rows}
-        first = dict(rows[0])
-        if len(values) > 1:
-            existing_flags = first.get("quality_flags") or ""
-            first["quality_flags"] = ";".join(
-                f for f in (existing_flags, "conflicting_reports") if f
-            )
-            conflicts.append({
-                "year": year,
-                "month": month,
-                "source_files": ";".join(r.get("source_file", "") for r in rows),
-                "room_nights_values": ";".join(str(r.get("room_nights_reported")) for r in rows),
-            })
-        deduped.append(first)
-    return deduped, conflicts
-
-
 @dataclass
 class ValidationRow:
     year: int
@@ -210,6 +186,18 @@ def build_validation_rows(
             room_count = int(float(room_count_raw))
         else:
             notes.append(f"room_count_reported ausente, se asume {ROOM_COUNT_DEFAULT}")
+
+        if room_count <= 0:
+            # Guard: un room_count_reported inválido (ej. "0", typo del
+            # formulario) no debe tumbar la corrida ni bloquear otros meses
+            # -- se reporta el mes como no calculable y se sigue.
+            notes.append("invalid_room_count")
+            rows.append(ValidationRow(
+                year=year, month=month, reported=0.0, reconstructed=0.0,
+                diff_pp=0.0, diff_pct=0.0, within_tolerance=False,
+                notes="; ".join(notes),
+            ))
+            continue
 
         days_in_month = calendar.monthrange(year, month)[1]
         reported_room_nights = float(room_nights_raw)
@@ -271,6 +259,13 @@ def write_conflicts(conflicts: list[dict], output_path: Path = VALIDATION_CONFLI
 
 
 def main() -> None:
+    if not ESTADIAS_ARCHIVE_CSV.exists():
+        raise SystemExit(
+            f"No existe {ESTADIAS_ARCHIVE_CSV}. Corré primero "
+            "`python -m etl.gen_historical_stays --source hotel_archive` "
+            "(persiste el dedupe archive/md que este validador necesita como "
+            "única fuente de verdad; ver 'Orden del pipeline' en etl/README.md)."
+        )
     form_rows = _read_csv(FORM_ESTADISTICAS_CSV)
     archive_stays = _read_csv(ESTADIAS_ARCHIVE_CSV)
     md_stays = _read_csv(ESTADIAS_MD_CSV)

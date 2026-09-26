@@ -77,3 +77,44 @@ def test_run_hotel_archive_dedupes_against_md(tmp_path, monkeypatch):
     assert len(report_rows) == 1
     assert report_rows[0]["archive_guest_name"] == "JUAN P."
     assert report_rows[0]["md_guest_name"] == "JUAN"
+
+
+def test_write_deduped_archive_csv_writes_only_given_rows(tmp_path):
+    out_path = tmp_path / "stg_estadias_archive_deduped.csv"
+    rows = [{"guest_name": "MARIA", "room": "6", "check_in": "2016-04-02", "check_out": "2016-04-04"}]
+
+    gh.write_deduped_archive_csv(rows, ["guest_name", "room", "check_in", "check_out"], str(out_path))
+
+    written = list(csv.DictReader(open(out_path, encoding="utf-8")))
+    assert len(written) == 1
+    assert written[0]["guest_name"] == "MARIA"
+
+
+def test_run_hotel_archive_persists_deduped_csv_excluding_overlap(tmp_path, monkeypatch):
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    stg_md = out_dir / "stg_estadias.csv"
+    stg_archive = out_dir / "stg_estadias_archive.csv"
+    deduped_out = out_dir / "stg_estadias_archive_deduped.csv"
+    _write_csv(stg_md, [{"guest_name": "JUAN", "room": "5",
+                          "check_in": "2016-04-01", "check_out": "2016-04-03",
+                          "nights": "2"}], MD_COLS)
+    _write_csv(stg_archive, [
+        {"guest_name": "JUAN P.", "room": "5",
+         "check_in": "2016-04-02", "check_out": "2016-04-04"},  # solapa -> excluida
+        {"guest_name": "MARIA", "room": "6",
+         "check_in": "2016-04-02", "check_out": "2016-04-04"},  # no solapa -> se mantiene
+    ], MD_COLS)
+
+    monkeypatch.setattr(gh, "OUT_DIR", str(out_dir))
+    monkeypatch.setattr(gh, "STG_MD", str(stg_md))
+    monkeypatch.setattr(gh, "STG_ARCHIVE", str(stg_archive))
+    monkeypatch.setattr(gh, "DEDUPE_REPORT", str(out_dir / "dedupe_report.csv"))
+    monkeypatch.setattr(gh, "DEDUPED_ARCHIVE_CSV", str(deduped_out))
+
+    gh.run("hotel_archive")
+
+    deduped_rows = list(csv.DictReader(open(deduped_out, encoding="utf-8")))
+    guest_names = {r["guest_name"] for r in deduped_rows}
+    assert guest_names == {"MARIA"}
+    assert "JUAN P." not in guest_names
