@@ -214,6 +214,12 @@ def build_validation_rows(
         if "conflicting_reports" in flags:
             notes.append("conflicting_reports")
             flags = ";".join(f for f in flags.split(";") if f != "conflicting_reports")
+        # Formulario cargado solo en parte (ej. 2016-03: días 1-7): su total no
+        # es comparable con el mes completo, así que va como nota propia.
+        partial = [f for f in flags.split(";") if f.startswith("partial_form:")]
+        if partial:
+            notes.extend(partial)
+            flags = ";".join(f for f in flags.split(";") if not f.startswith("partial_form:"))
         if flags:
             notes.append(f"quality_flags={flags}")
 
@@ -222,8 +228,9 @@ def build_validation_rows(
         # Hallazgo confirmado por el usuario (#471): de 2015 en adelante el
         # formulario oficial subreporta sistemáticamente frente a los
         # registros de recepción. Un mes de esos años fuera de tolerancia
-        # queda documentado como tal, no tratado como un bug del ETL.
-        if year >= 2015 and not within and not no_reconstruction:
+        # queda documentado como tal, no tratado como un bug del ETL. Un
+        # formulario parcial no es subreporte: ahí la diferencia es de cobertura.
+        if year >= 2015 and not within and not no_reconstruction and not partial:
             notes.append("official_form_underreports_2015_2017")
         rows.append(ValidationRow(
             year=year, month=month, reported=round(reported_pct, 2),

@@ -176,3 +176,19 @@ def test_dedupe_form_rows_is_reexported_from_form_estadisticas():
     from etl.parsers.form_estadisticas import dedupe_form_rows as fe_dedupe
 
     assert dedupe_form_rows is fe_dedupe
+
+
+def test_build_validation_rows_partial_form_is_not_reported_as_underreporting():
+    # 2016-03 real: el formulario solo tiene cargada la primera semana, así
+    # que su total no es comparable con el mes completo. No es subreporte.
+    form_rows = [
+        {"year": "2016", "month": "3", "room_nights_reported": "31", "room_count_reported": "36",
+         "quality_flags": "partial_form:7/31", "source_file": "a.xls"},
+    ]
+    archive_stays = [{"check_in": "2016-03-01", "check_out": "2016-03-02"} for _ in range(271)]
+
+    [row] = build_validation_rows(form_rows, archive_stays, [])
+    assert row.within_tolerance is False
+    assert "partial_form:7/31" in row.notes.split("; ")
+    assert "official_form_underreports_2015_2017" not in row.notes
+    assert "quality_flags=" not in row.notes

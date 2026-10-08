@@ -239,10 +239,22 @@ frente a los registros de recepción (hasta 2-4x por debajo). El usuario
 confirmó que es un problema de la fuente oficial hacia el Viceministerio,
 no del ETL: los meses de 2015-2017 fuera de ±5% quedan documentados con
 `official_form_underreports_2015_2017` en `notes`, no se tratan como bug.
-Meses sin ninguna noche reconstruida (ej. 2014-09: variante de registro de
-huéspedes pendiente de revisión manual; algunos meses de 2014 con muy poca
-o ninguna cobertura en el archivo `Hotel/`) quedan con `no_reconstruction`
+Meses sin ninguna noche reconstruida (algunos meses de 2014 con muy poca o
+ninguna cobertura en el archivo `Hotel/`) quedan con `no_reconstruction`
 en vez de mostrar 0% como si fuera un dato real.
+
+**Formularios cargados en parte.** En la hoja "Ocup. Hotelera" un día sin
+huéspedes se anota con `0`, y un día que nadie cargó queda en blanco. El
+parser cuenta los días en blanco dentro del mes y marca
+`partial_form:<días cargados>/<días del mes>`. Casos reales: 2016-03
+(`7/31`, guardado el día 7), 2015-06 (`15/30`) y 2015-11 (`29/30`, falta
+el día 21). En el reporte va como nota propia y **nunca** se le suma
+`official_form_underreports_2015_2017`: con días sin cargar, el total no
+es comparable con el mes completo, así que la diferencia no prueba que el
+formulario subreporte. Limitación conocida: si dos formularios canónicos
+del mismo mes entran en conflicto, `dedupe_form_rows` conserva el primero
+según el orden del inventario, no el más completo (hoy no hay ningún caso
+real).
 
 ## Cómo resolver variantes
 

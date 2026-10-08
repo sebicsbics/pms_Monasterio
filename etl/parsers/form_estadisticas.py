@@ -25,6 +25,7 @@ descarta en silencio: ambos quedan en la salida y el mes aparece además en
 """
 from __future__ import annotations
 
+import calendar
 import csv
 import json
 from collections import defaultdict
@@ -114,12 +115,9 @@ def extract_month_metadata(cells: list[tuple[int, int, object]]) -> dict:
     return {"month": month, "year": year, "room_count": room_count}
 
 
-def extract_occupancy_totals(rows: list[list]) -> tuple[float | None, float | None, list[str]]:
-    """Busca la fila de encabezado ('Habitaciones ocupadas por noche' /
-    'Numero de Personas que la Ocuparon') en la hoja 'Ocup. Hotelera' y
-    devuelve los valores de la fila 'Total' en esas mismas columnas.
-    """
-    flags: list[str] = []
+def _find_occupancy_header(rows: list[list]) -> tuple[int | None, int | None, int | None]:
+    """(fila de encabezado, columna de habitaciones, columna de personas) de
+    la hoja 'Ocup. Hotelera'; None donde no se encuentra."""
     header_row_idx = None
     room_col = pax_col = None
     for idx, row in enumerate(rows):
@@ -133,6 +131,65 @@ def extract_occupancy_totals(rows: list[list]) -> tuple[float | None, float | No
                     pax_col = c
         if header_row_idx is not None and room_col is not None:
             break
+    return header_row_idx, room_col, pax_col
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_filled_count(value: object) -> bool:
+    """Celda de conteo cargada: número, o número tipeado como texto ("0")."""
+    if _is_number(value):
+        return True
+    if isinstance(value, str):
+        try:
+            float(value.strip())
+        except ValueError:
+            return False
+        return True
+    return False
+
+
+def missing_form_days(rows: list[list], days_in_month: int) -> list[int]:
+    """Días del mes cuya fila existe en la plantilla de 'Ocup. Hotelera' pero
+    con la celda de habitaciones en blanco: nadie los cargó.
+
+    Un 0 explícito es un día sin huéspedes (dato real), no un faltante. Las
+    filas de la plantilla más allá del fin de mes (29-31 en febrero) no
+    cuentan. Sin columna 'Día' no se puede juzgar y devuelve [] (caso real
+    2016-03: formulario guardado el día 7, días 8-31 en blanco)."""
+    header_row_idx, room_col, _pax_col = _find_occupancy_header(rows)
+    if header_row_idx is None or room_col is None:
+        return []
+    day_col = next(
+        (c for c, v in enumerate(rows[header_row_idx])
+         if isinstance(v, str) and _strip_accents_lower(v.strip()) == "dia"),
+        None,
+    )
+    if day_col is None:
+        return []
+
+    missing: set[int] = set()
+    for row in rows[header_row_idx + 1:]:
+        if day_col >= len(row) or not _is_number(row[day_col]):
+            continue
+        day = row[day_col]
+        if day != int(day) or not 1 <= day <= days_in_month:
+            continue
+        value = row[room_col] if room_col < len(row) else ""
+        if not _is_filled_count(value):
+            missing.add(int(day))
+    return sorted(missing)
+
+
+def extract_occupancy_totals(rows: list[list]) -> tuple[float | None, float | None, list[str]]:
+    """Busca la fila de encabezado ('Habitaciones ocupadas por noche' /
+    'Numero de Personas que la Ocuparon') en la hoja 'Ocup. Hotelera' y
+    devuelve los valores de la fila 'Total' en esas mismas columnas.
+    """
+    flags: list[str] = []
+    header_row_idx, room_col, pax_col = _find_occupancy_header(rows)
     if header_row_idx is None or room_col is None:
         flags.append("missing_occupancy_header")
         return None, None, flags
@@ -194,6 +251,11 @@ def build_record(
         flags.append("missing_room_count_label")
     elif meta["room_count"] != 36:
         flags.append(f"room_count_not_36:{meta['room_count']}")
+    if year is not None and meta["month"] is not None:
+        days_in_month = calendar.monthrange(year, meta["month"])[1]
+        missing = missing_form_days(occupancy_rows, days_in_month)
+        if missing:
+            flags.append(f"partial_form:{days_in_month - len(missing)}/{days_in_month}")
 
     return FormEstadisticaRecord(
         year=year,

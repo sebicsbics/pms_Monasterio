@@ -8,6 +8,7 @@ from etl.parsers.form_estadisticas import (
     build_record,
     extract_month_metadata,
     extract_occupancy_totals,
+    missing_form_days,
     parse_month_label,
     parse_room_count_label,
     parse_year_label,
@@ -117,3 +118,63 @@ def test_build_record_flags_room_count_not_36():
     rec = build_record(cells, occ_rows, source_file="f.xls")
     assert rec.room_count_reported == 40
     assert "room_count_not_36:40" in rec.quality_flags
+
+
+def _occ_rows_by_day(values: dict[int, object]) -> list[list]:
+    """Hoja 'Ocup. Hotelera' sintética con la plantilla completa (días 1..31):
+    `values` da la celda de habitaciones por día; el resto queda en blanco."""
+    rows = [["Día", "Habitaciones ocupadas por noche", "Numero de Personas que la Ocuparon"]]
+    for day in range(1, 32):
+        v = values.get(day, "")
+        rows.append([float(day), v, v])
+    total = sum(v for v in values.values() if isinstance(v, float))
+    rows.append(["Total", total, total])
+    return rows
+
+
+def test_missing_form_days_blank_is_missing_but_zero_is_reported():
+    # Un 0 explícito es un día sin huéspedes (dato real); el blanco es un día
+    # que nadie cargó.
+    rows = _occ_rows_by_day({1: 0.0, 2: 3.0})
+    assert missing_form_days(rows, days_in_month=5) == [3, 4, 5]
+
+
+def test_missing_form_days_ignores_template_days_beyond_month_end():
+    # Febrero 2015: la plantilla trae filas 29-31 en blanco, no son faltantes.
+    rows = _occ_rows_by_day({d: 2.0 for d in range(1, 29)})
+    assert missing_form_days(rows, days_in_month=28) == []
+
+
+def test_missing_form_days_without_day_rows_cannot_judge():
+    rows = [
+        ["", "Día", "Habitaciones ocupadas por noche", "Numero de Personas que la Ocuparon"],
+        ["", "Total", 100.0, 150.0],
+    ]
+    assert missing_form_days(rows, days_in_month=31) == []
+
+
+def test_build_record_flags_partial_form_filled_only_first_week():
+    # Caso real 2016-03: formulario guardado el día 7, días 8-31 en blanco.
+    cells = [(2, 3, "Mes MARZO"), (2, 9, "Año 2016"), (5, 34, "Total Nº de Hb.__36")]
+    occ_rows = _occ_rows_by_day({d: 4.0 for d in range(1, 8)})
+    rec = build_record(cells, occ_rows, source_file="f.xls")
+    assert "partial_form:7/31" in rec.quality_flags
+
+
+def test_build_record_complete_month_with_zero_day_is_not_partial():
+    cells = [(2, 3, "Mes FEBRERO"), (2, 9, "Año 2015"), (5, 34, "Total Nº de Hb.__36")]
+    occ_rows = _occ_rows_by_day({d: (0.0 if d == 1 else 3.0) for d in range(1, 29)})
+    rec = build_record(cells, occ_rows, source_file="f.xls")
+    assert "partial_form" not in rec.quality_flags
+
+
+def test_missing_form_days_numeric_text_counts_as_reported():
+    # Un "0" o "3" tipeado como texto sigue siendo un dato cargado.
+    rows = _occ_rows_by_day({1: "0", 2: " 3 ", 3: "-"})
+    assert missing_form_days(rows, days_in_month=3) == [3]
+
+
+def test_missing_form_days_duplicate_day_rows_count_once():
+    rows = _occ_rows_by_day({1: 2.0})
+    rows.insert(3, [2.0, "", ""])  # plantilla con la fila del día 2 repetida
+    assert missing_form_days(rows, days_in_month=2) == [2]
