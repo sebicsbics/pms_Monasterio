@@ -280,6 +280,60 @@ archivos que son el MISMO documento lógico pero con contenido distinto
    pertenece al grupo es un error explícito (`VariantDecisionError`), nunca
    se ignora en silencio.
 
+## Caja histórica (`hist_cash_movements`, PR4)
+
+Registros de caja de recepción de `Hotel/` (2013-03 .. 2016-12) en una tabla
+SEPARADA de la caja viva `cash_movements` (migración
+`20261007000000_hist_cash_movements.sql`, lectura solo para el personal).
+
+**Ojo al leerla: no es el ingreso del hotel.** Desde mediados de 2015 la
+planilla registra pocos movimientos y casi ningún egreso (2016-02: ~6.000 Bs
+de caja contra ~33.000 Bs de hospedaje). No se sabe qué pasó (el dueño no
+tiene más registros que estos): es un registro fiel de esa planilla, no la
+contabilidad.
+
+```
+etl/.venv/bin/python -m etl.gen_hist_cash --propose  # -> etl/output/cash_month_sources_proposal.csv
+# revisar y completar etl/cash_month_sources.csv (trackeado, solo rutas)
+etl/.venv/bin/python -m etl.gen_hist_cash --load     # -> stg_hist_cash_movements.csv,
+                                                      #    load_hist_cash_movements.sql, cash_issues.csv
+```
+
+Reglas del parser (`etl/parsers/caja.py`), todas verificadas contra los
+archivos reales:
+
+- **La plata está solo en INGRESO/EGRESO.** Las columnas TOTAL son un arqueo
+  del cajón llevado a mano dentro del turno: no se cargan.
+- **Se filtra por monto, nunca por etiqueta**: hay filas "SALDO DEL TURNO
+  ANTERIOR" con ingresos reales.
+- Una fila con ingreso y egreso da dos movimientos (`kind` income/expense,
+  `currency` BOB/USD), con los mismos nombres de columna que `cash_movements`.
+- La fecha va en la primera fila del turno y se arrastra hacia abajo.
+  Correcciones marcadas en `quality_flags`, nunca en silencio, aprobadas
+  por el dueño:
+  - `date_year_typo_corrected`: '24/01/216' -> 2016-01-24.
+  - `date_corrected_to_sheet_month`: la hoja se llama 'Mes Año' ('Junio
+    2013') y el mismo día en ese mes encaja 0-2 días después de la fila
+    anterior ('2013-03-17' y '2012-09-18' en 'Junio 2013'/'Septiembre 2013').
+    Las hojas sin mes y año en el nombre ('Hoja1', 'caja julio') no anclan.
+  - `date_month_typo_corrected`: plantilla copiada del mes ANTERIOR ('05-04'
+    entre '06-03' y '06-04'); solo con un atraso de exactamente un mes y si el
+    día encaja 0-2 días después. Saltos mayores (meses o un año) pueden ser
+    legítimos -- el INFORME abarca 2015-12..2016-12 -- y nunca se corrigen.
+  - Lo que no encaja queda con la fecha escrita y `date_out_of_sequence`.
+- Montos ilegibles ('???', texto) y filas sin fecha van a `cash_issues.csv`.
+
+**Una fuente por mes, nunca dedupe por fila.** El libro acumulativo
+2015-04..2016-11 se re-guardó con 8 nombres y los mensuales arrancan con los
+últimos días del mes anterior; deduplicar por fila fusionaría dos cobros
+legítimos idénticos. `cash_month_sources.csv` elige un archivo por mes (la
+propuesta muestra cuántos movimientos de cada candidato faltan en el
+propuesto). Un mes sin decisión, una decisión que apunta a un archivo sin
+movimientos ese mes o una decisión para un mes que ya no tiene movimientos
+(por ejemplo, tras corregir fechas) es un error explícito. La columna `flag` se agrega a los
+movimientos del mes (2016-12 sale de `INFORME CAJA DICIEMBRE.xlsx`, un reporte
+curado y no el libro diario: `source_curated_report`).
+
 ## Próximas capas (pendientes)
 
 - Curar la cola larga UNKNOWN (ZEPPELIN, BOOINK, etc.) con criterio del hotel.
