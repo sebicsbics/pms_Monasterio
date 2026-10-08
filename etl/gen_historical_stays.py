@@ -33,10 +33,13 @@ from etl.loader import generate_load_sql
 
 BASE = os.path.dirname(__file__)
 OUT_DIR = os.path.join(BASE, "output")
-STG_MD = os.path.join(OUT_DIR, "stg_estadias.csv")
-STG_ARCHIVE = os.path.join(OUT_DIR, "stg_estadias_archive.csv")
-DEDUPE_REPORT = os.path.join(OUT_DIR, "dedupe_report.csv")
-DEDUPED_ARCHIVE_CSV = os.path.join(OUT_DIR, "stg_estadias_archive_deduped.csv")
+# Nombres de archivo dentro del directorio de salida. Las rutas se derivan
+# SIEMPRE del `out_dir` que recibe `run()`: una sola raíz inyectable, así un
+# archivo nuevo no puede quedar apuntando a etl/output/ real desde un test.
+STG_MD_NAME = "stg_estadias.csv"
+STG_ARCHIVE_NAME = "stg_estadias_archive.csv"
+DEDUPE_REPORT_NAME = "dedupe_report.csv"
+DEDUPED_ARCHIVE_NAME = "stg_estadias_archive_deduped.csv"
 
 # (columna destino en historical_stays, columna origen en el csv, tipo)
 COLS = [
@@ -61,6 +64,11 @@ COLS = [
 def _read_csv(path: str) -> list[dict]:
     with open(path, encoding="utf-8") as fh:
         return list(csv.DictReader(fh))
+
+
+def _csv_header(path: str) -> list[str]:
+    with open(path, encoding="utf-8") as fh:
+        return list(csv.DictReader(fh).fieldnames or [])
 
 
 def _parse_date(s: str) -> date | None:
@@ -155,7 +163,7 @@ def local_dedupe(archive_rows: list[dict], md_rows: list[dict]) -> tuple[list[di
 
 
 def write_deduped_archive_csv(
-    rows: list[dict], fieldnames: list[str], path: str = DEDUPED_ARCHIVE_CSV
+    rows: list[dict], fieldnames: list[str], path: str
 ) -> None:
     """Persiste el resultado de `local_dedupe` (estadías archive SIN solape
     confiable con md) como ÚNICA fuente de verdad de estadías archive.
@@ -172,39 +180,46 @@ def write_deduped_archive_csv(
             writer.writerow({k: r.get(k) for k in fieldnames})
 
 
-def _write_dedupe_report(report: list[dict]) -> None:
+def _write_dedupe_report(report: list[dict], path: str) -> None:
     cols = ["room", "archive_guest_name", "archive_check_in", "archive_check_out",
             "md_row_index", "md_guest_name", "md_check_in", "md_check_out", "reason"]
-    with open(DEDUPE_REPORT, "w", newline="", encoding="utf-8") as fh:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(cols)
         for r in report:
             w.writerow([r[c] for c in cols])
 
 
-def run(source: str) -> None:
-    os.makedirs(OUT_DIR, exist_ok=True)
+def run(source: str, out_dir: str = OUT_DIR) -> None:
+    os.makedirs(out_dir, exist_ok=True)
+    stg_md = os.path.join(out_dir, STG_MD_NAME)
 
     if source == "md":
-        rows = _read_csv(STG_MD)
+        rows = _read_csv(stg_md)
     else:
-        archive_rows = _read_csv(STG_ARCHIVE)
-        md_rows = _read_csv(STG_MD)
+        stg_archive = os.path.join(out_dir, STG_ARCHIVE_NAME)
+        archive_rows = _read_csv(stg_archive)
+        md_rows = _read_csv(stg_md)
         rows, report = local_dedupe(archive_rows, md_rows)
-        _write_dedupe_report(report)
-        if archive_rows:
-            write_deduped_archive_csv(rows, list(archive_rows[0].keys()), DEDUPED_ARCHIVE_CSV)
+        dedupe_report = os.path.join(out_dir, DEDUPE_REPORT_NAME)
+        _write_dedupe_report(report, dedupe_report)
+        # Siempre se reescribe, aun sin filas: un csv de una corrida anterior
+        # no puede quedar como entrada de etl.validate.
+        write_deduped_archive_csv(
+            rows, _csv_header(stg_archive),
+            os.path.join(out_dir, DEDUPED_ARCHIVE_NAME),
+        )
         excluded = sum(1 for x in report if x["reason"] == "overlap")
         unreliable = sum(1 for x in report if x["reason"] == "md_row_unreliable")
         print(f"Dedupe local: {len(archive_rows):,} estadías hotel_archive -> "
               f"{len(rows):,} tras excluir {excluded:,} solapadas con md confiable "
               f"({unreliable:,} solapes contra filas de md no confiables, no excluidas) "
-              f"(reporte: {os.path.normpath(DEDUPE_REPORT)})")
+              f"(reporte: {os.path.normpath(dedupe_report)})")
 
     for r in rows:
         r["_source"] = source
 
-    out_path = os.path.join(OUT_DIR, f"load_historical_stays_{source}.sql")
+    out_path = os.path.join(out_dir, f"load_historical_stays_{source}.sql")
     sql = generate_load_sql(
         "public.historical_stays", COLS, rows, f"source = '{source}'",
     )

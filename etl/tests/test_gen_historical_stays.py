@@ -21,7 +21,7 @@ MD_COLS = ["guest_name", "room", "pax", "check_in", "check_out", "nights",
            "country", "is_multi_guest", "quality_flags"]
 
 
-def test_run_md_writes_source_literal_and_no_truncate(tmp_path, monkeypatch):
+def test_run_md_writes_source_literal_and_no_truncate(tmp_path):
     out_dir = tmp_path / "output"
     out_dir.mkdir()
     stg_md = out_dir / "stg_estadias.csv"
@@ -32,11 +32,7 @@ def test_run_md_writes_source_literal_and_no_truncate(tmp_path, monkeypatch):
                           "channel": "DIRECTO", "country": "BO",
                           "is_multi_guest": "false", "quality_flags": ""}], MD_COLS)
 
-    monkeypatch.setattr(gh, "OUT_DIR", str(out_dir))
-    monkeypatch.setattr(gh, "STG_MD", str(stg_md))
-    monkeypatch.setattr(gh, "DEDUPE_REPORT", str(out_dir / "dedupe_report.csv"))
-
-    gh.run("md")
+    gh.run("md", out_dir=str(out_dir))
 
     out_path = out_dir / "load_historical_stays_md.sql"
     sql = out_path.read_text(encoding="utf-8")
@@ -46,7 +42,7 @@ def test_run_md_writes_source_literal_and_no_truncate(tmp_path, monkeypatch):
     assert ", 'md')" in sql  # última columna insertada es el literal de fuente
 
 
-def test_run_hotel_archive_dedupes_against_md(tmp_path, monkeypatch):
+def test_run_hotel_archive_dedupes_against_md(tmp_path):
     out_dir = tmp_path / "output"
     out_dir.mkdir()
     stg_md = out_dir / "stg_estadias.csv"
@@ -61,12 +57,7 @@ def test_run_hotel_archive_dedupes_against_md(tmp_path, monkeypatch):
          "check_in": "2016-04-02", "check_out": "2016-04-04"},  # no solapa -> se carga
     ], MD_COLS)
 
-    monkeypatch.setattr(gh, "OUT_DIR", str(out_dir))
-    monkeypatch.setattr(gh, "STG_MD", str(stg_md))
-    monkeypatch.setattr(gh, "STG_ARCHIVE", str(stg_archive))
-    monkeypatch.setattr(gh, "DEDUPE_REPORT", str(out_dir / "dedupe_report.csv"))
-
-    gh.run("hotel_archive")
+    gh.run("hotel_archive", out_dir=str(out_dir))
 
     sql = (out_dir / "load_historical_stays_hotel_archive.sql").read_text(encoding="utf-8")
     assert "'MARIA'" in sql
@@ -90,7 +81,7 @@ def test_write_deduped_archive_csv_writes_only_given_rows(tmp_path):
     assert written[0]["guest_name"] == "MARIA"
 
 
-def test_run_hotel_archive_persists_deduped_csv_excluding_overlap(tmp_path, monkeypatch):
+def test_run_hotel_archive_persists_deduped_csv_excluding_overlap(tmp_path):
     out_dir = tmp_path / "output"
     out_dir.mkdir()
     stg_md = out_dir / "stg_estadias.csv"
@@ -106,15 +97,38 @@ def test_run_hotel_archive_persists_deduped_csv_excluding_overlap(tmp_path, monk
          "check_in": "2016-04-02", "check_out": "2016-04-04"},  # no solapa -> se mantiene
     ], MD_COLS)
 
-    monkeypatch.setattr(gh, "OUT_DIR", str(out_dir))
-    monkeypatch.setattr(gh, "STG_MD", str(stg_md))
-    monkeypatch.setattr(gh, "STG_ARCHIVE", str(stg_archive))
-    monkeypatch.setattr(gh, "DEDUPE_REPORT", str(out_dir / "dedupe_report.csv"))
-    monkeypatch.setattr(gh, "DEDUPED_ARCHIVE_CSV", str(deduped_out))
-
-    gh.run("hotel_archive")
+    gh.run("hotel_archive", out_dir=str(out_dir))
 
     deduped_rows = list(csv.DictReader(open(deduped_out, encoding="utf-8")))
     guest_names = {r["guest_name"] for r in deduped_rows}
     assert guest_names == {"MARIA"}
     assert "JUAN P." not in guest_names
+
+
+def test_run_hotel_archive_empty_source_overwrites_stale_deduped_csv(tmp_path):
+    # Sin filas archive, el csv deduplicado de una corrida ANTERIOR no puede
+    # sobrevivir: etl.validate lo leería como si fuera el estado actual.
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    _write_csv(out_dir / "stg_estadias.csv", [], MD_COLS)
+    _write_csv(out_dir / "stg_estadias_archive.csv", [], MD_COLS)
+    deduped_out = out_dir / "stg_estadias_archive_deduped.csv"
+    _write_csv(deduped_out, [{"guest_name": "VIEJO", "room": "6",
+                              "check_in": "2016-04-02", "check_out": "2016-04-04"}], MD_COLS)
+
+    gh.run("hotel_archive", out_dir=str(out_dir))
+
+    assert list(csv.DictReader(open(deduped_out, encoding="utf-8"))) == []
+
+
+def test_run_hotel_archive_zero_byte_source_overwrites_stale_deduped_csv(tmp_path):
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    _write_csv(out_dir / "stg_estadias.csv", [], MD_COLS)
+    (out_dir / "stg_estadias_archive.csv").write_text("", encoding="utf-8")
+    deduped_out = out_dir / "stg_estadias_archive_deduped.csv"
+    _write_csv(deduped_out, [{"guest_name": "VIEJO", "room": "6"}], MD_COLS)
+
+    gh.run("hotel_archive", out_dir=str(out_dir))
+
+    assert list(csv.DictReader(open(deduped_out, encoding="utf-8"))) == []
