@@ -1,1 +1,9 @@
 variant_group,chosen_path,decided_by,decided_on,note
+archivos (huespedes 2014)::huespedes (octubre),2014/ARCHIVOS (huespedes 2014)/HUESPEDES  (OCTUBRE).xls,Sebas,2026-10-07,"superconjunto: 1-26 oct vs 1-14 oct, 0 conflictos"
+archivos (huespedes 2014)::huespedes septiembre,2014/ARCHIVOS (huespedes 2014)/HUESPEDES  SEPTIEMBRE.xlsx,Sebas,2026-10-07,mes completo; la (2) es corte al 17; 4 noches en conflicto resueltas a favor de la versión posterior
+huespedes::huespedes ( octubre 2015),2015/HUESPEDES/HUESPEDES ( octubre 2015).xls,Sebas,2026-10-07,libro corrido hasta 2016-02 (+1209 noches); 12 conflictos y 1 noche solo en la otra copia aceptados
+huespedes::huespedes abril 2016,2016/Huespedes/HUESPEDES  ABRIL 2016.xls,Sebas,2026-10-07,original es superconjunto estricto (+308 noches) aunque la Copia de tiene mtime más nuevo
+estadisticas 2015::form estadisticas - febrero 2015,2015/Estadisticas 2015/FORM ESTADISTICAS - FEBRERO 2015.xls,Sebas,2026-10-07,FORM: ambas copias extraen valores idénticos (hash distinto por re-guardado)
+partes diarios - estadisticas::form estadisticas - enero 2016,Night Audit/PARTES DIARIOS - ESTADISTICAS/2016/ENERO 2016/FORM ESTADISTICAS - ENERO 2016.xls,Sebas,2026-10-07,FORM: ambas copias extraen valores idénticos (hash distinto por re-guardado)
+partes diarios - estadisticas::form estadisticas - febrero 2016,Night Audit/PARTES DIARIOS - ESTADISTICAS/2016/FEBRERO 2016/FORM ESTADISTICAS - FEBRERO  2016.xls,Sebas,2026-10-07,FORM: ambas copias extraen valores idénticos (hash distinto por re-guardado)
+partes diarios - estadisticas::form estadisticas - marzo 2016,Night Audit/PARTES DIARIOS - ESTADISTICAS/2016/MARZO 2016/FORM ESTADISTICAS - MARZO 2016.xls,Sebas,2026-10-07,FORM: ambas copias extraen valores idénticos (hash distinto por re-guardado)
